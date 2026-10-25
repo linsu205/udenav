@@ -8,7 +8,7 @@
 #   Workers & Pages → 你的 Worker → Settings → Variables & Secrets 设置。
 # ============================================================
 
-name = "unav"
+name = "unav-2026"
 main = "src/index.ts"
 compatibility_date = "2026-09-01"
 
