@@ -147,7 +147,7 @@ function esc(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','
 function letter(t) { return (String(t || '?').trim()[0] || '?').toUpperCase(); }
 
 function iconHtml(item) {
-  if (item.iconType === 'r2' && item.iconUrl) return `<img src="${esc(item.iconUrl)}" alt="" loading="lazy">`;
+  if (item.iconUrl) return `<img src="${esc(item.iconUrl)}" alt="" loading="lazy">`;
   return `<span>${esc(letter(item.title))}</span>`;
 }
 

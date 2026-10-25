@@ -1,4 +1,4 @@
-// 入口：静态资源由 wrangler 的 assets 自动返回，只有 /api/* 与未命中路径会进 fetch()
+// 入口：静态资源由 wrangler 的 assets 自动返回，只有 /api/* 会进 fetch()
 // 免费档预算：每次请求 ≤10ms CPU、≤50 个子请求 —— 所有路由都尽量少查库、走索引。
 
 import { ensureSchemaOnce } from './lib/bootstrap';
@@ -6,9 +6,7 @@ import { withCors, bad } from './lib/http';
 import { allow, ipOf } from './lib/ratelimit';
 import { publicPanel, publicConfig } from './routes/public';
 import * as admin from './routes/admin';
-import { upload, serveIcon } from './routes/icons';
-import * as bk from './routes/backup';
-import { takeSnapshot } from './lib/backup';
+import { upload } from './routes/icons';
 import type { Env } from './lib/schema';
 
 const API = '/api/';
@@ -31,18 +29,8 @@ export default {
       return withCors(req, res, env.CORS_ORIGIN);
     }
 
-    // 2) /icons/* → 从 R2 取图标（先查 Cache API）
-    if (path.startsWith('/icons/')) {
-      const key = path.slice('/icons/'.length);
-      return serveIcon(env, req, key);
-    }
-
-    // 3) 其它 → 静态资源（index.html / admin.html / css / js ...）
+    // 2) 其它 → 静态资源（index.html / admin.html / css / js ...）
     return env.ASSETS.fetch(req);
-  },
-
-  async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
-    await takeSnapshot(env, 'cron').catch((e) => console.error('[backup] 定时备份失败', e));
   },
 };
 
@@ -106,15 +94,12 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (m === 'POST' && a === 'logout') return admin.logout();
     if (m === 'POST' && a === 'upload') return upload(env, req);
     if (m === 'POST' && a === 'import') return admin.importAll(env, req);
-    if (m === 'POST' && a === 'snapshot') return bk.snapshotNow(env, req);
-    if (m === 'POST' && a === 'restore') return bk.restoreBackup(env, req);
     if (m === 'GET' && a === 'me') return admin.me(req, env);
     if (m === 'GET' && a === 'config') return admin.getConfig(env, req);
     if (m === 'GET' && a === 'groups') return admin.listGroups(env, req);
     if (m === 'GET' && a === 'icons') return admin.listIcons(env, req, new URL(req.url).searchParams);
     if (m === 'GET' && a === 'export') return admin.exportAll(env, req);
-    if (m === 'GET' && a === 'backup') return bk.backupList(env, req);
-    if (m === 'GET' && a === 'stats') return bk.stats(env, req);
+    if (m === 'GET' && a === 'stats') return stats(env, req);
     if (m === 'PUT' && a === 'config') return admin.putConfig(env, req);
     if (m === 'POST' && a === 'groups') return admin.createGroup(env, req);
     if (m === 'PATCH' && a === 'groups' && id) return admin.patchGroup(env, req, id);
@@ -124,6 +109,30 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (m === 'DELETE' && a === 'icons' && id) return admin.deleteIcon(env, req, id);
   }
 
-  // ---------- 图标文件已在顶层 fetch() 直接处理，不经过 /api ----------
   return null;
+}
+
+// 统计接口（原来在 routes/backup.ts 里，随 R2 备份一起移除，独立保留在这里）
+async function stats(env: Env, req: Request): Promise<Response> {
+  const s = await admin.getSession(env, req);
+  if (!s) return bad('未登录', 401);
+  const [visits, today, groups, icons, users, cfg] = await Promise.all([
+    env.DB.prepare('SELECT COUNT(*) AS n FROM visit_log').first<{ n: number }>(),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM visit_log WHERE ts >= ?').bind(Math.floor(Date.now() / 1000) - 86400).first<{ n: number }>(),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM item_icon_group').first<{ n: number }>(),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM item_icon').first<{ n: number }>(),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>(),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM user_config').first<{ n: number }>(),
+  ]);
+  const j = {
+    ok: true,
+    total_visits: visits?.n ?? 0,
+    visits_24h: today?.n ?? 0,
+    groups: groups?.n ?? 0,
+    icons: icons?.n ?? 0,
+    users: users?.n ?? 0,
+    config_keys: cfg?.n ?? 0,
+    session: { username: s.username, role: s.role },
+  };
+  return new Response(JSON.stringify(j), { headers: { 'content-type': 'application/json; charset=utf-8' } });
 }

@@ -2,6 +2,8 @@
 
 和 NotePlus 一样的模式：代码推 GitHub → Cloudflare 自动拉取部署 → 不用手动跑命令。
 
+**本项目只用 D1，不用 R2**——图标上传后作为 base64 存进 D1，备份走本地 JSON 导入/导出。所以 Cloudflare Deploy 按钮能一键完成，不用手动建 R2 桶。
+
 ## 免费档额度速查
 
 | 服务 | 免费额度 | 本项目占用 |
@@ -9,8 +11,6 @@
 | Workers 请求 | 10 万次/天 | 导航页 + 后台 API |
 | Workers CPU | 10 ms/请求 | 已用 PBKDF2 + HS256，避开 bcrypt |
 | D1 数据库 | 5 GB 总量 / 单库 500 MB / 500 万行读 | 数据量小，绰绰有余 |
-| R2 对象存储 | 10 GB / 100 万次读 / 1000 万次写 | 图标 + 备份，远低于额度 |
-| R2 出站流量 | **免费**（不限流量） | 图标回源免费 |
 | Static Assets | 2 万文件 / 25 MiB | 2 个 HTML 文件 |
 | Access（可选） | 50 用户 | 后台入口再加一层 |
 
@@ -24,9 +24,8 @@
 |---|---|---|
 | ① 创建 Worker | Workers & Pages → Create Worker → 名字填 `unav` | [Cloudflare Dashboard](https://dash.cloudflare.com) |
 | ② 创建 D1 数据库 | Workers & Pages → D1 → Create → 名字填 `unav-database` | 同上 |
-| ③ 创建 R2 桶 | Workers & Pages → R2 → Create bucket → 名字填 `unav-bucket` | 同上 |
 
-> 这三步不需要命令行，全在浏览器里点。
+> 只有两步，全在浏览器里点。
 
 ### 2. 在 Cloudflare 控制台设置密钥
 
@@ -44,12 +43,11 @@
 -join ((48..57) + (97..122) | Get-Random -Count 40 | % {[char]$_})
 ```
 
-### 3. 把 Worker 关联到 D1 和 R2
+### 3. 把 Worker 关联到 D1
 
 Worker → **Settings → Bindings**：
 
 - 点 **Add → D1 Database** → 选 `unav-database`，Binding 变量名填 `DB`
-- 点 **Add → R2 Bucket** → 选 `unav-bucket`，Binding 变量名填 `BUCKET`
 
 ---
 
@@ -110,20 +108,32 @@ npx wrangler dev --local
 
 ---
 
-## 四、常用运维
+## 四、备份
+
+本项目**没有云端备份**（省掉 R2）。改法很简单：
+
+1. 后台「备份与导入」→ **导出全部数据（JSON）**，把文件存到本地
+2. 需要恢复时：后台「备份与导入」→ **导入 JSON** → 选那个文件
+
+导出文件里包含：所有配置 / 分组 / 卡片（含图片 base64）/ 用户（不含密码哈希）。
+
+建议每改一批配置就导出一次，备份文件名里带日期。
+
+---
+
+## 五、常用运维
 
 | 操作 | 方法 |
 |---|---|
 | 看部署状态 | Cloudflare 控制台 → Worker → Deployments |
 | 看日志 | Worker → Logs & Metrics |
 | 看版本历史 | Worker → Deployments（可回滚）|
-| 手动触发定时备份 | Worker → Triggers → Run Now |
 | 看当前环境变量 | Worker → Settings → Variables & Secrets |
 | 重置密钥 | 改 SECRET → 保存 → 所有用户需重新登录 |
 
 ---
 
-## 五、Cloudflare Access（可选，给后台加第二层门）
+## 六、Cloudflare Access（可选，给后台加第二层门）
 
 1. Cloudflare 控制台 → **Access → Applications → Add an Application**
 2. 选 **Workers** → 选你的 Worker
@@ -135,10 +145,10 @@ npx wrangler dev --local
 
 ---
 
-## 六、免费档注意事项
+## 七、免费档注意事项
 
 1. **不要**用 bcrypt 做密码哈希 — 10 ms CPU 不够，会触发 Error 1102。本项目已用 PBKDF2-SHA256。
-2. **不要**每张图标都直连 R2 — 免费档每次请求最多 50 个子请求。本项目用 Cache API 缓存图标 30 天。
-3. **不要**把 SECRET 写在 wrangler.toml — 放 Cloudflare 控制台的 Variables & Secrets 里。
-4. **不要**在 wrangler.toml 里写 account_id / database_id — GitHub 自动部署不需要。
-5. **不要**把 `.dev.vars` 推 GitHub — 已在 .gitignore 里排除。
+2. **不要**把 SECRET 写在 wrangler.toml — 放 Cloudflare 控制台的 Variables & Secrets 里。
+3. **不要**在 wrangler.toml 里写 account_id / database_id — GitHub 自动部署不需要。
+4. **不要**把 `.dev.vars` 推 GitHub — 已在 .gitignore 里排除。
+5. **图标限制**：单张 ≤ 256KB（PNG/JPG/WebP/GIF/SVG），base64 内嵌进 D1 单条上限 2MB，留足余量。

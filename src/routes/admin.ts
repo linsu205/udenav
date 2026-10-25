@@ -43,6 +43,14 @@ function checkPassword(pw: string): string | null {
   return null;
 }
 
+function normIconType(v: unknown): IconType {
+  return v === 'iconify' || v === 'data' || v === 'r2' || v === 'color' ? v : 'color';
+}
+
+function hasImageIcon(iconType: IconType, iconUrl: string): boolean {
+  return iconType === 'data' || iconType === 'r2' || iconUrl.startsWith('data:');
+}
+
 /* ---------------- 路由 ---------------- */
 
 export async function register(env: Env, req: Request): Promise<Response> {
@@ -224,7 +232,7 @@ export async function createIcon(env: Env, req: Request): Promise<Response> {
   const g = await env.DB.prepare('SELECT id FROM item_icon_group WHERE id = ?').bind(gid).first();
   if (!g) return bad('分组不存在', 404);
   const next = await env.DB.prepare('SELECT COALESCE(MAX(sort), -10) AS n FROM item_icon WHERE group_id = ?').bind(gid).first<{ n: number }>();
-  const icon_type: IconType = body.icon_type === 'r2' ? 'r2' : body.icon_type === 'iconify' ? 'iconify' : 'color';
+  const icon_type: IconType = normIconType(body.icon_type);
   const res = await env.DB
     .prepare('INSERT INTO item_icon (group_id, title, url, lan_url, icon_type, icon_text, icon_url, description, open_method, background_color, sort, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .bind(gid, title, String(body.url || ''), String(body.lan_url || ''), icon_type, String(body.icon_text || ''), String(body.icon_url || ''), String(body.description || ''), Number(body.open_method ?? 2), String(body.background_color || '#2a2a2a6b'), Number(next?.n ?? -10) + 10, s.sub)
@@ -239,7 +247,7 @@ export async function patchIcon(env: Env, req: Request, id: number): Promise<Res
   const body = await readJson(req);
   const title = body.title !== undefined ? String(body.title).trim() : ic.title;
   if (!title) return bad('名称不能为空');
-  const icon_type: IconType = body.icon_type === 'r2' ? 'r2' : body.icon_type === 'iconify' ? 'iconify' : 'color';
+  const icon_type: IconType = normIconType(body.icon_type);
   await env.DB
     .prepare('UPDATE item_icon SET title=?, url=?, lan_url=?, icon_type=?, icon_text=?, icon_url=?, description=?, open_method=?, background_color=?, sort=?, updated_at=? WHERE id=?')
     .bind(title, String(body.url ?? ic.url), String(body.lan_url ?? ic.lan_url), icon_type, String(body.icon_text ?? ic.icon_text), String(body.icon_url ?? ic.icon_url), String(body.description ?? ic.description), Number(body.open_method ?? ic.open_method), String(body.background_color ?? ic.background_color), Number(body.sort ?? ic.sort), Date.now(), id)

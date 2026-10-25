@@ -286,7 +286,7 @@ function groupEl(g) {
 function itemEl(g, it) {
   const d = document.createElement('div');
   d.className = 'item';
-  d.innerHTML = `<div class="ic" style="background:${esc(it.background_color || '#2a2a2a')}">${it.icon_type === 'r2' && it.icon_url ? `<img src="${esc(it.icon_url)}">` : esc(letter(it.title))}</div>
+  d.innerHTML = `<div class="ic" style="background:${esc(it.background_color || '#2a2a2a')}">${(it.icon_type === 'r2' || it.icon_type === 'data') && it.icon_url ? `<img src="${esc(it.icon_url)}">` : esc(letter(it.title))}</div>
     <div class="meta"><div class="t">${esc(it.title)}</div><div class="u">${esc(it.url || '（无网址）')}</div></div>
     <button class="btn ghost sm i_edit">编辑</button><button class="btn danger sm i_del">删除</button>`;
   d.querySelector('.i_edit').onclick = () => editIcon(g, it);
@@ -344,41 +344,16 @@ function renderBackup() {
     <h2>备份与导入</h2>
     <div class="panel">
       <div class="row">
-        <button class="btn" id="snap">立即备份</button>
-        <button class="btn ghost" id="exp">导出全部数据（JSON）</button>
+        <button class="btn" id="exp">导出全部数据（JSON）</button>
         <button class="btn ghost" id="imp">导入 JSON</button>
         <input type="file" id="impFile" accept="application/json" style="display:none">
-        <span class="spacer"></span>
-        <button class="btn ghost" id="bList">刷新备份列表</button>
       </div>
       <div class="err" id="bkErr"></div>
-      <div class="muted">每天 03:00（UTC）自动备份一次，存在 R2。手动备份和自动备份互不影响。</div>
-      <div id="bList2" style="margin-top:12px"></div>
+      <div class="muted">数据全部存 D1 数据库；定期点「导出」把 JSON 保存到本地磁盘做备份，需要恢复时再「导入」回来。所有数据（配置 / 分组 / 卡片 / 图片）都在一个文件里。</div>
     </div>`;
-  $('#snap').onclick = async () => { try { const r = await post('/api/admin/snapshot', {}); toast(`备份成功：${r.groups} 组 / ${r.icons} 张`); refreshBackups(); } catch (e) { $('#bkErr').textContent = e.message; } };
-  $('#exp').onclick = async () => { const j = await get('/api/admin/export'); const blob = new Blob([JSON.stringify(j, null, 1)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'nav-export-' + Date.now() + '.json'; a.click(); toast('已导出'); };
+  $('#exp').onclick = async () => { const j = await get('/api/admin/export'); const blob = new Blob([JSON.stringify(j, null, 1)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'unav-backup-' + new Date().toISOString().slice(0,10) + '.json'; a.click(); toast('已导出'); };
   $('#imp').onclick = () => $('#impFile').click();
   $('#impFile').onchange = importFile;
-  $('#bList').onclick = refreshBackups;
-  refreshBackups();
-}
-
-async function refreshBackups() {
-  try {
-    const r = await get('/api/admin/backup');
-    $('#bList2').innerHTML = r.backups.length ? '' : '<div class="muted">暂无备份</div>';
-    r.backups.forEach(b => {
-      const row = document.createElement('div');
-      row.className = 'item';
-      row.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(b.key)} <span class="muted">${(b.size/1024).toFixed(1)}KB · ${esc(b.uploaded.slice(0,19).replace('T',' '))}</span></span><button class="btn danger sm">恢复</button>`;
-      row.querySelector('button').onclick = async () => {
-        if (!confirm(`用「${b.key}」覆盖当前全部数据？此操作不可撤销。`)) return;
-        try { const res = await post('/api/admin/restore', { key: b.key, confirm: 'restore' }); toast(`已恢复 ${res.groups} 组 / ${res.icons} 张`); await loadAll(); }
-        catch (e) { $('#bkErr').textContent = e.message; }
-      };
-      $('#bList2').appendChild(row);
-    });
-  } catch (e) { $('#bList2').innerHTML = '<div class="muted">读取备份失败：' + esc(e.message) + '</div>'; }
 }
 
 async function importFile(ev) {

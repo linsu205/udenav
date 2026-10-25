@@ -19,16 +19,10 @@ workers_dev = true
 assets = { directory = "./public", binding = "ASSETS" }
 
 # ---------- D1 数据库 ----------
-# 在 Cloudflare 控制台创建，名字填 unav-db
+# 在 Cloudflare 控制台创建，名字填 unav-database
 [[d1_databases]]
 binding = "DB"
 database_name = "unav-database"
-
-# ---------- R2 对象存储 ----------
-# 在 Cloudflare 控制台创建，名字填 unav-icons
-[[r2_buckets]]
-binding = "BUCKET"
-bucket_name = "unav-bucket"
 
 # ---------- 环境变量（非敏感，密钥放 Cloudflare 控制台）----------
 [vars]
@@ -37,7 +31,3 @@ SEED_DEMO = "1"
 
 # 若启用了 Cloudflare Access，填入 Access 应用的 AUD
 ACCESS_AUD = "unav"
-
-# ---------- 定时任务：每天 3:00 UTC 备份数据库到 R2 ----------
-[triggers]
-crons = ["0 3 * * *"]

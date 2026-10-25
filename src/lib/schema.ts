@@ -3,7 +3,6 @@
 
 export type Env = {
   DB: D1Database;
-  BUCKET: R2Bucket;
   ASSETS: Fetcher;
   SECRET: string;
   SEED_DEMO?: string;
@@ -11,7 +10,9 @@ export type Env = {
   CORS_ORIGIN?: string;
 };
 
-export type IconType = 'iconify' | 'r2' | 'color';
+// 图标类型：iconify（远程 iconify 名）| data（base64 data URL 内嵌图片）| color（首字母色块）
+// 说明：'r2' 是历史值，DB 里可能残留，前端逻辑仍兼容；新写入一律用 'data'。
+export type IconType = 'iconify' | 'r2' | 'data' | 'color';
 
 export interface GroupRow {
   id: number;

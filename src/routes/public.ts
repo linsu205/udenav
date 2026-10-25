@@ -57,7 +57,7 @@ export async function publicPanel(env: Env, req: Request): Promise<Response> {
       title: g.title,
       description: g.description,
       icon: g.icon_type === 'iconify' ? g.icon_name : '',
-      iconUrl: g.icon_type === 'r2' ? g.icon_url : '',
+      iconUrl: (g.icon_type === 'r2' || g.icon_type === 'data') ? g.icon_url : '',
       cardStyle: g.card_style,
       items: (byGroup.get(g.id) || []).map((r) => ({
         id: r.id,
@@ -66,7 +66,7 @@ export async function publicPanel(env: Env, req: Request): Promise<Response> {
         description: r.description,
         iconType: r.icon_type,
         iconText: r.icon_text,
-        iconUrl: r.icon_type === 'r2' ? r.icon_url : '',
+        iconUrl: (r.icon_type === 'r2' || r.icon_type === 'data') ? r.icon_url : '',
         color: r.background_color,
         openMethod: r.open_method,
         sort: r.sort,
