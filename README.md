@@ -37,8 +37,8 @@ npx wrangler dev --local
 如果不使用 Deploy 按钮，需要手动创建资源：
 
 1. Cloudflare 控制台创建 Worker `unav`
-2. 创建 D1 数据库 `unav-db`
-3. 创建 R2 桶 `unav-icons`
+2. 创建 D1 数据库 `unav-database`
+3. 创建 R2 桶 `unav-bucket`
 4. Worker 关联 D1（变量名 `DB`）和 R2（变量名 `BUCKET`）
 5. Worker Settings → Variables & Secrets → 加 `SECRET`（32 位以上随机串）
 6. Worker Settings → Repository → 连接 GitHub 仓库

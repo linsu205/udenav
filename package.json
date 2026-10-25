@@ -7,7 +7,7 @@
     "dev": "wrangler dev --local",
     "typecheck": "tsc --noEmit",
     "deploy": "wrangler deploy",
-    "db": "wrangler d1 execute unav-db --remote --command"
+    "db": "wrangler d1 execute unav-database --remote --command"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261019.1",

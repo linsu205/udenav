@@ -23,8 +23,8 @@
 | 步骤 | 操作 | 位置 |
 |---|---|---|
 | ① 创建 Worker | Workers & Pages → Create Worker → 名字填 `unav` | [Cloudflare Dashboard](https://dash.cloudflare.com) |
-| ② 创建 D1 数据库 | Workers & Pages → D1 → Create → 名字填 `unav-db` | 同上 |
-| ③ 创建 R2 桶 | Workers & Pages → R2 → Create bucket → 名字填 `unav-icons` | 同上 |
+| ② 创建 D1 数据库 | Workers & Pages → D1 → Create → 名字填 `unav-database` | 同上 |
+| ③ 创建 R2 桶 | Workers & Pages → R2 → Create bucket → 名字填 `unav-bucket` | 同上 |
 
 > 这三步不需要命令行，全在浏览器里点。
 
@@ -48,8 +48,8 @@
 
 Worker → **Settings → Bindings**：
 
-- 点 **Add → D1 Database** → 选 `unav-db`，Binding 变量名填 `DB`
-- 点 **Add → R2 Bucket** → 选 `unav-icons`，Binding 变量名填 `BUCKET`
+- 点 **Add → D1 Database** → 选 `unav-database`，Binding 变量名填 `DB`
+- 点 **Add → R2 Bucket** → 选 `unav-bucket`，Binding 变量名填 `BUCKET`
 
 ---
 
