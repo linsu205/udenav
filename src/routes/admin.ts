@@ -4,6 +4,7 @@
 import { json, bad, q, num, readJson, httpErr } from '../lib/http';
 import { hashPassword, verifyPassword, signToken, verifyToken, setSessionCookie, clearSessionCookie, readSessionCookie, requireAccess, type Session, type Role, nowSec } from '../lib/auth';
 import { DEFAULT_CONFIG, type Env, type GroupRow, type IconRow, type IconType, type ConfigRow } from '../lib/schema';
+import { getSecret } from '../lib/secret';
 
 const SESSION_HOURS = 24;
 const LOGIN_MAX_FAILS = 5;
@@ -15,7 +16,7 @@ export async function getSession(env: Env, req: Request): Promise<Session | null
   if (!requireAccess(req)) return null;
   const token = readSessionCookie(req);
   if (!token) return null;
-  return verifyToken(token, env.SECRET);
+  return verifyToken(token, await getSecret(env));
 }
 
 export function deny(res: Response): Response {
@@ -70,7 +71,7 @@ export async function register(env: Env, req: Request): Promise<Response> {
     .bind(username, JSON.stringify({ iter: 15000, salt, hash }), 'owner')
     .run();
   if (!res.success) return bad('用户名已被占用', 409);
-  const token = await signToken({ sub: Number(res.meta.last_row_id), username, role: 'owner', exp: nowSec() + SESSION_HOURS * 3600 }, env.SECRET);
+  const token = await signToken({ sub: Number(res.meta.last_row_id), username, role: 'owner', exp: nowSec() + SESSION_HOURS * 3600 }, await getSecret(env));
   return json({ ok: true, username, role: 'owner' }, { headers: { 'set-cookie': setSessionCookie(token, SESSION_HOURS * 3600, req.url.startsWith('https://')) } });
 }
 
@@ -105,7 +106,7 @@ export async function login(env: Env, req: Request): Promise<Response> {
   }
 
   await env.DB.prepare('UPDATE users SET failed_login = 0, lock_until = 0 WHERE id = ?').bind(user.id).run();
-  const token = await signToken({ sub: user.id, username: user.username, role: user.role, exp: nowSec() + SESSION_HOURS * 3600 }, env.SECRET);
+  const token = await signToken({ sub: user.id, username: user.username, role: user.role, exp: nowSec() + SESSION_HOURS * 3600 }, await getSecret(env));
   return json({ ok: true, username: user.username, role: user.role }, { headers: { 'set-cookie': setSessionCookie(token, SESSION_HOURS * 3600, req.url.startsWith('https://')) } });
 }
 
