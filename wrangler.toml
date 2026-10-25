@@ -1,0 +1,43 @@
+# ============================================================
+# Cloudflare Workers 配置（GitHub 自动部署模式）
+#
+# 注意：
+# - account_id / database_id 不需要写在文件里 ——
+#   在 Cloudflare 控制台创建 Worker 时自动关联，GitHub 推送自动识别。
+# - SECRET 等密钥不能放这里 —— 去 Cloudflare 控制台
+#   Workers & Pages → 你的 Worker → Settings → Variables & Secrets 设置。
+# ============================================================
+
+name = "unav"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+# 免费子域名 xxx.your-sub.workers.dev
+workers_dev = true
+
+# 静态文件（public/ 目录）通过 ASSETS 绑定在 fetch() 里回退返回
+assets = { directory = "./public", binding = "ASSETS" }
+
+# ---------- D1 数据库 ----------
+# 在 Cloudflare 控制台创建，名字填 unav-db
+[[d1_databases]]
+binding = "DB"
+database_name = "unav-db"
+
+# ---------- R2 对象存储 ----------
+# 在 Cloudflare 控制台创建，名字填 unav-icons
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "unav-icons"
+
+# ---------- 环境变量（非敏感，密钥放 Cloudflare 控制台）----------
+[vars]
+# 首启时是否写入示例分组/卡片数据：1=写，0=不写
+SEED_DEMO = "1"
+
+# 若启用了 Cloudflare Access，填入 Access 应用的 AUD
+ACCESS_AUD = ""
+
+# ---------- 定时任务：每天 3:00 UTC 备份数据库到 R2 ----------
+[triggers]
+crons = ["0 3 * * *"]

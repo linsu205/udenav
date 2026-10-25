@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>我的导航</title>
+<style>
+  :root{
+    --card-bg:rgba(42,42,42,.42); --card-bg-hover:rgba(42,42,42,.68);
+    --text:#f5f6f7; --text-dim:#a9afb6; --radius:16px; --accent:#18a058;
+    --blur:blur(10px);
+  }
+  html[data-theme="light"]{
+    --card-bg:rgba(255,255,255,.72); --card-bg-hover:rgba(255,255,255,.92);
+    --text:#1f2328; --text-dim:#57606a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--text)}
+  .bg{position:fixed;inset:0;z-index:-2;background-size:cover;background-position:center}
+  .bg-blur{position:fixed;inset:0;z-index:-1;backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
+  .bg-mask{position:fixed;inset:0;z-index:-1;background:rgba(0,0,0,var(--mask,.2))}
+  html[data-theme="light"] .bg-mask{background:rgba(255,255,255,var(--mask,.2))}
+
+  .wrap{max-width:1200px;margin:0 auto;padding:0 18px 90px}
+  header{display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;padding-top:var(--mt,6vh)}
+  .logo{font-size:46px;font-weight:800;letter-spacing:1px;text-shadow:0 2px 18px rgba(0,0,0,.45)}
+  html[data-theme="light"] .logo{text-shadow:0 2px 14px rgba(255,255,255,.8)}
+  .clock{text-align:center;line-height:1.25}
+  .clock .t{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
+  .clock .d{font-size:13px;color:var(--text-dim)}
+
+  .search{margin:26px auto 0;max-width:680px;display:flex;align-items:center;gap:8px;
+    background:var(--card-bg);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:8px 10px}
+  .search input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text);font-size:15px}
+  .search input::placeholder{color:var(--text-dim)}
+  .eng{position:relative}
+  .eng-btn{background:var(--card-bg-hover);border:0;border-radius:999px;padding:7px 14px;color:var(--text);font-size:13px;cursor:pointer}
+  .eng-list{display:none;position:absolute;top:44px;right:0;z-index:20;background:var(--card-bg-hover);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  .eng-list.open{display:block}
+  .eng-list button{display:block;width:100%;background:none;border:0;color:var(--text);padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;text-align:left}
+  .eng-list button:hover{background:rgba(24,160,88,.22)}
+  .icon-btn{background:var(--card-bg-hover);border:0;color:var(--text);border-radius:999px;width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+
+  .group{margin-top:38px}
+  .group-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:0 4px}
+  .group-head h2{margin:0;font-size:19px;font-weight:700}
+  .group-head .desc{font-size:13px;color:var(--text-dim)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px}
+  .card{display:flex;align-items:center;gap:12px;background:var(--card-bg);border:1px solid rgba(255,255,255,.06);
+    border-radius:var(--radius);padding:14px;cursor:pointer;transition:transform .18s,box-shadow .18s,background .18s;
+    backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);overflow:hidden}
+  .card:hover{transform:translateY(-3px);background:var(--card-bg-hover);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    box-shadow:0 14px 34px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.06),0 0 22px rgba(24,160,88,.16)}
+  .card .ic{flex:0 0 46px;width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+    font-size:20px;font-weight:700;color:#fff;overflow:hidden}
+  .card .ic img{width:100%;height:100%;object-fit:cover}
+  .card .body{min-width:0}
+  .card .title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .dsc{font-size:12px;color:var(--text-dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .empty{color:var(--text-dim);font-size:14px;padding:24px 4px}
+  footer{margin-top:46px;text-align:center;font-size:12px;color:var(--text-dim)}
+  .theme{position:fixed;right:18px;bottom:18px;z-index:30}
+  .modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:20px}
+  .modal.open{display:flex}
+  .modal .box{width:min(1000px,94vw);height:min(680px,86vh);background:#fff;border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+  .modal .bar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #eaecef;color:#1f2328;font-size:13px}
+  .modal iframe{flex:1;border:0}
+</style>
+</head>
+<body>
+<div class="bg" id="bg"></div>
+<div class="bg-blur"></div>
+<div class="bg-mask"></div>
+
+<div class="wrap">
+  <header>
+    <div class="logo" id="logo">我的导航</div>
+    <div class="clock"><div class="t" id="time">--:--:--</div><div class="d" id="date"></div></div>
+  </header>
+
+  <div class="search" id="searchBox">
+    <div class="eng">
+      <button class="eng-btn" id="engBtn">Google</button>
+      <div class="eng-list" id="engList"></div>
+    </div>
+    <input id="q" placeholder="搜索网站，或输入关键词搜索">
+    <button class="icon-btn" id="clearBtn" title="清空" aria-label="清空">✕</button>
+  </div>
+
+  <div id="groups"></div>
+  <footer id="footer"></footer>
+</div>
+
+<button class="icon-btn theme" id="themeBtn" title="切换主题">🌙</button>
+
+<div class="modal" id="modal">
+  <div class="box">
+    <div class="bar"><span id="modalTitle"></span><button class="icon-btn" id="modalClose" style="color:#1f2328">✕</button></div>
+    <iframe id="modalFrame" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const state = { config: {}, groups: [], engine: null, engines: [] };
+
+/* ---------- 渲染 ---------- */
+function applyConfig(c) {
+  state.config = c;
+  document.title = c.logo_text || '我的导航';
+  $('#logo').textContent = c.logo_text || '我的导航';
+  document.documentElement.dataset.theme = c.theme || 'dark';
+  $('#themeBtn').textContent = (c.theme || 'dark') === 'dark' ? '🌙' : '☀️';
+  const bg = c.background_image;
+  if (bg) { $('#bg').style.backgroundImage = `url("${bg.replace(/"/g,'')}" )`; $('#bg').style.display = 'block'; }
+  else { $('#bg').style.display = 'none'; document.body.style.background = (c.theme||'dark')==='dark' ? '#15171a' : '#eef1f4'; }
+  document.documentElement.style.setProperty('--blur', `blur(${c.background_blur ?? 10}px)`);
+  document.documentElement.style.setProperty('--mask', c.background_mask ?? 0.2);
+  document.documentElement.style.setProperty('--mt', `${c.margin_top ?? 6}vh`);
+  $('#footer').textContent = c.footer || '';
+  $('#searchBox').style.display = c.search_box_show ? 'flex' : 'none';
+  state.engines = Array.isArray(c.search_engines) && c.search_engines.length ? c.search_engines : DEFAULT_ENGINES;
+  if (!state.engine || !state.engines.some(e => e.name === state.engine.name)) state.engine = state.engines[0];
+  renderEngines();
+}
+
+const DEFAULT_ENGINES = [
+  { name: 'Google', url: 'https://www.google.com/search?q=%s' },
+  { name: '百度', url: 'https://www.baidu.com/s?wd=%s' },
+  { name: 'Bing', url: 'https://www.bing.com/search?q=%s' },
+];
+
+function renderEngines() {
+  $('#engBtn').textContent = state.engine.name;
+  $('#engList').innerHTML = '';
+  state.engines.forEach((e, i) => {
+    const b = document.createElement('button');
+    b.textContent = e.name;
+    b.onclick = () => { state.engine = e; renderEngines(); $('#engList').classList.remove('open'); };
+    $('#engList').appendChild(b);
+  });
+}
+
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+function letter(t) { return (String(t || '?').trim()[0] || '?').toUpperCase(); }
+
+function iconHtml(item) {
+  if (item.iconType === 'r2' && item.iconUrl) return `<img src="${esc(item.iconUrl)}" alt="" loading="lazy">`;
+  return `<span>${esc(letter(item.title))}</span>`;
+}
+
+function renderGroups() {
+  const box = $('#groups');
+  const kw = $('#q').value.trim().toLowerCase();
+  const filtered = state.groups.filter(g => {
+    if (g.cardStyle === 'hide') return false;
+    return g.items.filter(it => !kw || (it.title + ' ' + (it.description || '') + ' ' + (it.url || '')).toLowerCase().includes(kw));
+  });
+  box.innerHTML = '';
+  if (!filtered.length) { box.innerHTML = '<div class="empty">没有匹配的卡片</div>'; return; }
+  filtered.forEach(g => {
+    const sec = document.createElement('section');
+    sec.className = 'group';
+    sec.innerHTML = `<div class="group-head"><h2>${esc(g.title)}</h2>${g.description ? `<span class="desc">${esc(g.description)}</span>` : ''}</div>`;
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    g.items.forEach(it => {
+      const c = document.createElement('div');
+      c.className = 'card';
+      c.innerHTML = `<div class="ic" style="background:${esc(it.color || '#2a2a2a')}">${iconHtml(it)}</div>
+        <div class="body"><div class="title">${esc(it.title)}</div>${it.description ? `<div class="dsc">${esc(it.description)}</div>` : ''}</div>`;
+      c.onclick = () => openUrl(it);
+      grid.appendChild(c);
+    });
+    sec.appendChild(grid);
+    box.appendChild(sec);
+  });
+}
+
+function openUrl(it) {
+  const url = it.url;
+  if (!url) return;
+  if (it.openMethod === 3) {
+    $('#modalTitle').textContent = it.title || url;
+    $('#modalFrame').src = url;
+    $('#modal').classList.add('open');
+  } else if (it.openMethod === 1) {
+    location.href = url;
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+/* ---------- 时钟 ---------- */
+const WEEK = ['周日','周一','周二','周三','周四','周五','周六'];
+function tick() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  $('#time').textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  $('#date').textContent = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 ${WEEK[d.getDay()]}`;
+}
+
+/* ---------- 主题切换 ---------- */
+$('#themeBtn').onclick = async () => {
+  const cur = document.documentElement.dataset.theme;
+  const next = cur === 'dark' ? 'light' : 'dark';
+  applyConfig({ ...state.config, theme: next });
+  await fetch('/api/admin/config', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme: next }) }).catch(() => {});
+};
+
+/* ---------- 交互 ---------- */
+$('#engBtn').onclick = e => { e.stopPropagation(); $('#engList').classList.toggle('open'); };
+document.addEventListener('click', () => $('#engList').classList.remove('open'));
+$('#q').addEventListener('input', renderGroups);
+$('#clearBtn').onclick = () => { $('#q').value = ''; renderGroups(); };
+$('#modalClose').onclick = () => { $('#modal').classList.remove('open'); $('#modalFrame').src = ''; };
+$('#modal').onclick = e => { if (e.target.id === 'modal') $('#modalClose').click(); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modalClose').click(); });
+
+$('#q').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const kw = e.target.value.trim();
+  if (!kw) return;
+  const url = state.engine.url.replace('%s', encodeURIComponent(kw));
+  window.open(url, '_blank');
+});
+
+/* ---------- 启动：优先读后端，读不到就用内置数据 ---------- */
+const FALLBACK = {
+  config: { logo_text: '我的导航', background_blur: 10, background_mask: 0.2, margin_top: 6, icon_style: 'info', search_box_show: 1, theme: 'dark', search_engines: DEFAULT_ENGINES },
+  groups: [
+    { id: 1, title: '常用', description: '每天要打开的', cardStyle: 'info', items: [
+      { title: '百度', url: 'https://www.baidu.com', description: '中文搜索', color: '#2932e1', openMethod: 2 },
+      { title: '哔哩哔哩', url: 'https://www.bilibili.com', description: '弹幕视频', color: '#fb7299', openMethod: 2 },
+    ]},
+    { id: 2, title: '工作', description: '办公与文档', cardStyle: 'info', items: [
+      { title: 'QQ 邮箱', url: 'https://mail.qq.com', description: '收发邮件', color: '#12b7f5', openMethod: 2 },
+    ]},
+  ],
+};
+
+(async function init() {
+  let data = FALLBACK;
+  try {
+    const r = await fetch('/api/public/panel', { cache: 'no-store' });
+    if (r.ok) { const j = await r.json(); if (j && Array.isArray(j.groups)) data = j; }
+  } catch { /* 离线打开时用内置数据 */ }
+  applyConfig(data.config || FALLBACK.config);
+  state.groups = data.groups || [];
+  renderGroups();
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>

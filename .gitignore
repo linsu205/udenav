@@ -1,0 +1,8 @@
+node_modules/
+.wrangler/
+*.log
+.DS_Store
+Thumbs.db
+
+# 本地开发密钥（不推 GitHub）
+.dev.vars

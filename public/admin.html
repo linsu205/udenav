@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>导航管理后台</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:#15171a;color:#f0f2f5;font-size:14px}
+  button{font:inherit}
+  .auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .auth .card{width:min(380px,94vw);background:#1d2024;border:1px solid #2b3036;border-radius:16px;padding:26px}
+  .auth h1{margin:0 0 4px;font-size:20px}
+  .auth p{margin:0 0 20px;color:#8b929a;font-size:13px}
+  .field{margin-bottom:14px}
+  label{display:block;font-size:12px;color:#8b929a;margin-bottom:6px}
+  input[type=text],input[type=number],input[type=week],textarea,select{
+    width:100%;background:#15171a;color:#f0f2f5;border:1px solid #2b3036;border-radius:10px;padding:9px 11px;outline:0}
+  input:focus,textarea:focus,select:focus{border-color:#18a058}
+  textarea{resize:vertical;min-height:64px}
+  .btn{background:#18a058;color:#fff;border:0;border-radius:10px;padding:9px 16px;cursor:pointer}
+  .btn.ghost{background:#2b3036}
+  .btn.danger{background:#b03030}
+  .btn.sm{padding:5px 10px;font-size:12px;border-radius:8px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .spacer{flex:1}
+  .err{color:#ff8080;font-size:12px;min-height:16px;margin:8px 0}
+
+  .app{display:flex;min-height:100vh}
+  aside{width:210px;flex:0 0 210px;background:#1d2024;border-right:1px solid #2b3036;padding:18px 12px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column}
+  aside .brand{font-weight:700;font-size:16px;margin-bottom:16px}
+  aside a{display:block;padding:10px 12px;border-radius:10px;color:#c3c9d0;text-decoration:none;cursor:pointer;margin-bottom:4px}
+  aside a.active{background:#223028;color:#18a058}
+  aside .foot{margin-top:auto;display:flex;flex-direction:column;gap:8px}
+  main{flex:1;padding:24px 28px;min-width:0}
+  h2{margin:0 0 16px;font-size:18px}
+  .panel{background:#1d2024;border:1px solid #2b3036;border-radius:14px;padding:18px;margin-bottom:18px}
+  .group{border:1px solid #2b3036;border-radius:12px;padding:14px;margin-bottom:14px;background:#181b1f}
+  .group-head{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+  .group-head input{flex:1}
+  .item{display:flex;gap:8px;align-items:center;padding:8px 10px;border-radius:10px;background:#15171a;margin-bottom:8px}
+  .item .ic{flex:0 0 34px;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;overflow:hidden}
+  .item .ic img{width:100%;height:100%;object-fit:cover}
+  .item .meta{min-width:0;flex:1}
+  .item .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .u{font-size:12px;color:#8b929a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#223028;color:#7ee2a8;padding:10px 18px;border-radius:10px;border:1px solid #18a058;display:none;z-index:99}
+  .toast.show{display:block}
+  .stat{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .stat .b{background:#181b1f;border:1px solid #2b3036;border-radius:12px;padding:14px}
+  .stat .n{font-size:26px;font-weight:700;color:#18a058}
+  .stat .l{font-size:12px;color:#8b929a;margin-top:4px}
+  .muted{color:#8b929a;font-size:12px}
+  @media(max-width:760px){aside{position:fixed;left:-220px;z-index:20}main{padding:16px}}
+</style>
+</head>
+<body>
+
+<div class="auth" id="authView">
+  <div class="card">
+    <h1 id="authTitle">登录管理后台</h1>
+    <p id="authSub">使用管理员账号登录</p>
+    <div class="field"><label>用户名</label><input type="text" id="username" autocomplete="username"></div>
+    <div class="field"><label>密码</label><input type="text" id="password" autocomplete="current-password"></div>
+    <div class="err" id="authErr"></div>
+    <button class="btn" id="authBtn" style="width:100%">登录</button>
+    <p class="muted" style="margin-top:14px" id="authHint">还没有账号？</p>
+  </div>
+</div>
+
+<div class="app" id="appView" style="display:none">
+  <aside>
+    <div class="brand">导航后台</div>
+    <a data-tab="config" class="active">页面配置</a>
+    <a data-tab="groups">分组与卡片</a>
+    <a data-tab="backup">备份与导入</a>
+    <a data-tab="stats">访问统计</a>
+    <div class="foot">
+      <div class="muted" id="whoami"></div>
+      <button class="btn ghost sm" onclick="location.href='/'">打开首页</button>
+      <button class="btn ghost sm" id="logoutBtn">退出登录</button>
+    </div>
+  </aside>
+  <main>
+    <div id="tab-config"></div>
+    <div id="tab-groups" style="display:none"></div>
+    <div id="tab-backup" style="display:none"></div>
+    <div id="tab-stats" style="display:none"></div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const state = { user: null, config: {}, groups: [], mode: 'login' };
+
+/* ---------- 工具 ---------- */
+const esc = s => String(s ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._tm); t._tm = setTimeout(() => t.classList.remove('show'), 2200); }
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: body && !(body instanceof FormData) ? { 'content-type': 'application/json' } : undefined, body: body && !(body instanceof FormData) ? JSON.stringify(body) : (body || undefined) });
+  let j = null; try { j = await r.json(); } catch {}
+  if (!r.ok) throw new Error((j && j.error) || ('HTTP ' + r.status));
+  return j;
+}
+const get = p => api('GET', p);
+const post = (p, b) => api('POST', p, b);
+const put = (p, b) => api('PUT', p, b);
+const patch = (p, b) => api('PATCH', p, b);
+const del = p => api('DELETE', p);
+const letter = t => (String(t || '?').trim()[0] || '?').toUpperCase();
+
+/* ---------- 登录 / 注册 ---------- */
+async function bindAuth() {
+  $('#authBtn').onclick = async () => {
+    const username = $('#username').value.trim();
+    const password = $('#password').value;
+    $('#authErr').textContent = '';
+    try {
+      const r = state.mode === 'login' ? await post('/api/admin/login', { username, password }) : await post('/api/admin/register', { username, password });
+      state.user = r;
+      $('#authView').style.display = 'none';
+      $('#appView').style.display = 'flex';
+      await loadAll();
+    } catch (e) { $('#authErr').textContent = e.message; }
+  };
+  $('#authHint').onclick = () => {
+    state.mode = state.mode === 'login' ? 'register' : 'login';
+    $('#authTitle').textContent = state.mode === 'login' ? '登录管理后台' : '创建管理员账号';
+    $('#authSub').textContent = state.mode === 'login' ? '使用管理员账号登录' : '数据库为空时可直接创建第一个账号';
+    $('#authHint').textContent = state.mode === 'login' ? '还没有账号？' : '已有账号？';
+    $('#password').setAttribute('autocomplete', state.mode === 'login' ? 'current-password' : 'new-password');
+  };
+}
+
+/* ---------- 数据加载 ---------- */
+async function loadAll() {
+  const [cfg, grps, st] = await Promise.all([get('/api/admin/config'), get('/api/admin/groups'), get('/api/admin/stats')]);
+  state.config = cfg.config;
+  state.groups = grps.groups;
+  state.stats = st;
+  $('#whoami').textContent = (st.session ? st.session.username + '（' + (st.session.role === 'owner' ? '管理员' : '编辑') + '）' : '');
+  render();
+}
+
+/* ---------- 渲染 ---------- */
+function render() {
+  renderConfig();
+  renderGroups();
+  renderBackup();
+  renderStats();
+}
+
+function renderConfig() {
+  const c = state.config;
+  const eng = c.search_engines || [];
+  $('#tab-config').innerHTML = `
+    <h2>页面配置</h2>
+    <div class="panel">
+      <div class="field"><label>首页标题</label><input type="text" id="c_logo"></div>
+      <div class="row">
+        <div class="field" style="flex:1"><label>深色 / 浅色主题</label><select id="c_theme"><option value="dark">深色</option><option value="light">浅色</option></select></div>
+        <div class="field" style="flex:1"><label>壁纸地址（留空用纯色背景）</label><input type="text" id="c_bg"></div>
+        <div class="field" style="flex:0 0 180px"><label>上传图片作壁纸</label><button class="btn ghost sm" id="c_upload">选择图片</button><input type="file" id="c_file" accept="image/*" style="display:none"></div>
+      </div>
+      <div class="row">
+        <div class="field" style="flex:1"><label>壁纸模糊 ${c.background_blur ?? 10}px</label><input type="number" id="c_blur" min="0" max="40"></div>
+        <div class="field" style="flex:1"><label>遮罩不透明度 ${(c.background_mask ?? .2)}</label><input type="number" id="c_mask" min="0" max="1" step="0.05"></div>
+        <div class="field" style="flex:1"><label>顶部留白 ${c.margin_top ?? 6}vh</label><input type="number" id="c_mt" min="0" max="60"></div>
+        <div class="field" style="flex:1"><label>卡片样式</label><select id="c_style"><option value="info">横排信息卡</option><option value="icon">小图标</option></select></div>
+      </div>
+      <div class="row">
+        <div class="field" style="flex:1"><label>页脚文字</label><input type="text" id="c_footer"></div>
+        <label class="row" style="margin:0;gap:6px"><input type="checkbox" id="c_show" style="width:auto"> 显示搜索框</label>
+      </div>
+      <div class="err" id="cfgErr"></div>
+      <button class="btn" id="cfgSave">保存配置</button>
+    </div>
+    <div class="panel">
+      <div class="group-head"><strong>搜索引擎</strong><button class="btn ghost sm spacer" id="engAdd">＋ 添加</button></div>
+      <div id="engList"></div>
+    </div>`;
+  $('#c_logo').value = c.logo_text || '';
+  $('#c_theme').value = c.theme || 'dark';
+  $('#c_bg').value = c.background_image || '';
+  $('#c_blur').value = c.background_blur ?? 10;
+  $('#c_mask').value = c.background_mask ?? .2;
+  $('#c_mt').value = c.margin_top ?? 6;
+  $('#c_style').value = c.icon_style || 'info';
+  $('#c_footer').value = c.footer || '';
+  $('#c_show').checked = c.search_box_show !== 0;
+  renderEngines();
+
+  $('#c_upload').onclick = () => $('#c_file').click();
+  $('#c_file').onchange = uploadBg;
+  $('#c_save')?.remove();
+  $('#cfgSave').onclick = saveConfig;
+  $('#engAdd').onclick = () => { state.config.search_engines.push({ name: '', url: 'https://www.google.com/search?q=%s' }); renderEngines(); };
+}
+
+function renderEngines() {
+  const box = $('#engList'); if (!box) return;
+  box.innerHTML = '';
+  (state.config.search_engines || []).forEach((e, i) => {
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.innerHTML = `<input type="text" class="e_name" value="${esc(e.name)}" placeholder="名称">
+      <input type="text" class="e_url" value="${esc(e.url)}" placeholder="https://…?q=%s">
+      <button class="btn danger sm e_del">删除</button>`;
+    row.querySelector('.e_del').onclick = () => { state.config.search_engines.splice(i, 1); renderEngines(); };
+    row.querySelector('.e_name').onchange = ev => { state.config.search_engines[i].name = ev.target.value; };
+    row.querySelector('.e_url').onchange = ev => { state.config.search_engines[i].url = ev.target.value; };
+    box.appendChild(row);
+  });
+}
+
+async function uploadBg(ev) {
+  const f = ev.target.files[0];
+  if (!f) return;
+  const fd = new FormData(); fd.append('file', f);
+  try {
+    toast('上传中…');
+    const r = await post('/api/admin/upload', fd);
+    state.config.background_image = r.icon_url;
+    $('#c_bg').value = r.icon_url;
+    toast('已上传，记得点保存');
+  } catch (e) { toast('上传失败：' + e.message); }
+}
+
+async function saveConfig() {
+  const body = {
+    logo_text: $('#c_logo').value,
+    theme: $('#c_theme').value,
+    background_image: $('#c_bg').value,
+    background_blur: Number($('#c_blur').value || 10),
+    background_mask: Number($('#c_mask').value || 0),
+    margin_top: Number($('#c_mt').value || 6),
+    icon_style: $('#c_style').value,
+    footer: $('#c_footer').value,
+    search_box_show: $('#c_show').checked ? 1 : 0,
+    search_engines: (state.config.search_engines || []).filter(e => e.name && e.url),
+  };
+  try { $('#cfgErr').textContent = ''; await put('/api/admin/config', body); state.config = body; toast('配置已保存'); }
+  catch (e) { $('#cfgErr').textContent = e.message; }
+}
+
+function renderGroups() {
+  const box = $('#tab-groups');
+  box.innerHTML = `<h2>分组与卡片</h2><button class="btn" id="gAdd" style="margin-bottom:14px">＋ 添加分组</button><div id="gList"></div>`;
+  $('#gAdd').onclick = addGroup;
+  const list = $('#gList');
+  state.groups.forEach(g => list.appendChild(groupEl(g)));
+  if (!state.groups.length) list.innerHTML = '<div class="muted">还没有分组，先添加一个</div>';
+}
+
+function groupEl(g) {
+  const d = document.createElement('div');
+  d.className = 'group';
+  d.innerHTML = `
+    <div class="group-head">
+      <input type="text" class="g_title" value="${esc(g.title)}" placeholder="分组名">
+      <span class="muted">${g.icon_count || 0} 张卡片</span>
+      <button class="btn ghost sm g_sort">下移</button>
+      <button class="btn ghost sm g_item">＋ 卡片</button>
+      <button class="btn danger sm g_del">删除分组</button>
+    </div>
+    <div class="field" style="margin-bottom:10px"><label>分组描述</label><input type="text" class="g_desc" value="${esc(g.description)}"></div>
+    <div id="items"></div>`;
+  d.querySelector('.g_title').onchange = e => e.target.value.trim() && patchGroup(g.id, { title: e.target.value.trim() });
+  d.querySelector('.g_desc').onchange = e => patchGroup(g.id, { description: e.target.value });
+  d.querySelector('.g_del').onclick = async () => {
+    if (!confirm(`删除分组「${g.title}」及其全部卡片？`)) return;
+    await del('/api/admin/groups/' + g.id);
+    state.groups = state.groups.filter(x => x.id !== g.id);
+    renderGroups(); toast('已删除分组');
+  };
+  d.querySelector('.g_sort').onclick = () => moveGroup(g);
+  d.querySelector('.g_item').onclick = () => addIcon(g);
+  const list = d.querySelector('#items');
+  (g.items || []).forEach(it => list.appendChild(itemEl(g, it)));
+  return d;
+}
+
+function itemEl(g, it) {
+  const d = document.createElement('div');
+  d.className = 'item';
+  d.innerHTML = `<div class="ic" style="background:${esc(it.background_color || '#2a2a2a')}">${it.icon_type === 'r2' && it.icon_url ? `<img src="${esc(it.icon_url)}">` : esc(letter(it.title))}</div>
+    <div class="meta"><div class="t">${esc(it.title)}</div><div class="u">${esc(it.url || '（无网址）')}</div></div>
+    <button class="btn ghost sm i_edit">编辑</button><button class="btn danger sm i_del">删除</button>`;
+  d.querySelector('.i_edit').onclick = () => editIcon(g, it);
+  d.querySelector('.i_del').onclick = async () => {
+    if (!confirm(`删除卡片「${it.title}」？`)) return;
+    await del('/api/admin/icons/' + it.id);
+    g.items = g.items.filter(x => x.id !== it.id); g.icon_count = (g.icon_count || 1) - 1;
+    renderGroups(); toast('已删除卡片');
+  };
+  return d;
+}
+
+async function addGroup() {
+  const title = prompt('分组名称：');
+  if (!title) return;
+  await post('/api/admin/groups', { title, description: '' });
+  await loadAll(); toast('已添加分组');
+}
+
+async function moveGroup(g) {
+  const i = state.groups.indexOf(g);
+  const j = i + 1;
+  if (j >= state.groups.length) return toast('已经是最后一个');
+  const other = state.groups[j];
+  await patch('/api/admin/groups/' + g.id, { sort: other.sort - 10 });
+  await patch('/api/admin/groups/' + other.id, { sort: g.sort });
+  await loadAll(); toast('已下移');
+}
+
+async function addIcon(g) {
+  const title = prompt('卡片名称：');
+  if (!title) return;
+  const url = prompt('网址：') || '';
+  await post('/api/admin/icons', { group_id: g.id, title, url, description: '', background_color: '#2a2a2a', open_method: 2 });
+  await loadAll(); toast('已添加卡片');
+}
+
+async function editIcon(g, it) {
+  const t = prompt('名称：', it.title || ''); if (t === null) return;
+  const u = prompt('网址：', it.url || ''); if (u === null) return;
+  const d = prompt('描述：', it.description || ''); if (d === null) return;
+  const c = prompt('图标背景色：', it.background_color || '#2a2a2a'); if (c === null) return;
+  const m = prompt('打开方式（1=当前页 2=新标签 3=弹窗）：', String(it.open_method || 2)); if (m === null) return;
+  await patch('/api/admin/icons/' + it.id, { title: t.trim(), url: u.trim(), description: d, background_color: c, open_method: Number(m) });
+  await loadAll(); toast('已保存');
+}
+
+async function patchGroup(id, body) {
+  await patch('/api/admin/groups/' + id, body);
+  await loadAll(); toast('已保存');
+}
+
+function renderBackup() {
+  $('#tab-backup').innerHTML = `
+    <h2>备份与导入</h2>
+    <div class="panel">
+      <div class="row">
+        <button class="btn" id="snap">立即备份</button>
+        <button class="btn ghost" id="exp">导出全部数据（JSON）</button>
+        <button class="btn ghost" id="imp">导入 JSON</button>
+        <input type="file" id="impFile" accept="application/json" style="display:none">
+        <span class="spacer"></span>
+        <button class="btn ghost" id="bList">刷新备份列表</button>
+      </div>
+      <div class="err" id="bkErr"></div>
+      <div class="muted">每天 03:00（UTC）自动备份一次，存在 R2。手动备份和自动备份互不影响。</div>
+      <div id="bList2" style="margin-top:12px"></div>
+    </div>`;
+  $('#snap').onclick = async () => { try { const r = await post('/api/admin/snapshot', {}); toast(`备份成功：${r.groups} 组 / ${r.icons} 张`); refreshBackups(); } catch (e) { $('#bkErr').textContent = e.message; } };
+  $('#exp').onclick = async () => { const j = await get('/api/admin/export'); const blob = new Blob([JSON.stringify(j, null, 1)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'nav-export-' + Date.now() + '.json'; a.click(); toast('已导出'); };
+  $('#imp').onclick = () => $('#impFile').click();
+  $('#impFile').onchange = importFile;
+  $('#bList').onclick = refreshBackups;
+  refreshBackups();
+}
+
+async function refreshBackups() {
+  try {
+    const r = await get('/api/admin/backup');
+    $('#bList2').innerHTML = r.backups.length ? '' : '<div class="muted">暂无备份</div>';
+    r.backups.forEach(b => {
+      const row = document.createElement('div');
+      row.className = 'item';
+      row.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(b.key)} <span class="muted">${(b.size/1024).toFixed(1)}KB · ${esc(b.uploaded.slice(0,19).replace('T',' '))}</span></span><button class="btn danger sm">恢复</button>`;
+      row.querySelector('button').onclick = async () => {
+        if (!confirm(`用「${b.key}」覆盖当前全部数据？此操作不可撤销。`)) return;
+        try { const res = await post('/api/admin/restore', { key: b.key, confirm: 'restore' }); toast(`已恢复 ${res.groups} 组 / ${res.icons} 张`); await loadAll(); }
+        catch (e) { $('#bkErr').textContent = e.message; }
+      };
+      $('#bList2').appendChild(row);
+    });
+  } catch (e) { $('#bList2').innerHTML = '<div class="muted">读取备份失败：' + esc(e.message) + '</div>'; }
+}
+
+async function importFile(ev) {
+  const f = ev.target.files[0]; if (!f) return;
+  if (!confirm('导入将覆盖当前全部分组、卡片和配置，继续？')) { ev.target.value = ''; return; }
+  try {
+    const obj = JSON.parse(await f.text());
+    const r = await post('/api/admin/import', { ...obj, confirm: 'restore' });
+    toast(`已导入 ${r.groups} 组 / ${r.icons} 张`);
+    await loadAll();
+  } catch (e) { toast('导入失败：' + e.message); }
+  ev.target.value = '';
+}
+
+function renderStats() {
+  const s = state.stats || {};
+  $('#tab-stats').innerHTML = `
+    <h2>访问统计 <span class="muted">（<button class="btn ghost sm" id="stR">刷新</button>）</span></h2>
+    <div class="panel">
+      <div class="stat">
+        <div class="b"><div class="n">${s.total_visits ?? 0}</div><div class="l">累计访问</div></div>
+        <div class="b"><div class="n">${s.visits_24h ?? 0}</div><div class="l">最近 24 小时</div></div>
+        <div class="b"><div class="n">${s.groups ?? 0}</div><div class="l">分组</div></div>
+        <div class="b"><div class="n">${s.icons ?? 0}</div><div class="l">卡片</div></div>
+        <div class="b"><div class="n">${s.users ?? 0}</div><div class="l">账号</div></div>
+        <div class="b"><div class="n">${s.config_keys ?? 0}</div><div class="l">配置项</div></div>
+      </div>
+      <div class="muted" style="margin-top:12px">访问计数来自访客打开首页时的 /api/public/panel 请求，只记 IP 哈希不记明文。</div>
+    </div>`;
+  $('#stR').onclick = async () => { state.stats = await get('/api/admin/stats'); renderStats(); };
+}
+
+/* ---------- 导航与启动 ---------- */
+function bindNav() {
+  $$('#appView aside a').forEach(a => a.onclick = () => {
+    $$('#appView aside a').forEach(x => x.classList.remove('active'));
+    a.classList.add('active');
+    ['config', 'groups', 'backup', 'stats'].forEach(t => $('#tab-' + t).style.display = t === a.dataset.tab ? '' : 'none');
+    if (a.dataset.tab === 'groups') renderGroups();
+    if (a.dataset.tab === 'backup') renderBackup();
+    if (a.dataset.tab === 'stats') renderStats();
+  });
+  $('#logoutBtn').onclick = async () => { await post('/api/admin/logout', {}).catch(() => {}); location.reload(); };
+}
+
+(async function init() {
+  bindAuth(); bindNav();
+  let me = null;
+  try { me = await get('/api/admin/me'); } catch { me = null; }
+  if (me && me.logged_in) {
+    state.user = me;
+    $('#authView').style.display = 'none';
+    $('#appView').style.display = 'flex';
+    await loadAll();
+  }
+})();
+</script>
+</body>
+</html>
