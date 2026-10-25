@@ -8,6 +8,18 @@
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:#15171a;color:#f0f2f5;font-size:14px}
   button{font:inherit}
+  /* 加载骨架：init() 期间挡下闪屏 */
+  .boot{position:fixed;inset:0;background:#15171a;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:#8b929a;font-size:14px;z-index:100}
+  .boot .dot{width:8px;height:8px;border-radius:50%;background:#18a058;animation:pulse 1s ease-in-out infinite}
+  .boot .dot.d2{animation-delay:.2s}
+  .boot .dot.d3{animation-delay:.4s}
+  @keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
+  /* 深色滚动条美化 */
+  *::-webkit-scrollbar{width:8px;height:8px}
+  *::-webkit-scrollbar-track{background:transparent}
+  *::-webkit-scrollbar-thumb{background:#2b3036;border-radius:4px}
+  *::-webkit-scrollbar-thumb:hover{background:#3a4048}
+  *{scrollbar-width:thin;scrollbar-color:#2b3036 transparent}
   .auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
   .auth .card{width:min(380px,94vw);background:#1d2024;border:1px solid #2b3036;border-radius:16px;padding:26px}
   .auth h1{margin:0 0 4px;font-size:20px}
@@ -52,11 +64,58 @@
   .stat .l{font-size:12px;color:#8b929a;margin-top:4px}
   .muted{color:#8b929a;font-size:12px}
   @media(max-width:760px){aside{position:fixed;left:-220px;z-index:20}main{padding:16px}}
+
+  /* 通用 Modal */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:20px;z-index:200}
+  .modal.open{display:flex}
+  .mbox{width:min(680px,94vw);max-height:92vh;background:#1d2024;border:1px solid #2b3036;border-radius:14px;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.55);overflow:hidden}
+  .mbar{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #2b3036;font-weight:600}
+  .mbar .x{background:none;border:0;color:#c3c9d0;cursor:pointer;font-size:20px;padding:2px 10px;border-radius:6px;line-height:1}
+  .mbar .x:hover{background:#2b3036;color:#fff}
+  .mbody{flex:1;overflow-y:auto;padding:18px}
+  .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:14px 18px;border-top:1px solid #2b3036}
+
+  /* 分组管理列表 */
+  .gcard{background:#181b1f;border:1px solid #2b3036;border-radius:12px;margin-bottom:14px;overflow:hidden}
+  .gcard-head{display:flex;align-items:center;gap:12px;padding:14px 16px;background:#1d2024}
+  .gcard-title{font-weight:600;flex:1}
+  .gcard-body{padding:14px 16px}
+  .gcard .items{display:flex;flex-direction:column;gap:8px}
+  .card-item{display:flex;align-items:center;gap:12px;background:#15171a;border:1px solid #2b3036;border-radius:10px;padding:10px 12px}
+  .card-item .meta{flex:1;min-width:0}
+  .card-item .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card-item .u{font-size:12px;color:#8b929a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* Tab 切换 */
+  .tabs{display:flex;gap:4px;background:#15171a;border:1px solid #2b3036;border-radius:10px;padding:3px;margin-bottom:14px}
+  .tab{flex:1;padding:8px 12px;background:none;border:0;color:#c3c9d0;border-radius:8px;cursor:pointer;font-size:13px}
+  .tab.active{background:#18a058;color:#fff}
+
+  /* 效果预览 */
+  .preview{background:#15171a;border:1px dashed #3a4048;border-radius:12px;padding:16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;min-height:70px}
+  .preview .ic{flex:0 0 46px;width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;overflow:hidden;font-size:20px}
+  .preview .ic img{width:100%;height:100%;object-fit:cover}
+  .preview .p-title{font-size:15px;font-weight:600}
+  .preview .p-desc{font-size:12px;color:#8b929a;margin-top:3px}
+
+  /* 更多选项 */
+  details.more{background:#15171a;border:1px solid #2b3036;border-radius:10px;padding:10px 12px;margin-top:10px}
+  details.more summary{cursor:pointer;font-size:13px;color:#c3c9d0;outline:0}
+  details.more[open] summary{margin-bottom:10px}
+
+  /* 字数统计 */
+  .counter{font-size:11px;color:#8b929a;float:right;margin-top:6px}
+
+  /* 图标行 */
+  .icon-row{display:flex;gap:8px;align-items:center}
+  .icon-row input{flex:1}
 </style>
 </head>
 <body>
 
-<div class="auth" id="authView">
+<div class="boot" id="boot"><div style="display:flex;gap:6px"><div class="dot"></div><div class="dot d2"></div><div class="dot d3"></div></div><div>正在检查登录状态…</div></div>
+
+<div class="auth" id="authView" style="display:none">
   <div class="card">
     <h1 id="authTitle">登录管理后台</h1>
     <p id="authSub">使用管理员账号登录</p>
@@ -77,7 +136,7 @@
     <a data-tab="stats">访问统计</a>
     <div class="foot">
       <div class="muted" id="whoami"></div>
-      <button class="btn ghost sm" onclick="location.href='/'">打开首页</button>
+      <button class="btn ghost sm" onclick="if (window.self !== window.top) { window.top.postMessage({type:'unav:close-modal'}, '*'); } else { location.href='/'; }">返回前台</button>
       <button class="btn ghost sm" id="logoutBtn">退出登录</button>
     </div>
   </aside>
@@ -90,6 +149,14 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="modal" id="modal">
+  <div class="mbox">
+    <div class="mbar"><span id="mTitle">标题</span><button class="x" id="mClose">✕</button></div>
+    <div class="mbody" id="mBody"></div>
+    <div class="mfoot" id="mFoot"></div>
+  </div>
+</div>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -242,14 +309,24 @@ async function saveConfig() {
     search_box_show: $('#c_show').checked ? 1 : 0,
     search_engines: (state.config.search_engines || []).filter(e => e.name && e.url),
   };
-  try { $('#cfgErr').textContent = ''; await put('/api/admin/config', body); state.config = body; toast('配置已保存'); }
+  try { $('#cfgErr').textContent = ''; await put('/api/admin/config', body); state.config = body; toast('配置已保存');
+    setTimeout(() => {
+      if (window.self !== window.top) { window.top.postMessage({type:'unav:refresh'}, '*'); }
+      else { location.reload(); }
+    }, 600);
+  }
   catch (e) { $('#cfgErr').textContent = e.message; }
 }
 
 function renderGroups() {
   const box = $('#tab-groups');
-  box.innerHTML = `<h2>分组与卡片</h2><button class="btn" id="gAdd" style="margin-bottom:14px">＋ 添加分组</button><div id="gList"></div>`;
-  $('#gAdd').onclick = addGroup;
+  box.innerHTML = `<h2>分组与卡片</h2>
+    <div class="row" style="margin-bottom:14px">
+      <button class="btn" id="gAdd">＋ 添加分组</button>
+      <span class="muted">点「编辑」改名称/图标/样式，卡片支持拖拽排序</span>
+    </div>
+    <div id="gList"></div>`;
+  $('#gAdd').onclick = () => editGroup(null);
   const list = $('#gList');
   state.groups.forEach(g => list.appendChild(groupEl(g)));
   if (!state.groups.length) list.innerHTML = '<div class="muted">还没有分组，先添加一个</div>';
@@ -257,86 +334,273 @@ function renderGroups() {
 
 function groupEl(g) {
   const d = document.createElement('div');
-  d.className = 'group';
+  d.className = 'gcard';
+  d.draggable = true;
+  d.dataset.gid = g.id;
   d.innerHTML = `
-    <div class="group-head">
-      <input type="text" class="g_title" value="${esc(g.title)}" placeholder="分组名">
-      <span class="muted">${g.icon_count || 0} 张卡片</span>
-      <button class="btn ghost sm g_sort">下移</button>
-      <button class="btn ghost sm g_item">＋ 卡片</button>
-      <button class="btn danger sm g_del">删除分组</button>
+    <div class="gcard-head">
+      <span style="font-size:18px">📁</span>
+      <div class="gcard-title">${esc(g.title)} <span class="muted" style="font-weight:400">(${g.icon_count || 0} 张卡片)</span></div>
+      <button class="btn ghost sm" onclick="editGroup(${g.id})">✏ 编辑</button>
+      <button class="btn danger sm" onclick="delGroup(${g.id})">🗑 删除</button>
     </div>
-    <div class="field" style="margin-bottom:10px"><label>分组描述</label><input type="text" class="g_desc" value="${esc(g.description)}"></div>
-    <div id="items"></div>`;
-  d.querySelector('.g_title').onchange = e => e.target.value.trim() && patchGroup(g.id, { title: e.target.value.trim() });
-  d.querySelector('.g_desc').onchange = e => patchGroup(g.id, { description: e.target.value });
-  d.querySelector('.g_del').onclick = async () => {
-    if (!confirm(`删除分组「${g.title}」及其全部卡片？`)) return;
-    await del('/api/admin/groups/' + g.id);
-    state.groups = state.groups.filter(x => x.id !== g.id);
-    renderGroups(); toast('已删除分组');
-  };
-  d.querySelector('.g_sort').onclick = () => moveGroup(g);
-  d.querySelector('.g_item').onclick = () => addIcon(g);
-  const list = d.querySelector('#items');
+    <div class="gcard-body">
+      <div class="row" style="margin-bottom:12px">
+        <button class="btn ghost sm" onclick="iconEdit(${g.id}, null)">＋ 添加卡片</button>
+        <button class="btn ghost sm" onclick="moveGroup(${g.id}, -1)" ${g.sort === Math.min(...state.groups.map(x=>x.sort)) ? 'disabled' : ''}>↑ 上移分组</button>
+        <button class="btn ghost sm" onclick="moveGroup(${g.id}, 1)" ${g.sort === Math.max(...state.groups.map(x=>x.sort)) ? 'disabled' : ''}>↓ 下移分组</button>
+      </div>
+      <div class="items" id="items_${g.id}"></div>`;
+  bindDrag(d, 'group', g.id);
+  const list = d.querySelector(`#items_${g.id}`);
   (g.items || []).forEach(it => list.appendChild(itemEl(g, it)));
   return d;
 }
 
 function itemEl(g, it) {
   const d = document.createElement('div');
-  d.className = 'item';
-  d.innerHTML = `<div class="ic" style="background:${esc(it.background_color || '#2a2a2a')}">${(it.icon_type === 'r2' || it.icon_type === 'data') && it.icon_url ? `<img src="${esc(it.icon_url)}">` : esc(letter(it.title))}</div>
+  d.className = 'card-item';
+  d.draggable = true;
+  d.dataset.iid = it.id;
+  d.innerHTML = `
+    <div class="ic" style="background:${esc(it.background_color || '#2a2a2a')}">${(it.icon_type==='data'||it.icon_type==='r2')&&it.icon_url?`<img src="${esc(it.icon_url)}">`:esc(letter(it.title))}</div>
     <div class="meta"><div class="t">${esc(it.title)}</div><div class="u">${esc(it.url || '（无网址）')}</div></div>
-    <button class="btn ghost sm i_edit">编辑</button><button class="btn danger sm i_del">删除</button>`;
-  d.querySelector('.i_edit').onclick = () => editIcon(g, it);
-  d.querySelector('.i_del').onclick = async () => {
-    if (!confirm(`删除卡片「${it.title}」？`)) return;
-    await del('/api/admin/icons/' + it.id);
-    g.items = g.items.filter(x => x.id !== it.id); g.icon_count = (g.icon_count || 1) - 1;
-    renderGroups(); toast('已删除卡片');
-  };
+    <button class="btn ghost sm" onclick="iconEdit(${g.id}, ${it.id})">✏</button>
+    <button class="btn ghost sm" onclick="moveIcon(${g.id}, ${it.id}, -1)">↑</button>
+    <button class="btn ghost sm" onclick="moveIcon(${g.id}, ${it.id}, 1)">↓</button>
+    <button class="btn danger sm" onclick="delIcon(${g.id}, ${it.id})">🗑</button>`;
+  bindDrag(d, 'icon', it.id, g.id);
   return d;
 }
 
-async function addGroup() {
-  const title = prompt('分组名称：');
-  if (!title) return;
-  await post('/api/admin/groups', { title, description: '' });
-  await loadAll(); toast('已添加分组');
+/* 分组 / 卡片：拖拽排序 */
+let dragSrc = null;
+function bindDrag(el, kind, id, gid) {
+  el.addEventListener('dragstart', e => {
+    dragSrc = { kind, id, gid };
+    el.style.opacity = '.4';
+  });
+  el.addEventListener('dragend', () => { el.style.opacity = '1'; dragSrc = null; });
+  el.addEventListener('dragover', e => { e.preventDefault(); el.style.borderTop = kind === 'group' ? '2px solid #18a058' : '2px solid #18a058'; });
+  el.addEventListener('dragleave', () => { el.style.borderTop = ''; });
+  el.addEventListener('drop', async e => {
+    e.preventDefault(); el.style.borderTop = '';
+    if (!dragSrc || dragSrc.kind !== kind) return;
+    if (kind === 'icon' && dragSrc.gid !== gid) return;
+    if (dragSrc.id === id) return;
+    if (kind === 'group') await swapGroupSort(id);
+    else await swapIconSort(gid, id);
+    await loadAll();
+  });
+}
+async function swapGroupSort(targetId) {
+  const src = state.groups.find(g => g.id === dragSrc.id);
+  const dst = state.groups.find(g => g.id === targetId);
+  if (!src || !dst) return;
+  await patch('/api/admin/groups/' + src.id, { sort: dst.sort });
+  await patch('/api/admin/groups/' + dst.id, { sort: src.sort });
+}
+async function swapIconSort(gid, targetId) {
+  const g = state.groups.find(x => x.id === gid);
+  const src = (g.items || []).find(x => x.id === dragSrc.id);
+  const dst = (g.items || []).find(x => x.id === targetId);
+  if (!src || !dst) return;
+  await patch('/api/admin/icons/' + src.id, { sort: dst.sort });
+  await patch('/api/admin/icons/' + dst.id, { sort: src.sort });
 }
 
-async function moveGroup(g) {
-  const i = state.groups.indexOf(g);
-  const j = i + 1;
-  if (j >= state.groups.length) return toast('已经是最后一个');
-  const other = state.groups[j];
-  await patch('/api/admin/groups/' + g.id, { sort: other.sort - 10 });
-  await patch('/api/admin/groups/' + other.id, { sort: g.sort });
-  await loadAll(); toast('已下移');
+async function editGroup(id) {
+  const g = id ? state.groups.find(x => x.id === id) : null;
+  const isAdd = !g;
+  const data = g || { title:'', description:'', card_style:'info', sort: Math.max(0, ...state.groups.map(x=>x.sort)) + 100, public_hide:0 };
+  openModal(isAdd ? '添加分组' : '编辑分组', `
+    <div class="field"><label>分组名称 *</label><input id="f_title" value="${esc(data.title)}" maxlength="30" placeholder="例：AI 与工具"></div>
+    <div class="field"><label>描述（显示在标题旁）</label><input id="f_desc" value="${esc(data.description)}" maxlength="60"></div>
+    <div class="field"><label>卡片样式</label>
+      <select id="f_style">
+        <option value="info" ${data.card_style==='info'?'selected':''}>横排信息卡（默认）</option>
+        <option value="grid" ${data.card_style==='grid'?'selected':''}>网格样式</option>
+        <option value="hide" ${data.card_style==='hide'?'selected':''}>前台隐藏此分组</option>
+      </select>
+    </div>
+    <div class="field"><label>排序（数字越小越靠前）</label><input type="number" id="f_sort" value="${data.sort}"></div>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">取消</button>
+    <button class="btn" onclick="saveGroup(${id || 'null'})">保存</button>
+  `);
+  $('#f_title').focus();
 }
 
-async function addIcon(g) {
-  const title = prompt('卡片名称：');
-  if (!title) return;
-  const url = prompt('网址：') || '';
-  await post('/api/admin/icons', { group_id: g.id, title, url, description: '', background_color: '#2a2a2a', open_method: 2 });
-  await loadAll(); toast('已添加卡片');
+async function saveGroup(id) {
+  const body = {
+    title: $('#f_title').value.trim(),
+    description: $('#f_desc').value.trim(),
+    card_style: $('#f_style').value,
+    sort: Number($('#f_sort').value || 0),
+  };
+  if (!body.title) return toast('分组名称不能为空');
+  if (id) await patch('/api/admin/groups/' + id, body);
+  else await post('/api/admin/groups', body);
+  closeModal();
+  await loadAll();
+  toast('已保存');
 }
 
-async function editIcon(g, it) {
-  const t = prompt('名称：', it.title || ''); if (t === null) return;
-  const u = prompt('网址：', it.url || ''); if (u === null) return;
-  const d = prompt('描述：', it.description || ''); if (d === null) return;
-  const c = prompt('图标背景色：', it.background_color || '#2a2a2a'); if (c === null) return;
-  const m = prompt('打开方式（1=当前页 2=新标签 3=弹窗）：', String(it.open_method || 2)); if (m === null) return;
-  await patch('/api/admin/icons/' + it.id, { title: t.trim(), url: u.trim(), description: d, background_color: c, open_method: Number(m) });
-  await loadAll(); toast('已保存');
+async function delGroup(id) {
+  if (!confirm('删除该分组及其全部卡片？此操作不可撤销。')) return;
+  await del('/api/admin/groups/' + id);
+  await loadAll();
+  toast('已删除');
 }
 
-async function patchGroup(id, body) {
-  await patch('/api/admin/groups/' + id, body);
-  await loadAll(); toast('已保存');
+async function moveGroup(id, dir) {
+  const idx = state.groups.findIndex(g => g.id === id);
+  const other = state.groups[idx + dir];
+  if (!other) return;
+  await patch('/api/admin/groups/' + id, { sort: other.sort });
+  await patch('/api/admin/groups/' + other.id, { sort: state.groups[idx].sort });
+  await loadAll();
+  toast(dir > 0 ? '已下移' : '已上移');
+}
+
+async function iconEdit(gid, id) {
+  const g = state.groups.find(x => x.id === gid);
+  const it = id ? (g.items || []).find(x => x.id === id) : null;
+  const isAdd = !it;
+  const data = it || { title:'', url:'', lan_url:'', description:'', icon_type:'color', icon_url:'', background_color:'#2a2a2a', open_method:2, sort:0 };
+  openModal(isAdd ? '添加卡片' : '编辑卡片', `
+    <div class="preview" id="preview">
+      <div class="ic" id="pv_ic" style="background:${esc(data.background_color)}">${(data.icon_type==='data'||data.icon_type==='r2')&&data.icon_url?`<img src="${esc(data.icon_url)}">`:esc(letter(data.title))}</div>
+      <div><div class="p-title" id="pv_title">${esc(data.title || '卡片标题')}</div><div class="p-desc" id="pv_desc">${esc(data.description || '描述信息')}</div></div>
+    </div>
+    <div class="tabs" id="tabIcons">
+      <button class="tab ${data.icon_type==='color'?'active':''}" data-type="color">文字</button>
+      <button class="tab ${data.icon_type==='data'||data.icon_type==='r2'?'active':''}" data-type="data">图片</button>
+      <button class="tab ${data.icon_type==='iconify'?'active':''}" data-type="iconify">在线图标</button>
+    </div>
+    <div id="iconFields"></div>
+    <div class="field"><label>标题 *</label><input id="f_title" value="${esc(data.title)}" maxlength="20" placeholder="例：GitHub"></div>
+    <div class="field"><label>描述信息</label><input id="f_desc" value="${esc(data.description)}" maxlength="100" placeholder="可选"></div>
+    <div class="field"><label>默认地址 *</label><input id="f_url" value="${esc(data.url)}" placeholder="https://"></div>
+    <div class="field"><label>内网地址（可选）</label><input id="f_lan" value="${esc(data.lan_url)}" placeholder="http://192.168.x.x"></div>
+    <div class="field"><label>打开方式</label>
+      <select id="f_open">
+        <option value="1" ${data.open_method===1?'selected':''}>当前页打开</option>
+        <option value="2" ${data.open_method===2?'selected':''}>新标签打开</option>
+        <option value="3" ${data.open_method===3?'selected':''}>弹窗打开</option>
+      </select>
+    </div>
+    <details class="more">
+      <summary>更多选项（背景色、排序）</summary>
+      <div class="field"><label>图标背景色</label><input type="color" id="f_color" value="${esc(data.background_color)}"></div>
+      <div class="field"><label>排序（数字越小越靠前）</label><input type="number" id="f_sort" value="${data.sort}"></div>
+    </details>
+  `, `
+    <button class="btn ghost" onclick="closeModal()">取消</button>
+    <button class="btn" onclick="saveIcon(${gid}, ${id || 'null'})">保存</button>
+  `);
+  document.querySelectorAll('#tabIcons .tab').forEach(t => t.onclick = () => switchIconTab(t.dataset.type, data));
+  switchIconTab(document.querySelector('#tabIcons .tab.active').dataset.type, data);
+  ['f_title','f_desc','f_color'].forEach(fid => {
+    const el = $('#' + fid);
+    if (el) el.oninput = updatePreview;
+  });
+}
+
+function switchIconTab(type, data) {
+  document.querySelectorAll('#tabIcons .tab').forEach(t => t.classList.toggle('active', t.dataset.type === type));
+  const f = $('#iconFields');
+  if (type === 'color') {
+    f.innerHTML = `<div class="field"><label>使用标题首字作为图标</label><div class="muted">无需填写，保存时自动从标题取首字</div></div>`;
+  } else if (type === 'data') {
+    f.innerHTML = `<div class="field"><label>图像地址</label>
+      <div class="icon-row">
+        <input id="f_icon_url" value="${esc(data.icon_url || '')}" placeholder="粘贴图片 URL，或本地上传">
+        <button class="btn ghost sm" onclick="document.getElementById('iconFile').click()">📁 本地上传</button>
+      </div>
+      <input type="file" id="iconFile" accept="image/*" style="display:none">
+    </div>`;
+    document.getElementById('iconFile').onchange = async ev => {
+      const file = ev.target.files[0]; if (!file) return;
+      const fd = new FormData(); fd.append('file', file);
+      try { const r = await post('/api/admin/upload', fd); $('#f_icon_url').value = r.icon_url; updatePreview(); toast('上传成功'); }
+      catch (e) { toast('上传失败：' + e.message); }
+    };
+    $('#f_icon_url').oninput = updatePreview;
+  } else if (type === 'iconify') {
+    f.innerHTML = `<div class="field"><label>在线图标（Iconify 名）</label><input id="f_icon_name" value="${esc(data.icon_name || '')}" placeholder="例：ri:home-fill / mdi:github"></div>
+      <div class="muted">格式：前缀:图标名，如 ri:home-fill、mdi:github、fa:github。留空则用标题首字。</div>`;
+  }
+  updatePreview();
+}
+
+function updatePreview() {
+  const title = $('#f_title')?.value || '';
+  const desc = $('#f_desc')?.value || '';
+  const color = $('#f_color')?.value || '#2a2a2a';
+  const type = document.querySelector('#tabIcons .tab.active').dataset.type;
+  const iconUrl = $('#f_icon_url')?.value || '';
+  const ic = $('#pv_ic');
+  if (!ic) return;
+  ic.style.background = color;
+  ic.innerHTML = (type === 'data' && iconUrl) ? `<img src="${esc(iconUrl)}">` : esc((title || '?').charAt(0).toUpperCase());
+  $('#pv_title').textContent = title || '卡片标题';
+  $('#pv_desc').textContent = desc || '描述信息';
+}
+
+async function saveIcon(gid, id) {
+  const body = {
+    title: $('#f_title').value.trim(),
+    description: $('#f_desc').value.trim(),
+    url: $('#f_url').value.trim(),
+    lan_url: $('#f_lan').value.trim(),
+    open_method: Number($('#f_open').value),
+    group_id: gid,
+    sort: Number($('#f_sort')?.value || 0),
+  };
+  if (!body.title) return toast('标题不能为空');
+  if (!body.url) return toast('默认地址不能为空');
+  body.background_color = $('#f_color')?.value || '#2a2a2a';
+  const type = document.querySelector('#tabIcons .tab.active').dataset.type;
+  body.icon_type = type;
+  if (type === 'data') body.icon_url = $('#f_icon_url').value;
+  if (type === 'iconify') body.icon_name = $('#f_icon_name')?.value || '';
+  if (id) await patch('/api/admin/icons/' + id, body);
+  else await post('/api/admin/icons', body);
+  closeModal();
+  await loadAll();
+  toast('已保存');
+}
+
+async function delIcon(gid, id) {
+  if (!confirm('删除此卡片？')) return;
+  await del('/api/admin/icons/' + id);
+  await loadAll();
+  toast('已删除');
+}
+
+async function moveIcon(gid, id, dir) {
+  const g = state.groups.find(x => x.id === gid);
+  const items = g.items || [];
+  const idx = items.findIndex(it => it.id === id);
+  const other = items[idx + dir];
+  if (!other) return;
+  await patch('/api/admin/icons/' + id, { sort: other.sort });
+  await patch('/api/admin/icons/' + other.id, { sort: items[idx].sort });
+  await loadAll();
+  toast(dir > 0 ? '已下移' : '已上移');
+}
+
+function openModal(title, bodyHtml, footHtml) {
+  $('#mTitle').textContent = title;
+  $('#mBody').innerHTML = bodyHtml;
+  $('#mFoot').innerHTML = footHtml || '';
+  $('#modal').classList.add('open');
+}
+function closeModal() {
+  $('#modal').classList.remove('open');
+  $('#mBody').innerHTML = '';
+  $('#mFoot').innerHTML = '';
 }
 
 function renderBackup() {
@@ -397,17 +661,26 @@ function bindNav() {
     if (a.dataset.tab === 'stats') renderStats();
   });
   $('#logoutBtn').onclick = async () => { await post('/api/admin/logout', {}).catch(() => {}); location.reload(); };
+  $('#mClose').onclick = closeModal;
+  $('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 }
 
 (async function init() {
   bindAuth(); bindNav();
   let me = null;
   try { me = await get('/api/admin/me'); } catch { me = null; }
+  const boot = $('#boot');
   if (me && me.logged_in) {
     state.user = me;
     $('#authView').style.display = 'none';
     $('#appView').style.display = 'flex';
+    boot.style.display = 'none';
     await loadAll();
+  } else {
+    $('#authView').style.display = 'flex';
+    $('#appView').style.display = 'none';
+    boot.style.display = 'none';
   }
 })();
 </script>
