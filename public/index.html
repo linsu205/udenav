@@ -30,11 +30,15 @@
 
   .wrap{max-width:1200px;margin:0 auto;padding:0 18px 90px}
   header{display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;padding-top:var(--mt,6vh)}
-  .logo{font-size:46px;font-weight:800;letter-spacing:1px;text-shadow:0 2px 18px rgba(0,0,0,.45)}
-  html[data-theme="light"] .logo{text-shadow:0 2px 14px rgba(255,255,255,.8)}
+  .logo{font-size:46px;font-weight:800;letter-spacing:1px;text-shadow:0 2px 18px rgba(0,0,0,.45),0 0 44px rgba(0,0,0,.25)}
+  html[data-theme="light"] .logo{text-shadow:0 2px 14px rgba(255,255,255,.85),0 0 36px rgba(255,255,255,.5)}
+  .sep{width:2px;height:34px;border-radius:1px;background:var(--text);opacity:.32;flex:none}
   .clock{text-align:center;line-height:1.25}
-  .clock .t{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
-  .clock .d{font-size:13px;color:var(--text-dim)}
+  .clock .t{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;text-shadow:0 2px 18px rgba(0,0,0,.45),0 0 40px rgba(0,0,0,.22)}
+  html[data-theme="light"] .clock .t{text-shadow:0 2px 14px rgba(255,255,255,.85),0 0 34px rgba(255,255,255,.5)}
+  .clock .d{font-size:13px;color:var(--text-dim);text-shadow:0 1px 10px rgba(0,0,0,.35)}
+  html[data-theme="light"] .clock .d{text-shadow:0 1px 10px rgba(255,255,255,.7)}
+  @media(max-width:620px){.sep{display:none}}
 
   .search{margin:26px auto 0;max-width:680px;display:flex;align-items:center;gap:8px;
     background:var(--card-bg);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
@@ -91,6 +95,7 @@
 <div class="wrap">
   <header>
     <div class="logo" id="logo">udenav</div>
+    <div class="sep"></div>
     <div class="clock"><div class="t" id="time">--:--:--</div><div class="d" id="date"></div></div>
   </header>
 
