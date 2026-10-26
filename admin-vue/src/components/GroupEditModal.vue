@@ -12,6 +12,8 @@ const f = reactive({
 watch(() => props.modelValue, v => {
   if (v && v !== 'new') Object.assign(f, v);
   else Object.assign(f, { title: '', description: '', card_style: 'info', sort: 0, public_hide: 0 });
+  /* 旧数据兼容：hide 曾是下拉选项，现已收敛为独立勾选框，编辑时自动归位 */
+  if (f.card_style === 'hide') { f.card_style = 'info'; f.public_hide = 1; }
 }, { immediate: true });
 
 function save() {
@@ -32,9 +34,7 @@ function save() {
       <el-form-item label="卡片样式">
         <el-select v-model="f.card_style" style="width:100%">
           <el-option value="info" label="横排信息卡（默认）" />
-          <el-option value="grid" label="网格样式" />
-          <el-option value="icon" label="小图标（图标＋名称，参照 sun-panel）" />
-          <el-option value="hide" label="前台隐藏此分组" />
+          <el-option value="icon" label="小图标" />
         </el-select>
       </el-form-item>
       <el-form-item label="排序（数字越小越靠前）">
