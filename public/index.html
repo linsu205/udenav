@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>我的导航</title>
+<title>udenav</title>
 <style>
   :root{
     --card-bg:rgba(42,42,42,.42); --card-bg-hover:rgba(42,42,42,.68);
@@ -89,7 +89,7 @@
 
 <div class="wrap">
   <header>
-    <div class="logo" id="logo">我的导航</div>
+    <div class="logo" id="logo">udenav</div>
     <div class="clock"><div class="t" id="time">--:--:--</div><div class="d" id="date"></div></div>
   </header>
 
@@ -123,8 +123,8 @@ const state = { config: {}, groups: [], engine: null, engines: [] };
 /* ---------- 渲染 ---------- */
 function applyConfig(c) {
   state.config = c;
-  document.title = c.logo_text || '我的导航';
-  $('#logo').textContent = c.logo_text || '我的导航';
+  document.title = c.logo_text || 'udenav';
+  $('#logo').textContent = c.logo_text || 'udenav';
   document.documentElement.dataset.theme = c.theme || 'dark';
   $('#themeBtn').textContent = (c.theme || 'dark') === 'dark' ? '🌙' : '☀️';
   const bg = c.background_image;
@@ -258,7 +258,7 @@ $('#q').addEventListener('keydown', e => {
 
 /* ---------- 启动：优先读后端，读不到就用内置数据 ---------- */
 const FALLBACK = {
-  config: { logo_text: '我的导航', background_blur: 10, background_mask: 0.2, margin_top: 6, icon_style: 'info', search_box_show: 1, theme: 'dark', search_engines: DEFAULT_ENGINES },
+  config: { logo_text: 'udenav', background_blur: 10, background_mask: 0.2, margin_top: 6, icon_style: 'info', search_box_show: 1, theme: 'dark', search_engines: DEFAULT_ENGINES },
   groups: [
     { id: 1, title: '常用', description: '每天要打开的', cardStyle: 'info', items: [
       { title: '百度', url: 'https://www.baidu.com', description: '中文搜索', color: '#2932e1', openMethod: 2 },

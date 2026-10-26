@@ -56,7 +56,7 @@ export interface ConfigRow {
 const SCHEMA_VERSION = '1.0';
 
 export const DEFAULT_CONFIG = {
-  logo_text: '我的导航',
+  logo_text: 'udenav',
   background_image: '',
   background_blur: 10,
   background_mask: 0.2,

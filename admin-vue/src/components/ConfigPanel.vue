@@ -51,7 +51,7 @@ function rmEngine(i: number) { f.search_engines.splice(i, 1); }
       <div class="sp-card-title">基础</div>
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="首页标题">
-          <el-input v-model="f.logo_text" placeholder="我的导航" />
+          <el-input v-model="f.logo_text" placeholder="udenav" />
         </el-form-item>
         <el-form-item label="页脚文字">
           <el-input v-model="f.footer" placeholder="留空不显示" />
