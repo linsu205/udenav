@@ -22,14 +22,14 @@
 
 | 步骤 | 操作 | 位置 |
 |---|---|---|
-| ① 创建 Worker | Workers & Pages → Create Worker → 名字填 `udenav-2026` | [Cloudflare Dashboard](https://dash.cloudflare.com) |
+| ① 创建 Worker | Workers & Pages → Create Worker → 名字填 `udenav` | [Cloudflare Dashboard](https://dash.cloudflare.com) |
 | ② 创建 D1 数据库 | Workers & Pages → D1 → Create → 名字填 `udenav-database` | 同上 |
 
 > 只有两步，全在浏览器里点。
 
 ### 2. 在 Cloudflare 控制台设置密钥
 
-进入 Worker `udenav-2026` → **Settings → Variables & Secrets**：
+进入 Worker `udenav` → **Settings → Variables & Secrets**：
 
 | 名称 | 值 | 说明 |
 |---|---|---|
@@ -69,7 +69,7 @@ git push -u origin main
 
 ### 2. 在 Cloudflare 连接仓库
 
-Worker `udenav-2026` → **Settings → Repository**：
+Worker `udenav` → **Settings → Repository**：
 
 1. 点 **Connect** → 选 GitHub → 授权 Cloudflare 访问仓库
 2. 选仓库 `udenav`，分支 `main`

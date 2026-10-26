@@ -21,7 +21,7 @@ Cloudflare Workers 导航页（GitHub 自动部署，**无需 R2**）
 4. 自动部署上线
 
 > 按这个按钮就够了，**不需要去控制台手动连仓库、改构建命令**。
-> 如果你之前在控制台手动连过别的仓库（比如 `udenav-2026`），那是另一条连接线，
+> 如果你之前在控制台手动连过别的仓库（比如连成别的仓库），那是另一条连接线，
 > 建议把那个旧的 Worker 删掉，避免混淆。
 
 ## 本地开发
@@ -38,7 +38,7 @@ npx wrangler dev --local
 
 如果不使用 Deploy 按钮，需要手动创建资源：
 
-1. Cloudflare 控制台创建 Worker `udenav-2026`
+1. Cloudflare 控制台创建 Worker `udenav`
 2. 创建 D1 数据库 `udenav-database`
 3. Worker 关联 D1（变量名 `DB`）
 4. Worker Settings → Variables & Secrets → 加 `SECRET`（32 位以上随机串）
@@ -47,7 +47,7 @@ npx wrangler dev --local
 7. 之后每次 `git push` 自动部署
 
 > ⚠️ 最容易踩的坑：第 5 步连的仓库必须和本地推送的仓库一致。
-> 本项目推送 `linsu205/udenav`；若连成 `udenav-2026` 等其它仓库，push 不会触发构建。
+> 本项目推送 `linsu205/udenav`；若连成其它仓库，push 不会触发构建。
 
 详细步骤见 [docs/DEPLOY.md](docs/DEPLOY.md)。
 
