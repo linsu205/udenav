@@ -44,7 +44,8 @@ async function uploadIcon(e: Event) {
 function save() {
   if (!f.title.trim()) return ElMessage.warning('标题不能为空');
   if (!f.url.trim()) return ElMessage.warning('默认地址不能为空');
-  emit('save', { ...f, title: f.title.trim(), url: f.url.trim() });
+  // el-color-picker 点「清除」后 v-model 是 null，统一归一化成空串（= 不设背景色）
+  emit('save', { ...f, title: f.title.trim(), url: f.url.trim(), background_color: f.background_color || '' });
 }
 
 const fetchingIcon = ref(false);

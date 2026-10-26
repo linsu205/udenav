@@ -248,9 +248,13 @@ export async function patchIcon(env: Env, req: Request, id: number): Promise<Res
   const title = body.title !== undefined ? String(body.title).trim() : ic.title;
   if (!title) return bad('名称不能为空');
   const icon_type: IconType = normIconType(body.icon_type);
+  // 背景色：必须区分「没传这个字段」与「传了但为 null（用户点清除颜色）」。
+  // el-color-picker 清除后 v-model 为 null，用 ?? 兜底会把 null 当成未传而回退旧色，导致清不掉。
+  const hasBg = Object.prototype.hasOwnProperty.call(body, 'background_color');
+  const bgColor = hasBg ? String(body.background_color ?? '') : ic.background_color;
   await env.DB
     .prepare('UPDATE item_icon SET title=?, url=?, lan_url=?, icon_type=?, icon_text=?, icon_url=?, description=?, open_method=?, background_color=?, sort=?, updated_at=? WHERE id=?')
-    .bind(title, String(body.url ?? ic.url), String(body.lan_url ?? ic.lan_url), icon_type, String(body.icon_text ?? ic.icon_text), String(body.icon_url ?? ic.icon_url), String(body.description ?? ic.description), Number(body.open_method ?? ic.open_method), String(body.background_color ?? ic.background_color), Number(body.sort ?? ic.sort), Date.now(), id)
+    .bind(title, String(body.url ?? ic.url), String(body.lan_url ?? ic.lan_url), icon_type, String(body.icon_text ?? ic.icon_text), String(body.icon_url ?? ic.icon_url), String(body.description ?? ic.description), Number(body.open_method ?? ic.open_method), bgColor, Number(body.sort ?? ic.sort), Date.now(), id)
     .run();
   return json({ ok: true });
 }
