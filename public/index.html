@@ -420,8 +420,6 @@ const FALLBACK = {
   initMotion();
   tick();
   setInterval(tick, 1000);
-  /* 公开导航已隐藏：根路径直接打开后台弹窗（弹窗 iframe 指向 /admin） */
-  openAdmin();
   /* 兜底：动效编排异常时也不能让首屏内容一直不可见 */
   setTimeout(() => document.querySelectorAll('.group:not(.in), .card:not(.in), .mini:not(.in)').forEach(el => {
     if (el.getBoundingClientRect().top < innerHeight + 200) {
