@@ -235,7 +235,7 @@ export async function createIcon(env: Env, req: Request): Promise<Response> {
   const icon_type: IconType = normIconType(body.icon_type);
   const res = await env.DB
     .prepare('INSERT INTO item_icon (group_id, title, url, lan_url, icon_type, icon_text, icon_url, description, open_method, background_color, sort, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(gid, title, String(body.url || ''), String(body.lan_url || ''), icon_type, String(body.icon_text || ''), String(body.icon_url || ''), String(body.description || ''), Number(body.open_method ?? 2), String(body.background_color || '#2a2a2a6b'), Number(next?.n ?? -10) + 10, s.sub)
+    .bind(gid, title, String(body.url || ''), String(body.lan_url || ''), icon_type, String(body.icon_text || ''), String(body.icon_url || ''), String(body.description || ''), Number(body.open_method ?? 2), String(body.background_color ?? ''), Number(next?.n ?? -10) + 10, s.sub)
     .run();
   return json({ ok: true, id: Number(res.meta.last_row_id) });
 }

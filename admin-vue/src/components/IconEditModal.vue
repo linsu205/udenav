@@ -14,7 +14,7 @@ const isAdd = computed(() => !props.modelValue.it);
 
 const f = reactive({
   title: '', url: '', lan_url: '', description: '', icon_type: 'color',
-  icon_url: '', icon_name: '', background_color: '#2a2a2a', open_method: 2, sort: 0, group_id: 0,
+  icon_url: '', icon_name: '', background_color: '', open_method: 2, sort: 0, group_id: 0,
 });
 
 const previewIconUrl = computed(() => f.icon_type === 'data' ? f.icon_url : '');
@@ -25,7 +25,7 @@ watch(() => props.modelValue, v => {
     Object.assign(f, v.it);
     if (v.it.icon_type === 'r2') { f.icon_type = 'data'; }
   } else {
-    Object.assign(f, { title: '', url: '', lan_url: '', description: '', icon_type: 'color', icon_url: '', icon_name: '', background_color: '#2a2a2a', open_method: 2, sort: 0, group_id: v.gid });
+    Object.assign(f, { title: '', url: '', lan_url: '', description: '', icon_type: 'color', icon_url: '', icon_name: '', background_color: '', open_method: 2, sort: 0, group_id: v.gid });
   }
 }, { immediate: true });
 
