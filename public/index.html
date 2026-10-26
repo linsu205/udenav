@@ -82,6 +82,17 @@
   .card .title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card .dsc{font-size:12px;color:var(--text-dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .empty{color:var(--text-dim);font-size:14px;padding:24px 4px}
+  /* ---------- 小图标模式（card_style=icon，参照 sun-panel「图标」） ---------- */
+  .grid.icons{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:14px}
+  .mini{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 4px 8px;border-radius:14px;
+    cursor:pointer;transition:transform .18s,background .18s}
+  .mini:hover{transform:translateY(-3px);background:rgba(255,255,255,.07)}
+  html[data-theme="light"] .mini:hover{background:rgba(31,35,40,.06)}
+  .mini .mic{width:58px;height:58px;border-radius:15px;display:flex;align-items:center;justify-content:center;
+    font-size:24px;font-weight:700;color:#fff;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.22)}
+  .mini .mic img{width:100%;height:100%;object-fit:cover;border-radius:inherit}
+  .mini .mname{max-width:92px;font-size:12px;color:var(--text);text-align:center;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   footer{margin-top:46px;text-align:center;font-size:12px;color:var(--text-dim)}
 
   /* ---------- 入场与滚动动画 ---------- */
@@ -98,12 +109,12 @@
   .search{animation:rise .72s cubic-bezier(.22,.61,.36,1) .13s both}
   .group{opacity:0}
   .group.in{animation:rise .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) both}
-  .card{opacity:0}
-  .card.in{animation:cardIn .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) both}
+  .card,.mini{opacity:0}
+  .card.in,.mini.in{animation:cardIn .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) both}
   /* 偏好减少动效时不做动画 */
   @media(prefers-reduced-motion:reduce){
     header,.search{animation:none}
-    .group,.card{opacity:1!important;animation:none!important;transition:none!important}
+    .group,.card,.mini{opacity:1!important;animation:none!important;transition:none!important}
   }
   .theme{position:fixed;right:18px;bottom:18px;z-index:30}
   /* 管理入口：胶囊滑块开关（参照 sun-panel）—— 左「前台」右「后台」，点一下白色滑块右滑并弹出后台 */
@@ -259,8 +270,17 @@ function renderGroups() {
     sec.className = 'group';
     sec.innerHTML = `<div class="group-head"><h2>${esc(g.title)}</h2>${g.description ? `<span class="desc">${esc(g.description)}</span>` : ''}</div>`;
     const grid = document.createElement('div');
-    grid.className = 'grid';
+    grid.className = g.cardStyle === 'icon' ? 'grid icons' : 'grid';
     g.items.forEach(it => {
+      if (g.cardStyle === 'icon') {
+        /* 小图标模式（参照 sun-panel 的「图标」）：圆角图标 + 底部名称，不显示描述 */
+        const c = document.createElement('div');
+        c.className = 'mini';
+        c.innerHTML = `<span class="mic" style="background:${esc(it.color || '#2a2a2a')}">${iconHtml(it)}</span><span class="mname">${esc(it.title)}</span>`;
+        c.onclick = () => openUrl(it);
+        grid.appendChild(c);
+        return;
+      }
       const c = document.createElement('div');
       c.className = 'card';
       c.innerHTML = `<div class="ic" style="background:${esc(it.color || '#2a2a2a')}">${iconHtml(it)}</div>
@@ -403,7 +423,7 @@ const FALLBACK = {
   /* 公开导航已隐藏：根路径直接打开后台弹窗（弹窗 iframe 指向 /admin） */
   openAdmin();
   /* 兜底：动效编排异常时也不能让首屏内容一直不可见 */
-  setTimeout(() => document.querySelectorAll('.group:not(.in), .card:not(.in)').forEach(el => {
+  setTimeout(() => document.querySelectorAll('.group:not(.in), .card:not(.in), .mini:not(.in)').forEach(el => {
     if (el.getBoundingClientRect().top < innerHeight + 200) {
       el.style.setProperty('opacity', '1'); el.classList.add('in');
     }
@@ -415,7 +435,7 @@ const FALLBACK = {
    因此用函数声明而非 IIFE：IIFE 的函数名在外部作用域不可见 */
 function initMotion() {
   const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const els = () => [...document.querySelectorAll('.group:not(.in), .card:not(.in)')];
+  const els = () => [...document.querySelectorAll('.group:not(.in), .card:not(.in), .mini:not(.in)')];
   const show = el => { el.style.setProperty('opacity', '1'); el.classList.add('in'); };
 
   /* 视差：背景层随滚动缓慢反向位移。用 transform 走合成层，不触发重排。
@@ -444,7 +464,7 @@ function initMotion() {
   const io = new IntersectionObserver(entries => {
     entries.filter(e => e.isIntersecting).forEach(e => {
       const g = e.target;
-      const cards = g.classList.contains('group') ? [...g.querySelectorAll('.card:not(.in)')] : [g];
+      const cards = g.classList.contains('group') ? [...g.querySelectorAll('.card:not(.in), .mini:not(.in)')] : [g];
       cards.forEach((c, i) => { c.style.setProperty('--d', (i * 14) + 'ms'); show(c); });
       io.unobserve(g);
     });

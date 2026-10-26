@@ -33,6 +33,7 @@ function save() {
         <el-select v-model="f.card_style" style="width:100%">
           <el-option value="info" label="横排信息卡（默认）" />
           <el-option value="grid" label="网格样式" />
+          <el-option value="icon" label="小图标（图标＋名称，参照 sun-panel）" />
           <el-option value="hide" label="前台隐藏此分组" />
         </el-select>
       </el-form-item>
