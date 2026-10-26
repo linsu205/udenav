@@ -4,15 +4,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm install",
+    "build": "npm run admin:build",
     "dev": "wrangler dev --local",
+    "admin:build": "vite build --config vite.config.ts",
+    "admin:dev": "vite --config vite.config.ts",
     "typecheck": "tsc --noEmit",
     "deploy": "wrangler deploy",
     "db": "wrangler d1 execute unav-database --remote --command"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261019.1",
+    "@vitejs/plugin-vue": "^5.2.0",
     "typescript": "^5.6.0",
+    "vite": "^5.4.0",
+    "vue": "^3.5.0",
+    "pinia": "^2.2.0",
+    "element-plus": "^2.8.0",
+    "@element-plus/icons-vue": "^2.3.0",
     "wrangler": "^4.0.0"
   }
 }

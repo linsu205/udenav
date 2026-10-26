@@ -1,0 +1,40 @@
+# 每次推送 main 分支自动部署到 Cloudflare Workers
+# 使用前在 GitHub 仓库 Settings → Secrets and variables → Actions 添加两个 Secret：
+#   CLOUDFLARE_API_TOKEN   —— Cloudflare 控制台创建，权限选
+#                             Account: Workers Scripts:Edit + Workers Builds:Edit
+#                             Account: D1:Edit + Workers KV Storage:Edit
+#   CLOUDFLARE_ACCOUNT_ID  —— Cloudflare 控制台右侧栏或 Worker 概览页可查
+name: Deploy to Cloudflare Workers
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}   # 允许在 GitHub 页面手动点一下部署
+
+concurrency:
+  group: deploy-workers
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build admin (Vue3 + Element Plus)
+        run: npm run build
+
+      - name: Deploy via Wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy

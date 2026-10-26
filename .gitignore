@@ -6,3 +6,4 @@ Thumbs.db
 
 # 本地开发密钥（不推 GitHub）
 .dev.vars
+.shots/
