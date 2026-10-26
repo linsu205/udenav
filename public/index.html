@@ -68,7 +68,7 @@
   .group-head .desc{font-size:13px;color:var(--text-dim)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px}
   .card{display:flex;align-items:center;gap:12px;background:var(--card-bg);border:1px solid rgba(255,255,255,.08);
-    border-radius:var(--radius);padding:14px;cursor:pointer;transition:transform .18s,box-shadow .18s,background .18s;
+    border-radius:var(--radius);height:70px;padding:11px 14px;cursor:pointer;transition:transform .18s,box-shadow .18s,background .18s;
     box-shadow:0 4px 16px rgba(0,0,0,.18);overflow:hidden}
   .card:hover{transform:translateY(-3px);background:var(--card-bg-hover);
     box-shadow:0 14px 34px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.06),0 0 22px rgba(24,160,88,.16)}
@@ -80,17 +80,17 @@
   .card .dsc{font-size:12px;color:var(--text-dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .empty{color:var(--text-dim);font-size:14px;padding:24px 4px}
   /* ---------- 小图标模式（card_style=icon，参照 sun-panel「图标」） ---------- */
-  .grid.icons{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:14px}
+  .grid.icons{grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:14px}
   .mini{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 4px 8px;border-radius:14px;
     cursor:pointer;transition:transform .18s,background .18s}
   .mini:hover{transform:translateY(-3px);background:rgba(255,255,255,.07)}
   html[data-theme="light"] .mini:hover{background:rgba(31,35,40,.06)}
-  .mini .mic{width:62px;height:62px;border-radius:16px;background:#8a8e93;display:flex;align-items:center;justify-content:center;
+  .mini .mic{width:70px;height:70px;border-radius:18px;background:#8a8e93;display:flex;align-items:center;justify-content:center;
     overflow:hidden;box-shadow:0 6px 10px rgba(0,0,0,.18),0 14px 26px rgba(0,0,0,.26)}
   /* 图片图标内缩居中（约 68%），四周露出灰色底板 */
   .mini .mic img{width:68%;height:68%;object-fit:contain;border-radius:9px}
   /* 无图标时：文字直接显示在底板上（默认背景透明，仅灰底板+白字） */
-  .mini .mic .mtext{max-width:88%;font-size:15px;font-weight:700;color:#fff;letter-spacing:.5px;
+  .mini .mic .mtext{max-width:88%;font-size:17px;font-weight:700;color:#fff;letter-spacing:.5px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,.25)}
   .mini .mname{max-width:92px;font-size:14px;color:var(--text);text-align:center;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
