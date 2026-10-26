@@ -68,9 +68,9 @@ export const DEFAULT_CONFIG = {
   footer: '',
   theme: 'dark',
   search_engines: [
-    { name: 'Google', url: 'https://www.google.com/search?q=%s', icon: 'ri:google-fill' },
     { name: '百度', url: 'https://www.baidu.com/s?wd=%s', icon: 'logo:search' },
     { name: 'Bing', url: 'https://www.bing.com/search?q=%s', icon: 'ri:search-line' },
+    { name: 'Google', url: 'https://www.google.com/search?q=%s', icon: 'ri:google-fill' },
   ],
 } as const;
 

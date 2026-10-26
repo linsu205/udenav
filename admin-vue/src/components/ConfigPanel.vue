@@ -13,7 +13,11 @@ const f = reactive({
 function fill() {
   if (!store.config) return;
   Object.assign(f, store.config);
-  if (!f.search_engines?.length) f.search_engines = [{ name: 'Google', url: 'https://www.google.com/search?q=%s' }];
+  if (!f.search_engines?.length) f.search_engines = [
+    { name: '百度', url: 'https://www.baidu.com/s?wd=%s' },
+    { name: 'Bing', url: 'https://www.bing.com/search?q=%s' },
+    { name: 'Google', url: 'https://www.google.com/search?q=%s' },
+  ];
 }
 
 onMounted(fill);
@@ -48,6 +52,12 @@ async function uploadBg(opt: any) {
 
 function addEngine() { f.search_engines.push({ name: '', url: '' }); }
 function rmEngine(i: number) { f.search_engines.splice(i, 1); }
+function moveEngine(i: number, dir: -1 | 1) {
+  const j = i + dir;
+  if (j < 0 || j >= f.search_engines.length) return;
+  const arr = f.search_engines;
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+}
 </script>
 
 <template>
@@ -103,8 +113,11 @@ function rmEngine(i: number) { f.search_engines.splice(i, 1); }
       <div v-for="(e, i) in f.search_engines" :key="i" class="engine-row">
         <el-input v-model="e.name" placeholder="名称" style="width:150px;flex:none" />
         <el-input v-model="e.url" placeholder="URL 模板（%s 替换关键词）" />
+        <el-button @click="moveEngine(i, -1)" :disabled="i === 0" style="flex:none;width:36px">↑</el-button>
+        <el-button @click="moveEngine(i, 1)" :disabled="i === f.search_engines.length - 1" style="flex:none;width:36px">↓</el-button>
         <el-button type="danger" plain @click="rmEngine(i)">删除</el-button>
       </div>
+      <div style="font-size:12px;color:#9aa3ab;margin:-4px 0 8px">排在第 1 位的是访客页默认选中的搜索引擎</div>
       <div style="display:flex;gap:10px;margin-top:6px">
         <el-button @click="addEngine">＋ 添加搜索引擎</el-button>
         <el-button type="success" @click="save">保存配置</el-button>
