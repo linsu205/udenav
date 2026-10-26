@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { reactive, computed, watch } from 'vue';
-import { post } from '../api';
+import { reactive, computed, watch, ref } from 'vue';
+import { post, get } from '../api';
 import { ElMessage } from 'element-plus';
 import { type Group, type IconItem } from '../store';
 
@@ -45,6 +45,23 @@ function save() {
   if (!f.title.trim()) return ElMessage.warning('标题不能为空');
   if (!f.url.trim()) return ElMessage.warning('默认地址不能为空');
   emit('save', { ...f, title: f.title.trim(), url: f.url.trim() });
+}
+
+const fetchingIcon = ref(false);
+async function fetchFavicon() {
+  const u = f.url.trim();
+  if (!u) return ElMessage.warning('请先填写默认地址');
+  fetchingIcon.value = true;
+  try {
+    const r = await get<any>('/api/admin/favicon?url=' + encodeURIComponent(u));
+    f.icon_url = r.icon;
+    f.icon_type = 'data';
+    ElMessage.success('图标获取成功');
+  } catch (err: any) {
+    ElMessage.error('获取失败：' + err.message);
+  } finally {
+    fetchingIcon.value = false;
+  }
 }
 </script>
 
@@ -106,7 +123,10 @@ function save() {
         </el-col>
       </el-row>
       <el-form-item label="默认地址 *">
-        <el-input v-model="f.url" placeholder="https://" />
+        <div style="display:flex;gap:8px;width:100%">
+          <el-input v-model="f.url" placeholder="https://" />
+          <el-button :loading="fetchingIcon" @click="fetchFavicon">🔍 获取图标</el-button>
+        </div>
       </el-form-item>
       <el-form-item label="内网地址（可选）">
         <el-input v-model="f.lan_url" placeholder="http://192.168.x.x" />

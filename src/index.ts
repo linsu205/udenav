@@ -105,6 +105,7 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (m === 'GET' && a === 'config') return admin.getConfig(env, req);
     if (m === 'GET' && a === 'groups') return admin.listGroups(env, req);
     if (m === 'GET' && a === 'icons') return admin.listIcons(env, req, new URL(req.url).searchParams);
+    if (m === 'GET' && a === 'favicon') return admin.favicon(env, req);
     if (m === 'GET' && a === 'export') return admin.exportAll(env, req);
     if (m === 'GET' && a === 'stats') return stats(env, req);
     if (m === 'PUT' && a === 'config') return admin.putConfig(env, req);

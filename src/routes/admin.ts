@@ -322,3 +322,91 @@ export async function importAll(env: Env, req: Request): Promise<Response> {
 
   return json({ ok: true, confirm_used: confirm, groups: groups.length, icons: icons.length, configs: cfg.length });
 }
+
+/* ---------------- 根据网址抓取站点图标（参照 sun-panel「获取图标」） ---------------- */
+
+const FETCH_TIMEOUT_MS = 8000;
+const MAX_PAGE_BYTES = 300_000;    // 页面 HTML 最多读 300KB，够解析 <link> 了
+const MAX_ICON_BYTES = 300 * 1024; // 图标最大 300KB
+
+function sniffImage(buf: ArrayBuffer): string | null {
+  const b = new Uint8Array(buf, 0, Math.min(16, buf.byteLength));
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png';
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'image/gif';
+  if (b[0] === 0x00 && b[1] === 0x00 && b[2] === 0x01 && b[3] === 0x00) return 'image/x-icon';
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+  const head = String.fromCharCode(...b).toLowerCase();
+  if (head.includes('<svg') || head.includes('<?xml')) return 'image/svg+xml';
+  return null;
+}
+
+function toBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode(...bytes.subarray(i, i + CH));
+  return btoa(bin);
+}
+
+async function fetchT(url: string, ua: string): Promise<Response> {
+  return fetch(url, {
+    redirect: 'follow',
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    headers: { 'user-agent': ua, 'accept': '*/*' },
+  });
+}
+
+export async function favicon(env: Env, req: Request): Promise<Response> {
+  const s = await getSession(env, req);
+  if (!s) return bad('未登录', 401);
+  const raw = (new URL(req.url).searchParams.get('url') || '').trim();
+  if (!raw) return bad('缺少 url 参数');
+  let target: URL;
+  try {
+    target = new URL(/^https?:\/\//i.test(raw) ? raw : 'https://' + raw);
+  } catch { return bad('网址格式不正确'); }
+  if (target.protocol !== 'http:' && target.protocol !== 'https:') return bad('仅支持 http/https 网址');
+
+  const UA = 'Mozilla/5.0 (compatible; unav-icon-fetch/1.0)';
+  const candidates: string[] = [];
+
+  // 1) 抓首页，解析 <link rel="...icon...">，apple-touch-icon 优先（通常最大最清晰）
+  try {
+    const page = await fetchT(target.toString(), UA);
+    if (page.ok) {
+      const html = (await page.text()).slice(0, MAX_PAGE_BYTES);
+      const base = page.url || target.toString();
+      const found: { w: number; href: string }[] = [];
+      const re = /<link\b[^>]*>/gi;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(html))) {
+        const tag = m[0];
+        const rel = (tag.match(/\brel\s*=\s*["']([^"']*)["']/i)?.[1] || '').toLowerCase();
+        const href = tag.match(/\bhref\s*=\s*["']([^"']*)["']/i)?.[1] || '';
+        if (!href || !rel.split(/\s+/).some(r => r.includes('icon'))) continue;
+        const w = rel.includes('apple-touch') ? 0 : rel.includes('shortcut') ? 1 : 2;
+        found.push({ w, href });
+      }
+      found.sort((a, b) => a.w - b.w);
+      for (const f of found) { try { candidates.push(new URL(f.href, base).toString()); } catch { /* 跳过坏地址 */ } }
+    }
+  } catch { /* 首页抓不到，直接试 favicon.ico 兜底 */ }
+
+  // 2) 兜底：站点根目录 favicon.ico
+  candidates.push(new URL('/favicon.ico', target.origin).toString());
+
+  for (const u of candidates) {
+    try {
+      const r = await fetchT(u, UA);
+      if (!r.ok) continue;
+      const buf = await r.arrayBuffer();
+      if (buf.byteLength === 0 || buf.byteLength > MAX_ICON_BYTES) continue;
+      const declared = (r.headers.get('content-type') || '').toLowerCase();
+      const ct = declared.startsWith('image/') ? declared.split(';')[0] : sniffImage(buf);
+      if (!ct) continue;
+      return json({ ok: true, icon: 'data:' + ct + ';base64,' + toBase64(buf) });
+    } catch { /* 试下一个候选 */ }
+  }
+  return bad('未找到可用图标', 404);
+}
