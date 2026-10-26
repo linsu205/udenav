@@ -1,19 +1,23 @@
 <script setup lang="ts">
-import { reactive, onMounted } from 'vue';
+import { reactive, onMounted, watch } from 'vue';
 import { useStore } from '../store';
 import { put, post } from '../api';
 import { ElMessage } from 'element-plus';
 
 const store = useStore();
 const f = reactive({
-  logo_text: '', theme: 'dark', background_image: '', background_blur: 10, background_mask: 0.2,
+  logo_text: '', favicon: '', theme: 'dark', background_image: '', background_blur: 10, background_mask: 0.2,
   margin_top: 6, icon_style: 'info', footer: '', search_box_show: 1, search_engines: [] as any[],
 });
 
-onMounted(() => {
-  Object.assign(f, store.config || {});
+function fill() {
+  if (!store.config) return;
+  Object.assign(f, store.config);
   if (!f.search_engines?.length) f.search_engines = [{ name: 'Google', url: 'https://www.google.com/search?q=%s' }];
-});
+}
+
+onMounted(fill);
+watch(() => store.config, fill);
 
 async function save() {
   await put('/api/admin/config', f);
@@ -24,6 +28,14 @@ async function save() {
   } else {
     setTimeout(() => location.reload(), 600);
   }
+}
+
+async function uploadFav(opt: any) {
+  const fd = new FormData();
+  fd.append('file', opt.file);
+  const r = await post<any>('/api/admin/upload', fd);
+  f.favicon = r.icon_url;
+  ElMessage.success('图标已上传');
 }
 
 async function uploadBg(opt: any) {
@@ -52,6 +64,13 @@ function rmEngine(i: number) { f.search_engines.splice(i, 1); }
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="首页标题">
           <el-input v-model="f.logo_text" placeholder="udenav" />
+        </el-form-item>
+        <el-form-item label="网站图标 (Favicon)">
+          <div style="display:flex;align-items:center;gap:12px;width:100%">
+            <el-input v-model="f.favicon" placeholder="粘贴图片 URL，或点右边上传" />
+            <el-upload :show-file-list="false" accept="image/*" :http-request="uploadFav" style="flex:none"><el-button>上传图标</el-button></el-upload>
+            <img v-if="f.favicon" :src="f.favicon" alt="icon" style="width:28px;height:28px;border-radius:6px;object-fit:contain;background:#fff;flex:none" />
+          </div>
         </el-form-item>
         <el-form-item label="页脚文字">
           <el-input v-model="f.footer" placeholder="留空不显示" />

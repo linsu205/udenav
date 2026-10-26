@@ -4,7 +4,7 @@ import { get, post } from './api';
 
 export interface User { username: string; role: string; exp: number; }
 export interface ConfigRow {
-  logo_text: string; background_image: string; background_blur: number; background_mask: number;
+  logo_text: string; favicon?: string; background_image: string; background_blur: number; background_mask: number;
   margin_top: number; icon_style: string; search_box_show: number; footer: string; theme: string;
   search_engines: Array<{ name: string; url: string; icon?: string }>;
 }
@@ -33,7 +33,6 @@ export const useStore = defineStore('udenav', () => {
       const r = await get<any>('/api/admin/me');
       if (r.logged_in) user.value = r;
     } catch { user.value = null; }
-    loading.value = false;
   }
 
   async function login(username: string, password: string) {
@@ -54,17 +53,22 @@ export const useStore = defineStore('udenav', () => {
   }
 
   async function loadAll() {
-    const [c, g, i] = await Promise.all([
-      get<any>('/api/admin/config'),
-      get<any>('/api/admin/groups'),
-      get<any>('/api/admin/icons'),
-    ]);
-    config.value = c.config;
-    const icons: IconItem[] = i.icons || [];
-    groups.value = (g.groups || []).map((gr: any) => ({
-      ...gr,
-      items: icons.filter(x => x.group_id === gr.id),
-    }));
+    try {
+      const [c, g, i] = await Promise.all([
+        get<any>('/api/admin/config'),
+        get<any>('/api/admin/groups'),
+        get<any>('/api/admin/icons'),
+      ]);
+      config.value = c.config;
+      const icons: IconItem[] = i.icons || [];
+      groups.value = (g.groups || []).map((gr: any) => ({
+        ...gr,
+        items: icons.filter(x => x.group_id === gr.id),
+      }));
+    } finally {
+      // 数据就绪后才关掉 loading，避免表单在 config 到达前挂载导致已保存的值不回填
+      loading.value = false;
+    }
   }
 
   return { user, config, groups, tab, loading, loggedIn, checkLogin, login, register, logout, loadAll };

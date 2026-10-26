@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>udenav</title>
+<link id="fav" rel="icon" type="image/svg+xml" data-def="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2318a058'/><path d='M9 17l5 5 9-10' stroke='white' stroke-width='3.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2318a058'/><path d='M9 17l5 5 9-10' stroke='white' stroke-width='3.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <style>
   :root{
     --card-bg:rgba(42,42,42,.42); --card-bg-hover:rgba(42,42,42,.68);
@@ -125,6 +126,7 @@ function applyConfig(c) {
   state.config = c;
   document.title = c.logo_text || 'udenav';
   $('#logo').textContent = c.logo_text || 'udenav';
+  $('#fav').setAttribute('href', String(c.favicon||'').trim() || $('#fav').dataset.def);
   document.documentElement.dataset.theme = c.theme || 'dark';
   $('#themeBtn').textContent = (c.theme || 'dark') === 'dark' ? '🌙' : '☀️';
   const bg = c.background_image;
@@ -258,7 +260,7 @@ $('#q').addEventListener('keydown', e => {
 
 /* ---------- 启动：优先读后端，读不到就用内置数据 ---------- */
 const FALLBACK = {
-  config: { logo_text: 'udenav', background_blur: 10, background_mask: 0.2, margin_top: 6, icon_style: 'info', search_box_show: 1, theme: 'dark', search_engines: DEFAULT_ENGINES },
+  config: { logo_text: 'udenav', favicon: '', background_blur: 10, background_mask: 0.2, margin_top: 6, icon_style: 'info', search_box_show: 1, theme: 'dark', search_engines: DEFAULT_ENGINES },
   groups: [
     { id: 1, title: '常用', description: '每天要打开的', cardStyle: 'info', items: [
       { title: '百度', url: 'https://www.baidu.com', description: '中文搜索', color: '#2932e1', openMethod: 2 },

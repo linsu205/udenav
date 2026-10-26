@@ -8,6 +8,7 @@ const store = useStore();
 onMounted(async () => {
   await store.checkLogin();
   if (store.loggedIn) await store.loadAll();
+  else store.loading = false;
 });
 watch(() => store.loggedIn, async v => { if (v) await store.loadAll(); });
 </script>
