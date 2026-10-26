@@ -85,9 +85,13 @@
     cursor:pointer;transition:transform .18s,background .18s}
   .mini:hover{transform:translateY(-3px);background:rgba(255,255,255,.07)}
   html[data-theme="light"] .mini:hover{background:rgba(31,35,40,.06)}
-  .mini .mic{width:58px;height:58px;border-radius:15px;display:flex;align-items:center;justify-content:center;
-    font-size:24px;font-weight:700;color:#fff;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.22)}
-  .mini .mic img{width:100%;height:100%;object-fit:cover;border-radius:inherit}
+  .mini .mic{width:62px;height:62px;border-radius:16px;background:#8a8e93;display:flex;align-items:center;justify-content:center;
+    overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.22)}
+  /* 图片图标内缩居中（约 68%），四周露出灰色底板 */
+  .mini .mic img{width:68%;height:68%;object-fit:contain;border-radius:9px}
+  /* 无图标时：底板中央放一个带色字母小方块 */
+  .mini .mic span{width:46px;height:46px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+    font-size:20px;font-weight:700;color:#fff;overflow:hidden}
   .mini .mname{max-width:92px;font-size:12px;color:var(--text);text-align:center;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   footer{margin-top:46px;text-align:center;font-size:12px;color:var(--text-dim)}
@@ -270,10 +274,13 @@ function renderGroups() {
     grid.className = g.cardStyle === 'icon' ? 'grid icons' : 'grid';
     g.items.forEach(it => {
       if (g.cardStyle === 'icon') {
-        /* 小图标模式（参照 sun-panel 的「图标」）：圆角图标 + 底部名称，不显示描述 */
+        /* 小图标模式（参照 sun-panel 的「图标」）：灰色底板 + 内缩图标/字母色块，底部名称 */
+        const inner = it.iconUrl
+          ? `<img src="${esc(it.iconUrl)}" alt="" loading="lazy">`
+          : `<span style="background:${esc(it.color || '#2a2a2a')}">${esc(letter(it.title))}</span>`;
         const c = document.createElement('div');
         c.className = 'mini';
-        c.innerHTML = `<span class="mic" style="background:${esc(it.color || '#2a2a2a')}">${iconHtml(it)}</span><span class="mname">${esc(it.title)}</span>`;
+        c.innerHTML = `<span class="mic">${inner}</span><span class="mname">${esc(it.title)}</span>`;
         c.onclick = () => openUrl(it);
         grid.appendChild(c);
         return;
