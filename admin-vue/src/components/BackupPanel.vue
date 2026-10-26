@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { get, post } from '../api';
+import { notifyHome } from '../lib/notify';
 import { ElMessage } from 'element-plus';
 
 async function exportAll() {
@@ -18,7 +19,8 @@ async function importFile(e: Event) {
   try {
     const obj = JSON.parse(await f.text());
     const r = await post<any>('/api/admin/import', { ...obj, confirm: 'restore' });
-    ElMessage.success(`已导入 ${r.groups} 组 / ${r.icons} 张`);
+    ElMessage.success(`已导入 ${r.groups} 组 / ${r.icons} 张，前台已同步`);
+    notifyHome();
   } catch (err: any) { ElMessage.error('导入失败：' + err.message); }
   (e.target as HTMLInputElement).value = '';
 }

@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue';
 import { useStore, type Group, type IconItem } from '../store';
 import { post, patch, del } from '../api';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { notifyHome } from '../lib/notify';
 import GroupEditModal from './GroupEditModal.vue';
 import IconEditModal from './IconEditModal.vue';
 
@@ -18,7 +19,8 @@ async function saveGroup(g: Partial<Group> & { title: string }) {
   else await patch('/api/admin/groups/' + gEdit.value!.id, g);
   gEdit.value = null;
   await store.loadAll();
-  ElMessage.success('已保存');
+  notifyHome();
+  ElMessage.success('已保存，前台已同步');
 }
 
 async function saveIcon(it: Partial<IconItem> & { title: string; url: string }) {
@@ -26,21 +28,24 @@ async function saveIcon(it: Partial<IconItem> & { title: string; url: string }) 
   else await post('/api/admin/icons', { ...it, group_id: iEdit.value!.gid });
   iEdit.value = null;
   await store.loadAll();
-  ElMessage.success('已保存');
+  notifyHome();
+  ElMessage.success('已保存，前台已同步');
 }
 
 async function delGroup(id: number) {
   await ElMessageBox.confirm('删除该分组及其全部卡片？', '确认删除', { type: 'warning' });
   await del('/api/admin/groups/' + id);
   await store.loadAll();
-  ElMessage.success('已删除');
+  notifyHome();
+  ElMessage.success('已删除，前台已同步');
 }
 
 async function delIcon(id: number) {
   await ElMessageBox.confirm('删除此卡片？', '确认删除', { type: 'warning' });
   await del('/api/admin/icons/' + id);
   await store.loadAll();
-  ElMessage.success('已删除');
+  notifyHome();
+  ElMessage.success('已删除，前台已同步');
 }
 
 async function moveGroup(id: number, dir: -1 | 1) {
@@ -50,6 +55,7 @@ async function moveGroup(id: number, dir: -1 | 1) {
   await patch('/api/admin/groups/' + id, { sort: other.sort });
   await patch('/api/admin/groups/' + other.id, { sort: store.groups[idx].sort });
   await store.loadAll();
+  notifyHome();
 }
 
 async function moveIcon(gid: number, id: number, dir: -1 | 1) {
@@ -61,6 +67,7 @@ async function moveIcon(gid: number, id: number, dir: -1 | 1) {
   await patch('/api/admin/icons/' + id, { sort: other.sort });
   await patch('/api/admin/icons/' + other.id, { sort: items[idx].sort });
   await store.loadAll();
+  notifyHome();
 }
 
 function onDragStart(kind: 'group' | 'icon', id: number, gid?: number) {
@@ -89,7 +96,8 @@ async function onDrop(targetKind: 'group' | 'icon', targetId: number, targetGid?
     await patch('/api/admin/icons/' + t.id, { sort: s.sort });
   }
   await store.loadAll();
-  ElMessage.success('已排序');
+  notifyHome();
+  ElMessage.success('已排序，前台已同步');
 }
 
 const dragClass = (kind: 'group' | 'icon') => ({ 'drag-target': dragSrc.value?.kind === kind });

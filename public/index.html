@@ -330,9 +330,26 @@ function closeModal() {
 }
 
 $('#adminBtn').onclick = openAdmin;
+
+/* 后台保存后同步前台：重新拉一次公开数据并原地重渲染。
+   不整页刷新 —— 不闪屏、不丢滚动位置、弹窗不用被迫关掉 */
+function syncFromAdmin() {
+  fetch('/api/public/panel', { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => {
+      if (!j || !Array.isArray(j.groups)) return;
+      applyConfig(j.config || FALLBACK.config);
+      state.groups = j.groups;
+      renderGroups();
+    })
+    .catch(() => {});
+}
+
 window.addEventListener('message', e => {
-  if (e.data && e.data.type === 'udenav:close-modal') closeModal();
-  else if (e.data && e.data.type === 'udenav:refresh') location.reload();
+  if (!e.data || typeof e.data.type !== 'string') return;
+  if (e.data.type === 'udenav:close-modal') { closeModal(); syncFromAdmin(); }
+  else if (e.data.type === 'udenav:reload-panel') syncFromAdmin();
+  else if (e.data.type === 'udenav:refresh') location.reload();
 });
 
 /* ---------- 交互 ---------- */

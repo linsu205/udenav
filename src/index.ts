@@ -29,7 +29,14 @@ export default {
       return withCors(req, res, env.CORS_ORIGIN);
     }
 
-    // 2) 其它 → 静态资源（index.html / admin.html / css / js ...）
+    // 2) /admin 短路径 → admin.html
+    //    静态资源不做无扩展名解析，访客页弹窗里的 iframe 用的是 /admin，这里显式转一下，
+    //    顺带让用户可以直接把 /admin 当独立地址打开
+    if (path === '/admin' || path === '/admin/') {
+      return env.ASSETS.fetch(new Request(new URL('/admin.html', req.url).toString(), req));
+    }
+
+    // 3) 其它 → 静态资源（index.html / admin.html / css / js ...）
     return env.ASSETS.fetch(req);
   },
 };

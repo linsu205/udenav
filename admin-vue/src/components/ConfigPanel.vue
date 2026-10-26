@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { reactive, onMounted, watch } from 'vue';
+import { reactive, ref, onMounted, watch } from 'vue';
 import { useStore } from '../store';
 import { put, post } from '../api';
 import { applyTheme } from '../lib/theme';
+import { notifyHome } from '../lib/notify';
 import { ElMessage } from 'element-plus';
 
 const store = useStore();
@@ -10,6 +11,7 @@ const f = reactive({
   logo_text: '', favicon: '', theme: 'dark', background_image: '', background_blur: 10, background_mask: 0.2,
   margin_top: 6, icon_style: 'info', footer: '', search_box_show: 1, search_engines: [] as any[],
 });
+const saving = ref(false);
 
 function fill() {
   if (!store.config) return;
@@ -27,13 +29,15 @@ watch(() => store.config, fill);
 watch(() => f.theme, t => applyTheme(t));
 
 async function save() {
-  await put('/api/admin/config', f);
-  ElMessage.success('配置已保存');
-  // 通知主页刷新
-  if (window.self !== window.top) {
-    setTimeout(() => window.top.postMessage({ type: 'udenav:refresh' }, '*'), 600);
-  } else {
-    setTimeout(() => location.reload(), 600);
+  if (saving.value) return;
+  saving.value = true;
+  try {
+    await put('/api/admin/config', f);
+    ElMessage.success('配置已保存，前台已同步');
+    // 保存成功后让访客前台按新设置刷新（前台重新拉一次公开数据，不整页刷新）
+    notifyHome();
+  } finally {
+    saving.value = false;
   }
 }
 
@@ -69,6 +73,10 @@ function moveEngine(i: number, dir: -1 | 1) {
       <div>
         <h2>页面配置</h2>
         <div class="sub">首页标题、壁纸、搜索框等外观设置</div>
+      </div>
+      <div class="head-actions">
+        <el-button @click="notifyHome()">同步到前台</el-button>
+        <el-button type="success" native-type="button" :loading="saving" @click="save">保存配置</el-button>
       </div>
     </div>
 
@@ -122,14 +130,15 @@ function moveEngine(i: number, dir: -1 | 1) {
       </div>
       <div style="font-size:12px;color:var(--sp-dim);margin:-4px 0 8px">排在第 1 位的是访客页默认选中的搜索引擎</div>
       <div style="display:flex;gap:10px;margin-top:6px">
-        <el-button @click="addEngine">＋ 添加搜索引擎</el-button>
-        <el-button type="success" @click="save">保存配置</el-button>
+        <el-button native-type="button" @click="addEngine">＋ 添加搜索引擎</el-button>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+  .head-actions { display: flex; gap: 10px; flex: none; }
+  @media (max-width: 768px) { .head-actions { width: 100%; } }
   .engine-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
   @media (max-width: 768px) {
     .engine-row { flex-wrap: wrap; }
