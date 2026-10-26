@@ -73,18 +73,42 @@
   .empty{color:var(--text-dim);font-size:14px;padding:24px 4px}
   footer{margin-top:46px;text-align:center;font-size:12px;color:var(--text-dim)}
   .theme{position:fixed;right:18px;bottom:18px;z-index:30}
-  .admin-btn{position:fixed;right:18px;top:18px;z-index:30;width:40px;height:40px;border-radius:12px;
-    background:var(--card-bg);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-    border:1px solid rgba(255,255,255,.08);color:var(--text);cursor:pointer;font-size:18px;
-    display:flex;align-items:center;justify-content:center;transition:background .18s,transform .18s}
-  .admin-btn:hover{background:var(--card-bg-hover);transform:rotate(30deg)}
-  .modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:20px}
-  .modal.open{display:flex}
-  .modal .box{width:min(1240px,96vw);height:min(820px,90vh);background:#15171a;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.55)}
-  .modal .bar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #2b3036;background:#1d2024;color:#f0f2f5;font-size:13px}
-  .modal .bar .close{background:none;border:0;color:#c3c9d0;cursor:pointer;font-size:18px;padding:4px 10px;border-radius:8px}
-  .modal .bar .close:hover{background:#2b3036;color:#fff}
-  .modal iframe{flex:1;border:0;background:#15171a}
+  /* 管理入口：胶囊滑块开关（参照 sun-panel）—— 左「前台」右「后台」，点一下白色滑块右滑并弹出后台 */
+  .admin-toggle{position:fixed;right:18px;top:18px;z-index:30;width:82px;height:40px;border-radius:13px;padding:3px;
+    cursor:pointer;border:1px solid rgba(255,255,255,.08);background:var(--card-bg);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    box-shadow:0 8px 22px rgba(0,0,0,.30);transition:background .22s,box-shadow .22s,transform .18s}
+  html[data-theme="light"] .admin-toggle{border-color:rgba(31,35,40,.10);box-shadow:0 8px 22px rgba(31,35,40,.16)}
+  .admin-toggle:hover{background:var(--card-bg-hover)}
+  .admin-toggle:active{transform:scale(.96)}
+  .admin-toggle .row{position:relative;display:flex;width:100%;height:100%}
+  .admin-toggle .slot{position:relative;z-index:1;flex:1;display:flex;align-items:center;justify-content:center;
+    color:var(--text-dim);transition:color .32s}
+  .admin-toggle .slot svg{width:17px;height:17px;display:block}
+  .admin-toggle .slot-front{color:var(--text)}
+  .admin-toggle .thumb{position:absolute;z-index:0;top:0;left:0;width:50%;height:100%;border-radius:10px;
+    background:rgba(255,255,255,.20);box-shadow:0 2px 10px rgba(0,0,0,.22);
+    transition:transform .38s cubic-bezier(.34,1.24,.5,1)}
+  html[data-theme="light"] .admin-toggle .thumb{background:#fff;box-shadow:0 2px 9px rgba(31,35,40,.20),0 0 0 1px rgba(31,35,40,.07)}
+  .admin-toggle.on .thumb{transform:translateX(100%)}
+  .admin-toggle.on .slot-front{color:var(--text-dim)}
+  .admin-toggle.on .slot-admin{color:var(--text)}
+  .modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;
+    opacity:0;visibility:hidden;pointer-events:none;transition:opacity .2s,visibility .2s}
+  .modal.open{opacity:1;visibility:visible;pointer-events:auto}
+  .modal .box{width:min(1240px,96vw);height:min(820px,90vh);background:var(--card-bg);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;
+    box-shadow:0 24px 60px rgba(0,0,0,.55);transform:translateY(12px) scale(.985);
+    transition:transform .28s cubic-bezier(.2,.9,.3,1)}
+  html[data-theme="light"] .modal .box{border-color:rgba(31,35,40,.10);box-shadow:0 24px 60px rgba(31,35,40,.30)}
+  .modal.open .box{transform:none}
+  .modal .bar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;
+    border-bottom:1px solid rgba(128,128,128,.18);background:var(--card-bg);color:var(--text);font-size:13px}
+  .modal .bar .close{background:none;border:0;color:var(--text-dim);cursor:pointer;font-size:18px;padding:4px 10px;border-radius:8px;
+    transition:background .15s,color .15s}
+  .modal .bar .close:hover{background:rgba(128,128,128,.18);color:var(--text)}
+  .modal iframe{flex:1;border:0;background:var(--card-bg)}
 </style>
 </head>
 <body>
@@ -112,7 +136,17 @@
   <footer id="footer"></footer>
 </div>
 
-<button class="admin-btn" id="adminBtn" title="管理后台" aria-label="管理后台">⚙</button>
+<button class="admin-toggle" id="adminBtn" title="管理后台" aria-label="管理后台" aria-pressed="false">
+  <span class="row">
+    <span class="slot slot-front" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19"/><path d="M12 2.5a15 15 0 0 1 0 19 15 15 0 0 1 0-19"/></svg>
+    </span>
+    <span class="slot slot-admin" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="currentColor"><rect x="3.2" y="3.2" width="7.4" height="7.4" rx="2.1"/><rect x="13.4" y="3.2" width="7.4" height="7.4" rx="2.1"/><rect x="3.2" y="13.4" width="7.4" height="7.4" rx="2.1"/><rect x="13.4" y="13.4" width="7.4" height="7.4" rx="2.1"/></svg>
+    </span>
+    <span class="thumb"></span>
+  </span>
+</button>
 <button class="icon-btn theme" id="themeBtn" title="切换主题">🌙</button>
 
 <div class="modal" id="modal">
@@ -246,18 +280,28 @@ function pushTheme() {
   } catch (e) {}
 }
 $('#modalFrame').addEventListener('load', pushTheme);
-$('#adminBtn').onclick = () => {
+
+/* 打开后台：滑块右滑到「后台」 */
+function openAdmin() {
   $('#modalTitle').textContent = '管理后台';
   $('#modalFrame').src = '/admin';
+  $('#adminBtn').classList.add('on');
+  $('#adminBtn').setAttribute('aria-pressed', 'true');
   $('#modal').classList.add('open');
-};
+}
+
+/* 关闭弹窗：滑块滑回「前台」 */
+function closeModal() {
+  $('#modal').classList.remove('open');
+  $('#modalFrame').src = '';
+  $('#adminBtn').classList.remove('on');
+  $('#adminBtn').setAttribute('aria-pressed', 'false');
+}
+
+$('#adminBtn').onclick = openAdmin;
 window.addEventListener('message', e => {
-  if (e.data && e.data.type === 'udenav:close-modal') {
-    $('#modal').classList.remove('open');
-    $('#modalFrame').src = '';
-  } else if (e.data && e.data.type === 'udenav:refresh') {
-    location.reload();
-  }
+  if (e.data && e.data.type === 'udenav:close-modal') closeModal();
+  else if (e.data && e.data.type === 'udenav:refresh') location.reload();
 });
 
 /* ---------- 交互 ---------- */
@@ -265,9 +309,9 @@ $('#engBtn').onclick = e => { e.stopPropagation(); $('#engList').classList.toggl
 document.addEventListener('click', () => $('#engList').classList.remove('open'));
 $('#q').addEventListener('input', renderGroups);
 $('#clearBtn').onclick = () => { $('#q').value = ''; renderGroups(); };
-$('#modalClose').onclick = () => { $('#modal').classList.remove('open'); $('#modalFrame').src = ''; };
-$('#modal').onclick = e => { if (e.target.id === 'modal') $('#modalClose').click(); };
-document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modalClose').click(); });
+$('#modalClose').onclick = closeModal;
+$('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 $('#q').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
