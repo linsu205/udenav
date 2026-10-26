@@ -62,7 +62,8 @@ export async function publicPanel(env: Env, req: Request): Promise<Response> {
       items: (byGroup.get(g.id) || []).map((r) => ({
         id: r.id,
         title: r.title,
-        url: r.url || r.lan_url,
+        url: r.url || '',
+        lanUrl: r.lan_url || '',
         description: r.description,
         iconType: r.icon_type,
         iconText: r.icon_text,

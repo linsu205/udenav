@@ -67,32 +67,41 @@
   .group-head h2{margin:0;font-size:19px;font-weight:700}
   .group-head .desc{font-size:13px;color:var(--text-dim)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px}
-  .card{display:flex;align-items:center;gap:12px;background:var(--card-bg);border:1px solid rgba(255,255,255,.08);
+  .card{position:relative;display:flex;align-items:center;gap:12px;background:var(--card-bg);border:1px solid rgba(255,255,255,.08);
     border-radius:var(--radius);height:70px;padding:11px 14px;cursor:pointer;transition:transform .18s,box-shadow .18s,background .18s;
     box-shadow:0 4px 16px rgba(0,0,0,.18);overflow:hidden}
-  .card:hover{transform:translateY(-3px);background:var(--card-bg-hover);
+  /* 卡片与图标卡片共用同一套 hover 动画：背景变实、抬升 3px、同一组阴影 */
+  .card:hover,.mini:hover{transform:translateY(-3px);background:var(--card-bg-hover);
     box-shadow:0 14px 34px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.06),0 0 22px rgba(24,160,88,.16)}
   .card .ic{flex:0 0 46px;width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;
     font-size:20px;font-weight:700;color:#fff;overflow:hidden}
   .card .ic img{width:100%;height:100%;object-fit:cover}
   .card .body{min-width:0}
-  .card .title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .title{font-size:var(--fs,15px);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card .dsc{font-size:12px;color:var(--text-dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* 内网角标：后台给这张卡配了内网地址时，前台一眼看出「内网地址已配置」 */
+  .card .lan-tag,.mini .lan-tag{position:absolute;top:7px;right:8px;font-size:10px;font-weight:700;line-height:1;
+    padding:3px 5px;border-radius:6px;background:rgba(24,160,88,.92);color:#fff;letter-spacing:.5px;
+    box-shadow:0 2px 8px rgba(0,0,0,.28);z-index:2}
   .empty{color:var(--text-dim);font-size:14px;padding:24px 4px}
   /* ---------- 小图标模式（card_style=icon，参照 sun-panel「图标」） ---------- */
   .grid.icons{grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:14px}
-  .mini{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 4px 8px;border-radius:14px;
-    cursor:pointer;transition:transform .18s,background .18s}
-  .mini:hover{transform:translateY(-3px);background:rgba(255,255,255,.07)}
-  html[data-theme="light"] .mini:hover{background:rgba(31,35,40,.06)}
+  .mini{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 4px 8px;border-radius:14px;
+    cursor:pointer;transition:transform .18s,box-shadow .18s,background .18s}
   .mini .mic{width:70px;height:70px;border-radius:18px;background:#8a8e93;display:flex;align-items:center;justify-content:center;
     overflow:hidden;box-shadow:0 6px 10px rgba(0,0,0,.18),0 14px 26px rgba(0,0,0,.26)}
-  /* 图片图标内缩居中（约 68%），四周露出灰色底板 */
+  /* 未设置背景色时：底板与卡片同款玻璃（同 --card-bg + 细边 + 轻阴影），不再用纯灰实色 */
+  .mini .mic.plain{background:var(--card-bg);border:1px solid rgba(255,255,255,.08);
+    box-shadow:0 4px 16px rgba(0,0,0,.18)}
+  html[data-theme="light"] .mini .mic.plain{border-color:rgba(31,35,40,.10);box-shadow:0 4px 16px rgba(31,35,40,.14)}
+  /* 图片图标内缩居中（约 68%），四周露出底板 */
   .mini .mic img{width:68%;height:68%;object-fit:contain;border-radius:9px}
-  /* 无图标时：文字直接显示在底板上（默认背景透明，仅灰底板+白字） */
-  .mini .mic .mtext{max-width:88%;font-size:17px;font-weight:700;color:#fff;letter-spacing:.5px;
+  /* 无图标时：文字直接显示在底板上 */
+  .mini .mic .mtext{max-width:92%;font-size:var(--fs,17px);font-weight:700;color:#fff;letter-spacing:.5px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,.25)}
-  .mini .mname{max-width:92px;font-size:14px;color:var(--text);text-align:center;
+  /* 玻璃底板上，浅色主题改用深色字，避免白字看不见 */
+  html[data-theme="light"] .mini .mic.plain .mtext{color:var(--text);text-shadow:none}
+  .mini .mname{max-width:92px;font-size:var(--fs,14px);color:var(--text);text-align:center;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   footer{margin-top:46px;text-align:center;font-size:12px;color:var(--text-dim)}
 
@@ -111,33 +120,24 @@
   .group{opacity:0}
   .group.in{animation:rise .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) both}
   .card,.mini{opacity:0}
-  .card.in,.mini.in{animation:cardIn .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) both}
+  /* 用 backwards 而不是 both：both 会把末帧的 transform 永久钉住，导致 :hover 的 translateY 失效 */
+  .card.in,.mini.in{opacity:1;animation:cardIn .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) backwards}
   /* 偏好减少动效时不做动画 */
   @media(prefers-reduced-motion:reduce){
     header,.search{animation:none}
     .group,.card,.mini{opacity:1!important;animation:none!important;transition:none!important}
   }
-  .theme{position:fixed;right:18px;bottom:18px;z-index:30}
-  /* 管理入口：胶囊滑块开关（参照 sun-panel）—— 左「前台」右「后台」，点一下白色滑块右滑并弹出后台 */
-  .admin-toggle{position:fixed;right:18px;top:18px;z-index:30;width:82px;height:40px;border-radius:13px;padding:3px;
-    cursor:pointer;border:1px solid rgba(255,255,255,.08);background:var(--card-bg);
-    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-    box-shadow:0 8px 22px rgba(0,0,0,.30);transition:background .22s,box-shadow .22s,transform .18s}
-  html[data-theme="light"] .admin-toggle{border-color:rgba(31,35,40,.10);box-shadow:0 8px 22px rgba(31,35,40,.16)}
-  .admin-toggle:hover{background:var(--card-bg-hover)}
-  .admin-toggle:active{transform:scale(.96)}
-  .admin-toggle .row{position:relative;display:flex;width:100%;height:100%}
-  .admin-toggle .slot{position:relative;z-index:1;flex:1;display:flex;align-items:center;justify-content:center;
-    color:var(--text-dim);transition:color .32s}
-  .admin-toggle .slot svg{width:17px;height:17px;display:block}
-  .admin-toggle .slot-front{color:var(--text)}
-  .admin-toggle .thumb{position:absolute;z-index:0;top:0;left:0;width:50%;height:100%;border-radius:10px;
-    background:rgba(255,255,255,.20);box-shadow:0 2px 10px rgba(0,0,0,.22);
-    transition:transform .38s cubic-bezier(.34,1.24,.5,1)}
-  html[data-theme="light"] .admin-toggle .thumb{background:#fff;box-shadow:0 2px 9px rgba(31,35,40,.20),0 0 0 1px rgba(31,35,40,.07)}
-  .admin-toggle.on .thumb{transform:translateX(100%)}
-  .admin-toggle.on .slot-front{color:var(--text-dim)}
-  .admin-toggle.on .slot-admin{color:var(--text)}
+  /* 右上角工具条：sun-panel 同款 NButtonGroup —— 半透明深灰底 #2a2a2a6b + 白色 SVG 图标。
+     三个按钮依次是「内外网切换 / 主题切换 / 管理后台」，尺寸 40x40，拼成一个圆角整块 */
+  .toolbar{position:fixed;right:18px;top:18px;z-index:30;display:flex;border-radius:12px;overflow:hidden;
+    box-shadow:0 0 10px 2px rgba(0,0,0,.20)}
+  .tb{width:40px;height:40px;padding:0;border:0;border-left:1px solid rgba(255,255,255,.14);
+    background:#2a2a2a6b;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    transition:background .2s,transform .15s}
+  .tb:first-child{border-left:0}
+  .tb svg{width:20px;height:20px;display:block;pointer-events:none}
+  .tb:hover{background:#3a3a3ab3}
+  .tb:active{transform:scale(.94)}
   .modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;
     opacity:0;visibility:hidden;pointer-events:none;transition:opacity .2s,visibility .2s}
   .modal.open{opacity:1;visibility:visible;pointer-events:auto}
@@ -182,18 +182,17 @@
   <footer id="footer"></footer>
 </div>
 
-<button class="admin-toggle" id="adminBtn" title="管理后台" aria-label="管理后台" aria-pressed="false">
-  <span class="row">
-    <span class="slot slot-front" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19"/><path d="M12 2.5a15 15 0 0 1 0 19 15 15 0 0 1 0-19"/></svg>
-    </span>
-    <span class="slot slot-admin" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="currentColor"><rect x="3.2" y="3.2" width="7.4" height="7.4" rx="2.1"/><rect x="13.4" y="3.2" width="7.4" height="7.4" rx="2.1"/><rect x="3.2" y="13.4" width="7.4" height="7.4" rx="2.1"/><rect x="13.4" y="13.4" width="7.4" height="7.4" rx="2.1"/></svg>
-    </span>
-    <span class="thumb"></span>
-  </span>
-</button>
-<button class="icon-btn theme" id="themeBtn" title="切换主题">🌙</button>
+<div class="toolbar">
+  <button class="tb" id="lanBtn" title="切换到公网模式" aria-label="内外网切换" aria-pressed="true">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 20v-3q0-.825.588-1.412T5 15h1v-2q0-.825.588-1.412T8 11h3V9h-1q-.825 0-1.412-.587T8 7V4q0-.825.588-1.412T10 2h4q.825 0 1.413.588T16 4v3q0 .825-.587 1.413T14 9h-1v2h3q.825 0 1.413.588T18 13v2h1q.825 0 1.413.588T21 17v3q0 .825-.587 1.413T19 22h-4q-.825 0-1.412-.587T13 20v-3q0-.825.588-1.412T15 15h1v-2H8v2h1q.825 0 1.413.588T11 17v3q0 .825-.587 1.413T9 22H5q-.825 0-1.412-.587T3 20Zm7-13h4V4h-4v3ZM5 20h4v-3H5v3Zm10 0h4v-3h-4v3Z"/></svg>
+  </button>
+  <button class="tb" id="themeBtn" title="切换主题" aria-label="切换主题">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8C13.02 2.96 12.56 3 12 3z"/></svg>
+  </button>
+  <button class="tb" id="adminBtn" title="管理后台" aria-label="管理后台">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3.2" y="3.2" width="7.4" height="7.4" rx="2.1"/><rect x="13.4" y="3.2" width="7.4" height="7.4" rx="2.1"/><rect x="3.2" y="13.4" width="7.4" height="7.4" rx="2.1"/><rect x="13.4" y="13.4" width="7.4" height="7.4" rx="2.1"/></svg>
+  </button>
+</div>
 
 <div class="modal" id="modal">
   <div class="box">
@@ -204,7 +203,7 @@
 
 <script>
 const $ = s => document.querySelector(s);
-const state = { config: {}, groups: [], engine: null, engines: [] };
+const state = { config: {}, groups: [], engine: null, engines: [], intranet: false };
 
 /* ---------- 渲染 ---------- */
 function applyConfig(c) {
@@ -213,7 +212,7 @@ function applyConfig(c) {
   $('#logo').textContent = c.logo_text || 'udenav';
   $('#fav').setAttribute('href', String(c.favicon||'').trim() || $('#fav').dataset.def);
   document.documentElement.dataset.theme = c.theme || 'dark';
-  $('#themeBtn').textContent = (c.theme || 'dark') === 'dark' ? '🌙' : '☀️';
+  $('#themeBtn').innerHTML = svgOf(ICON[(c.theme || 'dark') === 'dark' ? 'moon' : 'sun']);
   const bg = c.background_image;
   if (bg) { $('#bg').style.backgroundImage = `url("${bg.replace(/"/g,'')}" )`; $('#bg').style.display = 'block'; }
   else {
@@ -252,6 +251,60 @@ function renderEngines() {
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 function letter(t) { return (String(t || '?').trim()[0] || '?').toUpperCase(); }
 
+/* ---------- 名称显示规则 ----------
+   1) 最多显示 4 个字宽：中文/全角算 1 个字，英文字母数字算半个字
+      （这样「哔哩哔哩」=4 个字宽，「GitHub」=3 个字宽，不会被砍成「GitH」）
+   2) 超出 4 个字宽就截断，末尾加省略号
+   3) 字号随字数递减：1 个字最大，4 个字最小 */
+const NAME_UNITS_MAX = 4;
+const WIDE_CHAR = /[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF\u3000\u2026]/;
+const unitOf = ch => WIDE_CHAR.test(ch) ? 1 : 0.5;
+function nameUnits(s) { let u = 0; for (const ch of String(s ?? '')) u += unitOf(ch); return u; }
+function clipName(s) {
+  const str = String(s ?? '');
+  if (nameUnits(str) <= NAME_UNITS_MAX) return str;
+  let out = '', u = 0;
+  for (const ch of str) {
+    const w = unitOf(ch);
+    if (u + w > NAME_UNITS_MAX - 1) break;   // 留 1 个字宽给省略号
+    out += ch; u += w;
+  }
+  return out + '…';
+}
+/* 各处名称的字号档位：键=字宽档（向上取整），值=px */
+const FS_TEXT = { 1: 32, 2: 26, 3: 20, 4: 15 };   // 底板上的大字（70px 底板内要放得下）
+const FS_NAME = { 1: 22, 2: 18, 3: 15, 4: 13 };   // 底板下方的名称
+const FS_CARD = { 1: 22, 2: 19, 3: 16, 4: 15 };   // 卡片标题
+function fsOf(t, table) {
+  const u = Math.max(1, Math.min(NAME_UNITS_MAX, Math.ceil(nameUnits(t))));
+  return table[u];
+}
+
+/* 兜底：字宽算出来的字号仍可能放不下（如英文单词偏宽），
+   渲染后量一次真实宽度，塞不下就按比例缩一次 */
+const FS_FLOOR = { mtext: 11, mname: 10, title: 11 };
+function fitNames(root) {
+  (root || document).querySelectorAll('.mtext, .mname, .title').forEach(el => {
+    if (!el.textContent) return;
+    const key = el.classList.contains('title') ? 'title' : (el.classList.contains('mtext') ? 'mtext' : 'mname');
+    const floor = FS_FLOOR[key] || 11;
+    /* 可用宽度：mtext 跟着底板走（92%），mname/title 走自身 max-width */
+    let limit;
+    if (key === 'mtext') {
+      const plate = el.parentElement;
+      limit = plate ? plate.clientWidth * 0.92 : 0;
+    } else {
+      limit = el.clientWidth;
+    }
+    if (!limit) return;
+    const w = el.scrollWidth;              // 当前字号下的文字实际宽度
+    if (w <= limit + 0.5) return;
+    const cur = parseFloat(getComputedStyle(el).fontSize);
+    const next = Math.max(floor, cur * limit / w);
+    el.style.fontSize = next.toFixed(1) + 'px';
+  });
+}
+
 function iconHtml(item) {
   if (item.iconUrl) return `<img src="${esc(item.iconUrl)}" alt="" loading="lazy">`;
   return `<span>${esc(letter(item.title))}</span>`;
@@ -274,32 +327,45 @@ function renderGroups() {
     grid.className = g.cardStyle === 'icon' ? 'grid icons' : 'grid';
     g.items.forEach(it => {
       if (g.cardStyle === 'icon') {
-        /* 小图标模式（参照 sun-panel）：灰色底板（显式设置背景色则用之）+ 内缩图标或直接文字，底部名称 */
+        /* 小图标模式（参照 sun-panel）：未设背景色用玻璃底板（同卡片），设了则用实色 */
         const plate = it.color ? ` style="background:${esc(it.color)}"` : '';
+        const micCls = it.color ? 'mic' : 'mic plain';
+        const short = clipName(it.title);
         const inner = it.iconUrl
           ? `<img src="${esc(it.iconUrl)}" alt="" loading="lazy">`
-          : `<span class="mtext">${esc(it.title)}</span>`;
+          : `<span class="mtext" style="--fs:${fsOf(short, FS_TEXT)}px">${esc(short)}</span>`;
         const c = document.createElement('div');
         c.className = 'mini';
-        c.innerHTML = `<span class="mic"${plate}>${inner}</span><span class="mname">${esc(it.title)}</span>`;
+        c.innerHTML = `${it.lanUrl ? '<span class="lan-tag">内</span>' : ''}<span class="${micCls}"${plate}>${inner}</span>`
+          + `<span class="mname" style="--fs:${fsOf(short, FS_NAME)}px" title="${esc(it.title)}">${esc(short)}</span>`;
         c.onclick = () => openUrl(it);
         grid.appendChild(c);
         return;
       }
       const c = document.createElement('div');
       c.className = 'card';
-      c.innerHTML = `<div class="ic" style="background:${esc(it.color || '#2a2a2a')}">${iconHtml(it)}</div>
-        <div class="body"><div class="title">${esc(it.title)}</div>${it.description ? `<div class="dsc">${esc(it.description)}</div>` : ''}</div>`;
+      const short = clipName(it.title);
+      c.innerHTML = `${it.lanUrl ? '<span class="lan-tag">内</span>' : ''}<div class="ic" style="background:${esc(it.color || '#2a2a2a')}">${iconHtml(it)}</div>`
+        + `<div class="body"><div class="title" style="--fs:${fsOf(short, FS_CARD)}px" title="${esc(it.title)}">${esc(short)}</div>${it.description ? `<div class="dsc">${esc(it.description)}</div>` : ''}</div>`;
       c.onclick = () => openUrl(it);
       grid.appendChild(c);
     });
     sec.appendChild(grid);
     box.appendChild(sec);
   });
+  /* 名称按实际渲染宽度再兜底缩一次（英文偏宽的情况） */
+  fitNames(box);
+}
+
+/* 内外网互为兜底：开关选「内网」但这张卡没配内网地址 → 直接开外网地址；反之没配外网 → 开内网地址 */
+function pickUrl(it) {
+  const wan = String(it.url || '').trim();
+  const lan = String(it.lanUrl || '').trim();
+  return state.intranet ? (lan || wan) : (wan || lan);
 }
 
 function openUrl(it) {
-  const url = it.url;
+  const url = pickUrl(it);
   if (!url) return;
   if (it.openMethod === 3) {
     $('#modalTitle').textContent = it.title || url;
@@ -321,6 +387,32 @@ function tick() {
   $('#date').textContent = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 ${WEEK[d.getDay()]}`;
 }
 
+/* ---------- 内外网切换（sun-panel 同款：图标就是当前模式，点一下切到另一种） ----------
+   lan 模式显示 lan-outline-rounded 图标，wan 模式显示 mdi:wan 图标；
+   只决定点卡片时打开哪个地址，选择记在本机；某个地址没配就回退到另一个 */
+const LAN_KEY = 'udenav_intranet';
+const svgOf = p => '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' + p + '</svg>';
+const ICON = {
+  lan: '<path d="M3 20v-3q0-.825.588-1.412T5 15h1v-2q0-.825.588-1.412T8 11h3V9h-1q-.825 0-1.412-.587T8 7V4q0-.825.588-1.412T10 2h4q.825 0 1.413.588T16 4v3q0 .825-.587 1.413T14 9h-1v2h3q.825 0 1.413.588T18 13v2h1q.825 0 1.413.588T21 17v3q0 .825-.587 1.413T19 22h-4q-.825 0-1.412-.587T13 20v-3q0-.825.588-1.412T15 15h1v-2H8v2h1q.825 0 1.413.588T11 17v3q0 .825-.587 1.413T9 22H5q-.825 0-1.412-.587T3 20Zm7-13h4V4h-4v3ZM5 20h4v-3H5v3Zm10 0h4v-3h-4v3Z"/>',
+  wan: '<path d="M12 2a8 8 0 0 0-8 8c0 4.03 3 7.42 7 7.93V19h-1a1 1 0 0 0-1 1H2v2h7a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1h7v-2h-7a1 1 0 0 0-1-1h-1v-1.07c4-.5 7-3.9 7-7.93a8 8 0 0 0-8-8m0 2s.74 1.28 1.26 3h-2.52C11.26 5.28 12 4 12 4m-2.23.43c-.27.5-.68 1.41-1.03 2.57H6.81C7.5 5.84 8.5 4.93 9.77 4.43m4.46.01c1.27.5 2.27 1.4 2.96 2.56h-1.93c-.35-1.16-.76-2.07-1.03-2.56M6.09 9h2.23c-.04.33-.07.66-.07 1c0 .34.03.67.07 1H6.09a5.551 5.551 0 0 1 0-2m4.23 0h3.36c.04.33.07.66.07 1c0 .34-.03.67-.07 1h-3.36c-.04-.33-.07-.66-.07-1c0-.34.03-.67.07-1m5.36 0h2.23a5.551 5.551 0 0 1 0 2h-2.23c.04-.33.07-.66.07-1c0-.34-.03-.67-.07-1m-8.87 4h1.93c.35 1.16.76 2.07 1.03 2.56c-1.27-.5-2.27-1.4-2.96-2.56m3.93 0h2.52c-.52 1.72-1.26 3-1.26 3s-.74-1.28-1.26-3m4.52 0h1.93c-.69 1.16-1.69 2.07-2.96 2.57c.27-.5.68-1.41 1.03-2.57Z"/>',
+  moon: '<path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8C13.02 2.96 12.56 3 12 3z"/>',
+  sun:  '<path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10m0-5a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0V3a1 1 0 0 1 1-1m0 18a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0v-2a1 1 0 0 1 1-1M4.22 5.64a1 1 0 0 1 1.41 0l1.42 1.41a1 1 0 1 1-1.42 1.42L4.22 7.05a1 1 0 0 1 0-1.41m11.31 9.9a1 1 0 0 1 1.41 0l1.42 1.41a1 1 0 0 1-1.42 1.42l-1.41-1.42a1 1 0 0 1 0-1.41M3 12a1 1 0 0 1 1-1h2a1 1 0 0 1 0 2H4a1 1 0 0 1-1-1m16 0a1 1 0 0 1 1-1h2a1 1 0 0 1 0 2h-2a1 1 0 0 1-1-1M4.47 17.66a1 1 0 0 1 0 1.41L3.05 20.49a1 1 0 1 1-1.41-1.42l1.41-1.41a1 1 0 0 1 1.42 0m9.9-11.31a1 1 0 0 1 0-1.42l1.42-1.41a1 1 0 0 1 1.41 1.41l-1.41 1.42a1 1 0 0 1-1.42 0z"/>'
+};
+/* 默认「内网」：首次访问图标为 lan，点一下切到 wan 公网 */
+state.intranet = localStorage.getItem(LAN_KEY) !== '0';
+function applyLanMode() {
+  const b = $('#lanBtn');
+  b.innerHTML = svgOf(ICON[state.intranet ? 'lan' : 'wan']);
+  b.setAttribute('aria-pressed', String(!!state.intranet));
+  b.title = state.intranet ? '切换到公网模式' : '切换到内网模式';
+}
+$('#lanBtn').onclick = () => {
+  state.intranet = !state.intranet;
+  localStorage.setItem(LAN_KEY, state.intranet ? '1' : '0');
+  applyLanMode();
+};
+applyLanMode();
+
 /* ---------- 主题切换 ---------- */
 $('#themeBtn').onclick = async () => {
   const cur = document.documentElement.dataset.theme;
@@ -340,21 +432,17 @@ function pushTheme() {
 }
 $('#modalFrame').addEventListener('load', pushTheme);
 
-/* 打开后台：滑块右滑到「后台」 */
+/* 打开后台弹窗 */
 function openAdmin() {
   $('#modalTitle').textContent = '管理后台';
   $('#modalFrame').src = '/admin';
-  $('#adminBtn').classList.add('on');
-  $('#adminBtn').setAttribute('aria-pressed', 'true');
   $('#modal').classList.add('open');
 }
 
-/* 关闭弹窗：滑块滑回「前台」 */
+/* 关闭弹窗 */
 function closeModal() {
   $('#modal').classList.remove('open');
   $('#modalFrame').src = '';
-  $('#adminBtn').classList.remove('on');
-  $('#adminBtn').setAttribute('aria-pressed', 'false');
 }
 
 $('#adminBtn').onclick = openAdmin;
