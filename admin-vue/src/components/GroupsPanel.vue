@@ -68,7 +68,10 @@ async function delIcon(id: number) {
   ElMessage.success('已删除，前台已同步');
 }
 
-function onDragStart(kind: 'group' | 'icon', id: number, gid?: number) {
+function onDragStart(kind: 'group' | 'icon', id: number, gid?: number, e?: DragEvent) {
+  /* 卡片行嵌在可拖动的分组卡里，dragstart 会冒泡到分组处理器，
+     把 dragSrc 覆盖成 group → 卡片拖动永远失效。必须掐断冒泡。 */
+  if (e) e.stopPropagation();
   dragSrc.value = { kind, id, gid };
 }
 
@@ -136,7 +139,7 @@ const dragClass = (kind: 'group' | 'icon') => ({ 'drag-target': dragSrc.value?.k
           <div class="g-items">
             <div class="item-row" v-for="it in g.items" :key="it.id"
                  :class="dragClass('icon')" draggable="true"
-                 @dragstart="onDragStart('icon', it.id, g.id)" @dragover.prevent @drop="onDrop('icon', it.id, g.id)">
+                 @dragstart="onDragStart('icon', it.id, g.id, $event)" @dragover.prevent @drop.stop="onDrop('icon', it.id, g.id)">
               <span class="item-grip"><el-icon><Rank /></el-icon></span>
               <div class="item-ico" :style="{ background: it.background_color || '#2b3036' }">
                 <img v-if="it.icon_url" :src="it.icon_url" />
