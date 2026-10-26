@@ -24,8 +24,13 @@ onMounted(() => { if (!store.groups.length) store.loadAll(); });
 
 async function saveGroup(g: Partial<Group> & { title: string }) {
   const isNew = gEdit.value === 'new';
-  if (isNew) await post('/api/admin/groups', g);
-  else await patch('/api/admin/groups/' + gEdit.value!.id, g);
+  try {
+    if (isNew) await post('/api/admin/groups', g);
+    else await patch('/api/admin/groups/' + gEdit.value!.id, g);
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败，请重试');
+    return; /* 保留弹窗和已填内容，别让用户白填 */
+  }
   gEdit.value = null;
   await store.loadAll();
   /* 新建的分组默认排在最后，自动展开便于接着填卡片 */
