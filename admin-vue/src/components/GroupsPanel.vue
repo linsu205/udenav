@@ -126,6 +126,7 @@ const dragClass = (kind: 'group' | 'icon') => ({ 'drag-target': dragSrc.value?.k
         <div class="g-title">
           {{ g.title }}
           <span class="g-count">{{ g.icon_count || 0 }} 张卡片</span>
+          <span v-if="g.public_show" class="g-badge" title="未登录的访客也能看到这个分组">免登录可见</span>
         </div>
         <span class="g-chev"><el-icon><ArrowRight /></el-icon></span>
         <div class="g-ops" @click.stop>
@@ -194,6 +195,12 @@ const dragClass = (kind: 'group' | 'icon') => ({ 'drag-target': dragSrc.value?.k
     font-size: 11.5px; font-weight: 400; color: var(--sp-dim);
     background: var(--sp-chip-bg); padding: 1px 8px; border-radius: 20px;
     flex: none;
+  }
+  /* 免登录可见的标识，和普通「张卡片」徽标区分开 */
+  .g-badge {
+    font-size: 11px; font-weight: 500; color: var(--sp-accent);
+    background: rgba(47, 191, 107, .12); border: 1px solid rgba(47, 191, 107, .28);
+    padding: 1px 8px; border-radius: 20px; flex: none;
   }
   .g-chev { color: var(--sp-dim); flex: none; display: flex; transition: transform .24s ease; }
   .group:not(.closed) .g-chev { transform: rotate(90deg); }

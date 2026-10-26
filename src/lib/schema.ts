@@ -23,6 +23,8 @@ export interface GroupRow {
   icon_url: string;
   sort: number;
   public_hide: number;
+  /** 1 = 免登录可见；0 = 只有登录后才显示（默认） */
+  public_show: number;
   card_style: string;
   created_by: number | null;
   created_at: number;
@@ -53,7 +55,7 @@ export interface ConfigRow {
   updated_at: number;
 }
 
-const SCHEMA_VERSION = '1.0';
+const SCHEMA_VERSION = '1.1';
 
 export const DEFAULT_CONFIG = {
   logo_text: 'udenav',
@@ -97,6 +99,7 @@ CREATE TABLE IF NOT EXISTS item_icon_group (
   icon_url TEXT NOT NULL DEFAULT '',
   sort INTEGER NOT NULL DEFAULT 0,
   public_hide INTEGER NOT NULL DEFAULT 0,
+  public_show INTEGER NOT NULL DEFAULT 0,
   card_style TEXT NOT NULL DEFAULT 'info',
   created_by INTEGER,
   created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
@@ -166,6 +169,15 @@ export function ensureSchema(db: D1Database): Promise<void> {
     // 2) 首次冷启动或版本变更：写版本号 + 种子数据
     const row = await db.prepare('SELECT value FROM schema_meta WHERE key = ?').bind('version').first<{ value: string }>();
     if (row && row.value === SCHEMA_VERSION) return;
+
+    // 版本迁移（只在新版本首次冷启动时跑一次）
+    // 1.0 → 1.1：分组新增 public_show（1 = 免登录可见）
+    // 新库建表时已有该列，ALTER 会报 duplicate column，catch 掉即可
+    await db
+      .prepare('ALTER TABLE item_icon_group ADD COLUMN public_show INTEGER NOT NULL DEFAULT 0')
+      .run()
+      .catch(() => {});
+
     await db
       .prepare('INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?, ?)')
       .bind('version', SCHEMA_VERSION)

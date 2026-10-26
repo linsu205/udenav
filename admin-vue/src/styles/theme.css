@@ -119,8 +119,12 @@ html.dark {
   --el-mask-color: rgba(0, 0, 0, .55);
 }
 
-html, body { height: 100%; }
-body {
+/* 只作用于后台挂载点。
+   后台现在既可能独立成页（#adminRoot 直接挂在 body 下），也可能内嵌在访客页弹窗里，
+   所以这里绝不能写 body / html —— 否则会把访客页的底色、字体、滚动条一起改掉。
+   变量（--sp-* / --el-*）仍留在 :root，因为 el-select 下拉、el-message 这类浮层
+   会被 teleport 到 body 下，不在 #adminRoot 里面，靠继承拿不到变量。 */
+#adminRoot {
   margin: 0;
   background: var(--sp-bg);
   color: var(--sp-text);
@@ -129,6 +133,7 @@ body {
   -webkit-font-smoothing: antialiased;
   transition: background .2s, color .2s;
 }
+#adminRoot, #adminRoot *, #adminRoot *::before, #adminRoot *::after { box-sizing: border-box; }
 
 /* ---------- 通用卡片 / 页面骨架 ---------- */
 .sp-page { max-width: 980px; }
@@ -270,16 +275,32 @@ body {
   border-radius: 10px;
 }
 
-/* ---------- 滚动条 ---------- */
-*::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: var(--sp-scrollbar); border-radius: 4px; }
-*::-webkit-scrollbar-thumb:hover { background: var(--sp-scrollbar-hover); }
-* { scrollbar-width: thin; scrollbar-color: var(--sp-scrollbar) transparent; }
+/* ---------- 滚动条（只作用于后台，别动访客页） ---------- */
+#adminRoot::-webkit-scrollbar,
+#adminRoot ::-webkit-scrollbar,
+.el-select-dropdown::-webkit-scrollbar,
+.el-scrollbar__wrap::-webkit-scrollbar { width: 8px; height: 8px; }
+#adminRoot::-webkit-scrollbar-track,
+#adminRoot ::-webkit-scrollbar-track,
+.el-select-dropdown::-webkit-scrollbar-track,
+.el-scrollbar__wrap::-webkit-scrollbar-track { background: transparent; }
+#adminRoot::-webkit-scrollbar-thumb,
+#adminRoot ::-webkit-scrollbar-thumb,
+.el-select-dropdown::-webkit-scrollbar-thumb,
+.el-scrollbar__wrap::-webkit-scrollbar-thumb { background: var(--sp-scrollbar); border-radius: 4px; }
+#adminRoot::-webkit-scrollbar-thumb:hover,
+#adminRoot ::-webkit-scrollbar-thumb:hover,
+.el-select-dropdown::-webkit-scrollbar-thumb:hover,
+.el-scrollbar__wrap::-webkit-scrollbar-thumb:hover { background: var(--sp-scrollbar-hover); }
+#adminRoot,
+#adminRoot *,
+.el-select-dropdown,
+.el-scrollbar__wrap { scrollbar-width: thin; scrollbar-color: var(--sp-scrollbar) transparent; }
 
 /* ---------- 登录页 ---------- */
 .sp-login {
-  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+  /* --adm-h 由 mount.ts 按挂载容器实测高度写入；独立成页时退回 100vh */
+  min-height: var(--adm-h, 100vh); display: flex; align-items: center; justify-content: center; padding: 20px;
   background:
     radial-gradient(ellipse 60% 45% at 18% 8%, rgba(47, 191, 107, .07), transparent),
     radial-gradient(ellipse 50% 40% at 85% 90%, rgba(64, 158, 255, .06), transparent),

@@ -7,7 +7,7 @@ import Dashboard from './components/Dashboard.vue';
 
 const store = useStore();
 onMounted(async () => {
-  await store.checkLogin();
+  await Promise.all([store.checkLogin(), store.checkSetup()]);
   if (store.loggedIn) await store.loadAll();
   else store.loading = false;
 });
@@ -27,7 +27,7 @@ watch(() => store.config?.theme, t => applyTheme(t), { immediate: true });
 
 <style scoped>
   .booting {
-    min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 12px;
+    min-height: var(--adm-h, 100vh); display: flex; align-items: center; justify-content: center; gap: 12px;
     color: var(--sp-dim); font-size: 14px; background: var(--sp-bg);
   }
   .spin {

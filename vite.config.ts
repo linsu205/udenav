@@ -4,22 +4,26 @@ import { resolve } from 'path';
 
 // Vue3 admin 构建配置
 // 输入：项目根目录的 admin.html（引用 ./admin-vue/src/main.ts）
-// 输出：public/admin.html + public/assets/...
+// 输出：public/admin-assets/（整个目录每次构建清空重建，不会残留旧哈希文件）
+//       构建完成后由 scripts/build-admin.mjs 把 admin.html 提到 public/admin.html
 // 部署时 wrangler 会把 public/ 上传，访问 /admin 返回 admin.html
 export default defineConfig({
   plugins: [vue()],
-  base: '/',
-  // 关闭 publicDir 复制（public/ 就是输出目录本身，避免自引用警告）
+  // 资源前缀必须跟着产出目录走：/admin-assets/admin.[hash].js
+  base: '/admin-assets/',
+  // 关闭 publicDir 复制（输出目录就在 public/ 里面，避免自引用）
   publicDir: false,
   build: {
-    outDir: resolve(__dirname, 'public'),
-    emptyOutDir: false, // 保留 public/index.html 访客页
+    outDir: resolve(__dirname, 'public/admin-assets'),
+    // 只清空 admin-assets 这一个子目录，public/index.html 访客页不受影响
+    emptyOutDir: true,
     rollupOptions: {
       input: { admin: resolve(__dirname, 'admin.html') },
       output: {
-        entryFileNames: 'assets/admin.[hash].js',
-        chunkFileNames: 'assets/[name].[hash].js',
-        assetFileNames: 'assets/admin.[hash][extname]',
+        // 目录本身已经是 admin-assets，文件名里不再重复一层 assets/
+        entryFileNames: 'admin.[hash].js',
+        chunkFileNames: '[name].[hash].js',
+        assetFileNames: 'admin.[hash][extname]',
       },
     },
     assetsInlineLimit: 4096,

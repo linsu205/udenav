@@ -2,11 +2,13 @@
 import { ref, computed } from 'vue';
 import { useStore } from '../store';
 import { ElMessage } from 'element-plus';
-import { Setting, FolderOpened, Files, TrendCharts, Back, SwitchButton } from '@element-plus/icons-vue';
+import { closeHome } from '../lib/notify';
+import { Setting, FolderOpened, Files, TrendCharts, User, Back, SwitchButton, ArrowRight } from '@element-plus/icons-vue';
 import ConfigPanel from './ConfigPanel.vue';
 import GroupsPanel from './GroupsPanel.vue';
 import BackupPanel from './BackupPanel.vue';
 import StatsPanel from './StatsPanel.vue';
+import UsersPanel from './UsersPanel.vue';
 
 const store = useStore();
 const active = ref(store.tab || 'config');
@@ -16,10 +18,11 @@ const menus = [
   { key: 'groups', label: '分组与卡片', icon: FolderOpened, color: '#e6a23c' },
   { key: 'backup', label: '备份与导入', icon: Files, color: '#409eff' },
   { key: 'stats', label: '访问统计', icon: TrendCharts, color: '#a78bfa' },
+  { key: 'users', label: '用户管理', icon: User, color: '#f0a020' },
 ];
 
 const current = computed(() => ({
-  config: ConfigPanel, groups: GroupsPanel, backup: BackupPanel, stats: StatsPanel,
+  config: ConfigPanel, groups: GroupsPanel, backup: BackupPanel, stats: StatsPanel, users: UsersPanel,
 }[active.value] || ConfigPanel));
 
 async function logout() {
@@ -27,12 +30,16 @@ async function logout() {
   ElMessage.success('已退出');
 }
 
+/* 返回前台：内嵌时由访客页关掉弹窗，独立访问时回首页 */
 function goHome() {
-  if (window.self !== window.top) {
-    window.top.postMessage({ type: 'udenav:close-modal' }, '*');
-  } else {
-    location.href = '/';
-  }
+  closeHome();
+}
+
+/* 点账号卡 = 去「用户管理」改自己的用户名 / 密码 */
+function openAccount() {
+  active.value = 'users';
+  store.tab = 'users';
+  store.usersHit++;   // 让用户管理页把自己那一行高亮一下，指明「改的是这里」
 }
 </script>
 
@@ -56,10 +63,14 @@ function goHome() {
       </nav>
 
       <div class="side-foot">
-        <div class="who">
+        <button type="button" class="who" title="账号设置：修改用户名 / 密码" @click="openAccount">
+          <span class="who-avatar">{{ (store.user?.username || '?').charAt(0).toUpperCase() }}</span>
           <span class="who-name">{{ store.user?.username }}</span>
-          <span class="who-role">{{ store.user?.role }}</span>
-        </div>
+          <span class="who-tail">
+            <span class="who-dot"></span>
+            <el-icon class="who-go" :size="13"><ArrowRight /></el-icon>
+          </span>
+        </button>
         <button class="foot-btn" @click="goHome">
           <el-icon :size="14"><Back /></el-icon> 返回前台
         </button>
@@ -77,7 +88,8 @@ function goHome() {
 </template>
 
 <style scoped>
-  .dash { display: flex; min-height: 100vh; background: var(--sp-bg); }
+  /* --adm-h：独立成页 = 视口高；内嵌弹窗 = 挂载容器实测高（mount.ts 写入） */
+  .dash { display: flex; min-height: var(--adm-h, 100vh); background: var(--sp-bg); }
 
   /* 左侧 */
   .side {
@@ -85,7 +97,7 @@ function goHome() {
     padding: 18px 14px 16px;
     background: var(--sp-panel);
     border-right: 1px solid var(--sp-card-border);
-    position: sticky; top: 0; height: 100vh; box-sizing: border-box;
+    position: sticky; top: 0; height: var(--adm-h, 100vh); box-sizing: border-box;
   }
   .side-logo {
     display: flex; align-items: center; gap: 9px;
@@ -110,13 +122,51 @@ function goHome() {
   .menu-item.active { background: var(--sp-card-in); color: var(--sp-accent); font-weight: 600; }
 
   .side-foot { display: flex; flex-direction: column; gap: 7px; padding-top: 14px; }
-  .who { padding: 0 6px 8px; display: flex; align-items: baseline; gap: 7px; }
-  .who-name { color: var(--sp-text); font-size: 13px; font-weight: 600; }
-  .who-role {
-    font-size: 11px; color: var(--sp-accent);
-    background: rgba(47, 191, 107, .1); border: 1px solid rgba(47, 191, 107, .3);
-    padding: 0 7px; border-radius: 20px; line-height: 18px;
+
+  /* 账号卡：把裸文字收进一张小卡片，和上面两个按钮形成「身份 → 操作」的层次。
+     整张卡是按钮，点了直接进「用户管理」。 */
+  .who {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    padding: 7px 9px 7px 8px; margin-bottom: 3px;
+    background: var(--sp-card-in);
+    border: 1px solid var(--sp-card-border);
+    border-radius: 10px;
+    font-family: inherit; text-align: left; cursor: pointer;
+    transition: background .15s, border-color .15s;
   }
+  .who:hover { background: var(--sp-hover); border-color: rgba(47, 191, 107, .45); }
+  .who:focus-visible { outline: 2px solid var(--sp-accent); outline-offset: 2px; }
+  .who:active { transform: translateY(.5px); }
+  .who-avatar {
+    flex: 0 0 26px; width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12.5px; font-weight: 700; color: #fff;
+    background: linear-gradient(135deg, #2fbf6b, #1d8f4e);
+    box-shadow: 0 2px 8px rgba(47, 191, 107, .28);
+  }
+  .who-name {
+    flex: 1; min-width: 0;
+    font-size: 13px; font-weight: 600; color: var(--sp-text); letter-spacing: .3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* 尾部 14px 固定槽：默认显示登录状态点，悬停时原地换成「进入」箭头，不产生宽度跳动 */
+  .who-tail {
+    position: relative; flex: 0 0 14px; width: 14px; height: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .who-dot {
+    position: absolute; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--sp-accent);
+    box-shadow: 0 0 0 3px rgba(47, 191, 107, .14);
+    transition: opacity .15s, transform .15s;
+  }
+  .who-go {
+    position: absolute; color: var(--sp-accent);
+    opacity: 0; transform: translateX(-3px);
+    transition: opacity .15s, transform .15s;
+  }
+  .who:hover .who-dot { opacity: 0; transform: scale(.6); }
+  .who:hover .who-go { opacity: 1; transform: translateX(0); }
   .foot-btn {
     display: flex; align-items: center; justify-content: center; gap: 6px;
     padding: 8px 0; border-radius: 8px; font-size: 13px; font-family: inherit;

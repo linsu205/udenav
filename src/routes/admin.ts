@@ -54,6 +54,16 @@ function hasImageIcon(iconType: IconType, iconUrl: string): boolean {
 
 /* ---------------- 路由 ---------------- */
 
+/**
+ * 是否还需要「首次注册」。
+ * 本项目是单租户：第一个账号就是唯一 owner，注册入口随后永久关闭。
+ * 前端登录页据此决定显不显示「注册」，避免用户看到一个点了必然失败的入口。
+ */
+export async function setupState(env: Env): Promise<Response> {
+  const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>();
+  return json({ ok: true, need_setup: !(n && n.n > 0) });
+}
+
 export async function register(env: Env, req: Request): Promise<Response> {
   const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>();
   if (n && n.n > 0) return bad('已存在账号，不能注册（如需新增用户请用管理员界面）', 403);
@@ -120,6 +130,126 @@ export async function me(req: Request, env: Env): Promise<Response> {
   return json({ ok: true, logged_in: true, username: s.username, role: s.role, exp: s.exp });
 }
 
+/* ---------------- 用户管理 ---------------- */
+// 单租户项目：正常只有一个账号。这里提供「改名 / 改密 / 解锁 / 删号」，
+// 用来替代以前只能改库或删库重来的做法。
+// 口令同样只存 PBKDF2 哈希，所以改密 = 生成新 salt + hash 覆盖写回。
+
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+
+type UserRow = {
+  id: number; username: string; role: Role;
+  failed_login: number; lock_until: number; created_at: number;
+};
+
+function userView(u: UserRow, selfId: number) {
+  return {
+    id: u.id,
+    username: u.username,
+    role: u.role,
+    failed_login: u.failed_login,
+    locked: u.lock_until > nowSec(),
+    lock_until: u.lock_until,
+    created_at: u.created_at,
+    self: u.id === selfId,
+  };
+}
+
+export async function listUsers(env: Env, req: Request): Promise<Response> {
+  const s = await requireRole(req, env, 'owner');
+  const rows = await env.DB
+    .prepare('SELECT id, username, role, failed_login, lock_until, created_at FROM users ORDER BY id')
+    .all<UserRow>();
+  return json({ ok: true, users: rows.results.map((u) => userView(u, s.sub)) });
+}
+
+/**
+ * 修改账号。
+ *  body: { username?: string, password?: string, unlock?: boolean }
+ *  - username 只在真的变了才校验重名
+ *  - password 省略或空串表示不改；改了会清零失败次数与锁定
+ *  - unlock: true 只解锁，不动密码
+ * 改自己的用户名时补发一张新 JWT —— 否则 /me 还会返回旧名字，侧栏显示对不上。
+ */
+export async function patchUser(env: Env, req: Request, id: number): Promise<Response> {
+  const s = await requireRole(req, env, 'owner');
+  const body = await readJson(req);
+
+  const cur = await env.DB
+    .prepare('SELECT id, username, role FROM users WHERE id = ?')
+    .bind(id)
+    .first<{ id: number; username: string; role: Role }>();
+  if (!cur) return bad('账号不存在', 404);
+
+  const sets: string[] = [];
+  const binds: unknown[] = [];
+  let renamed: string | null = null;
+
+  if (body?.username !== undefined) {
+    const username = String(body.username || '').trim();
+    if (username !== cur.username) {
+      if (!USERNAME_RE.test(username)) return bad('用户名只能是 3-20 位字母/数字/下划线');
+      const dup = await env.DB
+        .prepare('SELECT id FROM users WHERE username = ? AND id <> ?')
+        .bind(username, id)
+        .first<{ id: number }>();
+      if (dup) return bad('该用户名已被占用', 409);
+      sets.push('username = ?');
+      binds.push(username);
+      renamed = username;
+    }
+  }
+
+  let pwdChanged = false;
+  if (body?.password !== undefined && body.password !== '' && body.password !== null) {
+    const password = String(body.password);
+    const weak = checkPassword(password);
+    if (weak) return bad(weak);
+    const salt = randomSalt();
+    sets.push('pass_meta = ?');
+    binds.push(JSON.stringify({ iter: 15000, salt, hash: await hashPassword(password, salt) }));
+    sets.push('failed_login = 0', 'lock_until = 0');
+    pwdChanged = true;
+  }
+
+  if (body?.unlock === true) {
+    if (!pwdChanged) sets.push('failed_login = 0', 'lock_until = 0');
+  }
+
+  if (!sets.length) return json({ ok: true, changed: 0, username: cur.username, renamed: false, password_changed: false });
+
+  await env.DB.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).bind(...binds, id).run();
+
+  const out = {
+    ok: true, changed: 1,
+    username: renamed ?? cur.username,
+    renamed: !!renamed,
+    password_changed: pwdChanged,
+  };
+
+  if (renamed && s.sub === id) {
+    const token = await signToken(
+      { sub: id, username: renamed, role: cur.role, exp: nowSec() + SESSION_HOURS * 3600 },
+      await getSecret(env),
+    );
+    return json(out, {
+      headers: { 'set-cookie': setSessionCookie(token, SESSION_HOURS * 3600, req.url.startsWith('https://')) },
+    });
+  }
+  return json(out);
+}
+
+/** 删号：不能删自己，也不能把最后一个账号删掉（否则会重新回到首次注册态） */
+export async function deleteUser(env: Env, req: Request, id: number): Promise<Response> {
+  const s = await requireRole(req, env, 'owner');
+  if (s.sub === id) return bad('不能删除当前登录的账号', 400);
+  const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>();
+  if ((n?.n ?? 0) <= 1) return bad('至少要保留一个账号', 400);
+  const res = await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
+  if (!Number(res?.meta?.changes ?? 0)) return bad('账号不存在', 404);
+  return json({ ok: true });
+}
+
 /* ---------------- 配置 ---------------- */
 
 function cfgPatch(body: any): Record<string, unknown> {
@@ -171,8 +301,8 @@ export async function createGroup(env: Env, req: Request): Promise<Response> {
   if (!title) return bad('分组名不能为空');
   const next = await env.DB.prepare('SELECT COALESCE(MAX(sort), -10) AS n FROM item_icon_group').first<{ n: number }>();
   const res = await env.DB
-    .prepare('INSERT INTO item_icon_group (title, description, icon_type, icon_name, icon_url, sort, public_hide, card_style, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(title, String(body.description || ''), body.icon_type || 'iconify', String(body.icon_name || ''), String(body.icon_url || ''), Number(next?.n ?? -10) + 10, body.public_hide ? 1 : 0, body.card_style || 'info', s.sub)
+    .prepare('INSERT INTO item_icon_group (title, description, icon_type, icon_name, icon_url, sort, public_hide, public_show, card_style, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(title, String(body.description || ''), body.icon_type || 'iconify', String(body.icon_name || ''), String(body.icon_url || ''), Number(next?.n ?? -10) + 10, body.public_hide ? 1 : 0, body.public_show ? 1 : 0, body.card_style || 'info', s.sub)
     .run();
   return json({ ok: true, id: Number(res.meta.last_row_id) });
 }
@@ -191,10 +321,11 @@ export async function patchGroup(env: Env, req: Request, id: number): Promise<Re
   const icon_url = String(body.icon_url ?? g.icon_url);
   const sort = numBody(body, 'sort', g.sort, -1e7, 1e7);
   const public_hide = (body.public_hide ?? g.public_hide) ? 1 : 0;
+  const public_show = (body.public_show ?? g.public_show) ? 1 : 0;
   const card_style = body.card_style ?? g.card_style;
   await env.DB
-    .prepare('UPDATE item_icon_group SET title=?, description=?, icon_type=?, icon_name=?, icon_url=?, sort=?, public_hide=?, card_style=? WHERE id=?')
-    .bind(title, description, icon_type, icon_name, icon_url, sort, public_hide, card_style, id)
+    .prepare('UPDATE item_icon_group SET title=?, description=?, icon_type=?, icon_name=?, icon_url=?, sort=?, public_hide=?, public_show=?, card_style=? WHERE id=?')
+    .bind(title, description, icon_type, icon_name, icon_url, sort, public_hide, public_show, card_style, id)
     .run();
   return json({ ok: true });
 }
@@ -265,6 +396,35 @@ export async function deleteIcon(env: Env, req: Request, id: number): Promise<Re
   return json({ ok: true, changed: Number(res?.meta?.changes ?? 0) });
 }
 
+/* ---------------- 访问日志清理 ---------------- */
+
+/* 日志“该清了”的建议上限：任一超出，统计页就弹提示。两个值都不影响系统运行，
+   只是给一个明确的清理时机，避免行数无限累积后 COUNT(*) 变慢。 */
+export const LOG_WARN_ROWS = 5000;
+export const LOG_WARN_BYTES = 2 * 1024 * 1024;
+
+/**
+ * 清理访问日志。
+ *  body: { mode: 'all' }                     清空全部
+ *        { mode: 'days', days: 30 }          只留最近 N 天（默认 30，1..3650）
+ * 单租户下只有一个 owner 账号，仍按 owner 校验，与导入导出保持一致的破坏性操作门槛。
+ */
+export async function purgeLogs(env: Env, req: Request): Promise<Response> {
+  await requireRole(req, env, 'owner');
+  const body = await readJson(req);
+  const mode = body?.mode === 'all' ? 'all' : 'days';
+
+  if (mode === 'all') {
+    const res = await env.DB.prepare('DELETE FROM visit_log').run();
+    return json({ ok: true, mode, deleted: Number(res?.meta?.changes ?? 0), keep_days: null });
+  }
+
+  const days = Math.max(1, Math.min(3650, Math.floor(Number(body?.days) || 30)));
+  const cutoff = nowSec() - days * 86400;
+  const res = await env.DB.prepare('DELETE FROM visit_log WHERE ts < ?').bind(cutoff).run();
+  return json({ ok: true, mode, deleted: Number(res?.meta?.changes ?? 0), keep_days: days });
+}
+
 /* ---------------- 导入导出 ---------------- */
 
 export async function exportAll(env: Env, req: Request): Promise<Response> {
@@ -305,8 +465,8 @@ export async function importAll(env: Env, req: Request): Promise<Response> {
   await env.DB.batch(stmts);
 
   await env.DB.batch(groups.map((g: any) =>
-    env.DB.prepare('INSERT INTO item_icon_group (id, title, description, icon_type, icon_name, icon_url, sort, public_hide, card_style, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(Number(g.id), String(g.title), String(g.description ?? ''), g.icon_type || 'iconify', String(g.icon_name ?? ''), String(g.icon_url ?? ''), Number(g.sort ?? 0), g.public_hide ? 1 : 0, g.card_style || 'info', s.sub),
+    env.DB.prepare('INSERT INTO item_icon_group (id, title, description, icon_type, icon_name, icon_url, sort, public_hide, public_show, card_style, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(Number(g.id), String(g.title), String(g.description ?? ''), g.icon_type || 'iconify', String(g.icon_name ?? ''), String(g.icon_url ?? ''), Number(g.sort ?? 0), g.public_hide ? 1 : 0, g.public_show ? 1 : 0, g.card_style || 'info', s.sub),
   ));
 
   const iconStmts = icons.map((ic: any) =>

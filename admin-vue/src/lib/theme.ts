@@ -1,29 +1,18 @@
 /**
- * 后台主题开关 —— 跟随访客页配置里的 theme 字段（'dark' | 'light'）
+ * 后台主题 —— 跟随配置里的 theme 字段（'dark' | 'light'）
  *
- * 两种打开方式：
- *  1. 独立访问 /admin  → 由 admin.html 里的内联脚本拉 /api/public/config 决定，
- *     登录后 store.loadAll 拿到配置再确认一次。
- *  2. 在访客页弹窗里打开 → 父页在 iframe load 后 postMessage 推送当前主题，
- *     访客页切主题时再推一次，实现后台实时跟随。
+ * 后台现在内嵌在访客页里，和访客页共用同一个 <html>。
+ * 两边各自认一套标记：访客页的 CSS 用 data-theme，后台 theme.css 用 html.dark。
+ * 所以这里必须同时写两个，否则会出现「后台已经变浅色、背后访客页还是深色」。
  *
- * 默认深色（与后端 DEFAULT_CONFIG.theme 一致），避免加载瞬间闪白。
+ * 传空值直接不做事：配置还没拉回来时不要把访客页强行掰成深色。
+ * （独立访问 /admin 的初始深色由 main.ts 显式调用 applyTheme('dark') 完成）
  */
 export type Theme = 'dark' | 'light';
 
-const root = () => document.documentElement;
-
 export function applyTheme(theme: string | null | undefined): void {
-  root().classList.toggle('dark', (theme || 'dark') === 'dark');
-}
-
-/** 订阅访客页推过来的主题变更；返回注销函数 */
-export function watchThemeFromParent(): () => void {
-  const handler = (e: MessageEvent) => {
-    if (e.data && e.data.type === 'udenav:theme' && typeof e.data.theme === 'string') {
-      applyTheme(e.data.theme);
-    }
-  };
-  window.addEventListener('message', handler);
-  return () => window.removeEventListener('message', handler);
+  if (theme !== 'dark' && theme !== 'light') return;
+  const root = document.documentElement;
+  root.classList.toggle('dark', theme === 'dark');
+  root.dataset.theme = theme;
 }

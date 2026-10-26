@@ -97,6 +97,7 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     const m = req.method.toUpperCase();
 
     if (m === 'POST' && a === 'login') return admin.login(env, req);
+    if (m === 'GET' && a === 'setup') return admin.setupState(env);
     if (m === 'POST' && a === 'register') return admin.register(env, req);
     if (m === 'POST' && a === 'logout') return admin.logout();
     if (m === 'POST' && a === 'upload') return upload(env, req);
@@ -108,6 +109,9 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (m === 'GET' && a === 'favicon') return admin.favicon(env, req);
     if (m === 'GET' && a === 'export') return admin.exportAll(env, req);
     if (m === 'GET' && a === 'stats') return stats(env, req);
+    if (m === 'GET' && a === 'users') return admin.listUsers(env, req);
+    if (m === 'PATCH' && a === 'users' && id) return admin.patchUser(env, req, id);
+    if (m === 'DELETE' && a === 'users' && id) return admin.deleteUser(env, req, id);
     if (m === 'PUT' && a === 'config') return admin.putConfig(env, req);
     if (m === 'POST' && a === 'groups') return admin.createGroup(env, req);
     if (m === 'PATCH' && a === 'groups' && id) return admin.patchGroup(env, req, id);
@@ -115,31 +119,126 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (m === 'POST' && a === 'icons') return admin.createIcon(env, req);
     if (m === 'PATCH' && a === 'icons' && id) return admin.patchIcon(env, req, id);
     if (m === 'DELETE' && a === 'icons' && id) return admin.deleteIcon(env, req, id);
+    if (m === 'DELETE' && a === 'logs') return admin.purgeLogs(env, req);
   }
 
   return null;
 }
 
+// ============================================================
 // 统计接口（原来在 routes/backup.ts 里，随 R2 备份一起移除，独立保留在这里）
+// ============================================================
+
+/**
+ * 存储占用统计口径。
+ * Workers 是 Serverless 运行环境，没有本地文件系统，所以"空间占用"只统计 D1 里真实写入的数据：
+ *  - TEXT 列：LENGTH(CAST(COALESCE(col,'') AS BLOB)) —— SQLite 的 LENGTH() 只算字符数，
+ *    UTF-8 下一个汉字占 3 字节会被算成 1，必须 CAST 成 BLOB 才拿到真实字节数
+ *  - 数字 / 布尔列：每行按 8 字节计（num 是该表这类列的个数）
+ * D1 不支持 PRAGMA，列清单只能在这里显式写死，改表结构要同步改。
+ */
+const STORED: Array<{ key: string; label: string; color: string; text: string[]; num: number }> = [
+  { key: 'visit_log', label: '访问日志', color: '#409eff', text: ['path', 'ip_hash', 'ua'], num: 3 },
+  { key: 'item_icon', label: '卡片数据', color: '#2fbf6b', text: ['title', 'url', 'lan_url', 'icon_type', 'icon_text', 'icon_url', 'description', 'background_color'], num: 8 },
+  { key: 'item_icon_group', label: '分组数据', color: '#e6a23c', text: ['title', 'description', 'icon_type', 'icon_name', 'icon_url'], num: 7 },
+  { key: 'users', label: '后台账户', color: '#a78bfa', text: ['username', 'display_name', 'pass_meta', 'role'], num: 5 },
+  { key: 'panel', label: '面板数据', color: '#67c23a', text: ['key', 'value'], num: 3 },
+  { key: 'user_config', label: '用户配置', color: '#909399', text: ['key', 'value'], num: 2 },
+  { key: 'schema_meta', label: '版本元数据', color: '#8492a6', text: ['key', 'value'], num: 0 },
+];
+
+const TZ_OFFSET = 8 * 3600; // 东八区秒偏移，日期归组用（D1 容器时区是 UTC）
+
+function storeSql(t: { key: string; text: string[]; num: number }): string {
+  const sum = t.text.map((c) => `LENGTH(CAST(COALESCE(${c}, '') AS BLOB))`).join(' + ');
+  const body = t.text.length ? `COALESCE(SUM(${sum}), 0)` : '0';
+  const fixed = t.num ? ` + COUNT(*) * ${t.num * 8}` : '';
+  return `SELECT COUNT(*) AS rows, (${body})${fixed} AS bytes FROM ${t.key}`;
+}
+
 async function stats(env: Env, req: Request): Promise<Response> {
   const s = await admin.getSession(env, req);
   if (!s) return bad('未登录', 401);
-  const [visits, today, groups, icons, users, cfg] = await Promise.all([
-    env.DB.prepare('SELECT COUNT(*) AS n FROM visit_log').first<{ n: number }>(),
-    env.DB.prepare('SELECT COUNT(*) AS n FROM visit_log WHERE ts >= ?').bind(Math.floor(Date.now() / 1000) - 86400).first<{ n: number }>(),
-    env.DB.prepare('SELECT COUNT(*) AS n FROM item_icon_group').first<{ n: number }>(),
-    env.DB.prepare('SELECT COUNT(*) AS n FROM item_icon').first<{ n: number }>(),
-    env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>(),
-    env.DB.prepare('SELECT COUNT(*) AS n FROM user_config').first<{ n: number }>(),
+
+  const now = Math.floor(Date.now() / 1000);
+  const dayStart = Math.floor((now - TZ_OFFSET) / 86400) * 86400 + TZ_OFFSET; // 东八区当天 0 点
+  const trendLo = dayStart - 13 * 86400; // 含今天共 14 天
+
+  const [base, storedRaw, trendRaw, iconRaw, linkRaw, logRaw] = await Promise.all([
+    Promise.all([
+      env.DB.prepare('SELECT COUNT(*) AS n FROM visit_log').first<{ n: number }>(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM visit_log WHERE ts >= ?').bind(dayStart).first<{ n: number }>(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM visit_log WHERE ts >= ?').bind(now - 86400).first<{ n: number }>(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM item_icon_group').first<{ n: number }>(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM item_icon').first<{ n: number }>(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM user_config').first<{ n: number }>(),
+    ]),
+    Promise.all(STORED.map((t) => env.DB.prepare(storeSql(t)).first<{ rows: number; bytes: number }>())),
+    env.DB.prepare(
+      `SELECT strftime('%Y-%m-%d', ts + ${TZ_OFFSET}, 'unixepoch') AS day, COALESCE(SUM("count"), 0) AS n
+       FROM visit_log WHERE ts >= ? GROUP BY day`
+    ).bind(trendLo).all<{ day: string; n: number }>(),
+    env.DB.prepare(
+      `SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(CAST(icon_url AS BLOB))), 0) AS bytes,
+              COALESCE(MAX(LENGTH(CAST(icon_url AS BLOB))), 0) AS mx
+       FROM (SELECT icon_url FROM item_icon UNION ALL SELECT icon_url FROM item_icon_group)
+       WHERE icon_url LIKE 'data:%'`
+    ).first<{ n: number; bytes: number; mx: number }>(),
+    env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM (SELECT icon_url FROM item_icon UNION ALL SELECT icon_url FROM item_icon_group)
+       WHERE icon_url <> ''`
+    ).first<{ n: number }>(),
+    env.DB.prepare(
+      `SELECT COUNT(DISTINCT ip_hash) AS ips, COUNT(DISTINCT ua) AS uas, MIN(ts) AS oldest, MAX(ts) AS newest
+       FROM visit_log WHERE ip_hash <> ''`
+    ).first<{ ips: number; uas: number; oldest: number; newest: number }>(),
   ]);
+
+  // 14 天趋势：数据库只返回有访问的日期，缺的天补 0
+  const trendMap = new Map(trendRaw.results.map((r) => [r.day, Number(r.n) || 0]));
+  const trend: Array<{ day: string; n: number }> = [];
+  for (let i = 13; i >= 0; i--) {
+    const day = new Date((now - i * 86400 + TZ_OFFSET) * 1000).toISOString().slice(0, 10);
+    trend.push({ day, n: trendMap.get(day) ?? 0 });
+  }
+
+  const bytesTotal = storedRaw.reduce((a, r) => a + (r?.bytes ?? 0), 0);
+  const rowsTotal = storedRaw.reduce((a, r) => a + (r?.rows ?? 0), 0);
+  const storeList = STORED.map((t, i) => {
+    const bytes = Number(storedRaw[i]?.bytes ?? 0);
+    const rows = Number(storedRaw[i]?.rows ?? 0);
+    return {
+      key: t.key, label: t.label, color: t.color, rows, bytes,
+      pct: bytesTotal ? Math.round((bytes / bytesTotal) * 1000) / 10 : 0,
+    };
+  }).sort((a, b) => b.bytes - a.bytes);
+
+  const logRow = storedRaw.find((_, i) => STORED[i].key === 'visit_log');
   const j = {
     ok: true,
-    total_visits: visits?.n ?? 0,
-    visits_24h: today?.n ?? 0,
-    groups: groups?.n ?? 0,
-    icons: icons?.n ?? 0,
-    users: users?.n ?? 0,
-    config_keys: cfg?.n ?? 0,
+    total_visits: base[0]?.n ?? 0,
+    visits_today: base[1]?.n ?? 0,
+    visits_24h: base[2]?.n ?? 0,
+    groups: base[3]?.n ?? 0,
+    icons: base[4]?.n ?? 0,
+    users: base[5]?.n ?? 0,
+    config_keys: base[6]?.n ?? 0,
+    trend,
+    db: { tables: STORED.length, rows_total: rowsTotal, bytes_total: bytesTotal, list: storeList },
+    icon: {
+      inline: iconRaw?.n ?? 0, inline_bytes: iconRaw?.bytes ?? 0, inline_max: iconRaw?.mx ?? 0,
+      linked: (linkRaw?.n ?? 0) - (iconRaw?.n ?? 0),
+    },
+    log: {
+      rows: Number(logRow?.rows ?? 0), bytes: Number(logRow?.bytes ?? 0),
+      ips: logRaw?.ips ?? 0, uas: logRaw?.uas ?? 0,
+      oldest: logRaw?.oldest ?? null, newest: logRaw?.newest ?? null,
+      /* 超限提示：前端据此决定是否弹「建议清理」 */
+      warn: Number(logRow?.rows ?? 0) >= admin.LOG_WARN_ROWS || Number(logRow?.bytes ?? 0) >= admin.LOG_WARN_BYTES,
+      warn_rows: admin.LOG_WARN_ROWS,
+      warn_bytes: admin.LOG_WARN_BYTES,
+    },
     session: { username: s.username, role: s.role },
   };
   return new Response(JSON.stringify(j), { headers: { 'content-type': 'application/json; charset=utf-8' } });

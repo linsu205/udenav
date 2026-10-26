@@ -37,7 +37,10 @@
   html[data-theme="light"] .bg-grad{background:linear-gradient(160deg,#f4f7fa 0%,#eaeff3 55%,#f1f5f8 100%)}
 
   .wrap{max-width:1200px;margin:0 auto;padding:0 18px 90px}
-  header{display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;padding-top:var(--mt,6vh)}
+  /* 一律加 .wrap 前缀：后台的 Element Plus 弹窗会被 teleport 到 <body>，
+     裸标签选择器会把访客页的 header/footer 样式打到 .el-dialog__header / __footer 上
+     （表现为弹窗顶部多出一大块空白、标题被居中）。class 自己带前缀的规则没有这个问题。 */
+  .wrap>header{display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;padding-top:var(--mt,6vh)}
   .logo{font-size:46px;font-weight:800;letter-spacing:1px;text-shadow:0 2px 18px rgba(0,0,0,.45),0 0 44px rgba(0,0,0,.25)}
   html[data-theme="light"] .logo{text-shadow:0 2px 14px rgba(255,255,255,.85),0 0 36px rgba(255,255,255,.5)}
   .sep{width:2px;height:34px;border-radius:1px;background:var(--text);opacity:.32;flex:none}
@@ -62,7 +65,10 @@
   .eng-list button:hover{background:rgba(24,160,88,.22)}
   .icon-btn{background:var(--card-bg-hover);border:0;color:var(--text);border-radius:999px;width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 
-  .group{margin-top:38px}
+  /* 注意：以下 .group / .card / .mini 规则必须限定在访客页 .wrap 内。
+     后台是同一个文档里的 Vue 组件（#adminRoot 在 .modal 里），
+     它的分组卡片也用了 .group 类，不限定作用域会被这里的 opacity:0 直接隐掉。 */
+  .wrap .group{margin-top:38px}
   .group-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:0 4px}
   .group-head h2{margin:0;font-size:19px;font-weight:700}
   .group-head .desc{font-size:13px;color:var(--text-dim)}
@@ -77,7 +83,7 @@
     font-size:20px;font-weight:700;color:#fff;overflow:hidden}
   .card .ic img{width:100%;height:100%;object-fit:cover}
   .card .body{min-width:0}
-  .card .title{font-size:var(--fs,15px);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card .dsc{font-size:12px;color:var(--text-dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* 内网角标：后台给这张卡配了内网地址时，前台一眼看出「内网地址已配置」 */
   .card .lan-tag,.mini .lan-tag{position:absolute;top:7px;right:8px;font-size:10px;font-weight:700;line-height:1;
@@ -101,9 +107,10 @@
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,.25)}
   /* 玻璃底板上，浅色主题改用深色字，避免白字看不见 */
   html[data-theme="light"] .mini .mic.plain .mtext{color:var(--text);text-shadow:none}
-  .mini .mname{max-width:92px;font-size:var(--fs,14px);color:var(--text);text-align:center;
+  /* 底板下方的名称：固定字号，超长只省略不缩放 */
+  .mini .mname{max-width:92px;font-size:14px;color:var(--text);text-align:center;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  footer{margin-top:46px;text-align:center;font-size:12px;color:var(--text-dim)}
+  .wrap>footer{margin-top:46px;text-align:center;font-size:12px;color:var(--text-dim)}
 
   /* ---------- 入场与滚动动画 ---------- */
   @keyframes rise{
@@ -115,17 +122,18 @@
     to{opacity:1;transform:translate3d(0,0,0) scale(1)}
   }
   /* 首屏：header -> 搜索框 -> 卡片 依次浮起 */
-  header{animation:rise .72s cubic-bezier(.22,.61,.36,1) both}
+  .wrap>header{animation:rise .72s cubic-bezier(.22,.61,.36,1) both}
   .search{animation:rise .72s cubic-bezier(.22,.61,.36,1) .13s both}
-  .group{opacity:0}
-  .group.in{animation:rise .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) both}
-  .card,.mini{opacity:0}
+  .wrap .group{opacity:0}
+  .wrap .group.in{animation:rise .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) both}
+  .wrap .card,.wrap .mini{opacity:0}
   /* 用 backwards 而不是 both：both 会把末帧的 transform 永久钉住，导致 :hover 的 translateY 失效 */
-  .card.in,.mini.in{opacity:1;animation:cardIn .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) backwards}
+  .wrap .card.in,.wrap .mini.in{opacity:1;animation:cardIn .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) backwards}
   /* 偏好减少动效时不做动画 */
   @media(prefers-reduced-motion:reduce){
-    header,.search{animation:none}
-    .group,.card,.mini{opacity:1!important;animation:none!important;transition:none!important}
+    .wrap>header,.search{animation:none}
+    .wrap .group,.wrap .card,.wrap .mini{opacity:1!important;animation:none!important;transition:none!important}
+    .toast{transition:none}
   }
   /* 右上角工具条：sun-panel 同款 NButtonGroup —— 半透明深灰底 #2a2a2a6b + 白色 SVG 图标。
      三个按钮依次是「内外网切换 / 主题切换 / 管理后台」，尺寸 40x40，拼成一个圆角整块 */
@@ -138,6 +146,17 @@
   .tb svg{width:20px;height:20px;display:block;pointer-events:none}
   .tb:hover{background:#3a3a3ab3}
   .tb:active{transform:scale(.94)}
+  /* 顶部居中提示：切换内外网时短暂显示「当前处于哪个模式」，深灰胶囊 + 白色图标文字，深浅主题都清晰 */
+  .toast{position:fixed;top:16px;left:50%;z-index:40;transform:translate(-50%,-18px);
+    display:flex;align-items:center;gap:8px;padding:9px 16px;border-radius:12px;
+    background:rgba(34,38,44,.92);border:1px solid rgba(255,255,255,.12);color:#fff;
+    font-size:13px;font-weight:600;letter-spacing:1px;white-space:nowrap;
+    box-shadow:0 8px 22px rgba(0,0,0,.34);
+    opacity:0;visibility:hidden;pointer-events:none;
+    transition:opacity .22s,transform .22s cubic-bezier(.34,1.24,.5,1),visibility .22s}
+  .toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}
+  .toast .ti{display:flex;width:18px;height:18px}
+  .toast .ti svg{width:18px;height:18px;display:block}
   .modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;
     opacity:0;visibility:hidden;pointer-events:none;transition:opacity .2s,visibility .2s}
   .modal.open{opacity:1;visibility:visible;pointer-events:auto}
@@ -154,8 +173,19 @@
     transition:background .15s,color .15s}
   .modal .bar .close:hover{background:rgba(128,128,128,.18);color:var(--text)}
   .modal iframe{flex:1;border:0;background:var(--card-bg)}
+  /* 后台组件的挂载点：和 iframe 二选一显示（iframe 仍留给「在弹窗里打开卡片链接」）。
+     --sp-bg 由后台自己的 CSS 提供，没加载完时退回卡片底色。 */
+  .modal #adminRoot{flex:1;min-height:0;overflow:auto;background:var(--sp-bg,var(--card-bg));
+    -webkit-overflow-scrolling:touch}
+  .modal #adminRoot[hidden]{display:none}
+  /* 后台包里带 1.3 MB 资源，首次打开要等一下，先给个占位 */
+  .modal #adminRoot .adm-boot{display:flex;align-items:center;justify-content:center;gap:10px;height:100%;
+    color:var(--text-dim);font-size:13px;letter-spacing:.5px}
+  .modal #adminRoot .adm-boot i{width:14px;height:14px;border-radius:50%;display:inline-block;
+    border:2px solid rgba(128,128,128,.28);border-top-color:var(--text-dim);animation:admSpin .7s linear infinite}
+  @keyframes admSpin{to{transform:rotate(360deg)}}
 </style>
-<noscript><style>.group,.card{opacity:1!important}</style></noscript>
+<noscript><style>.wrap .group,.wrap .card{opacity:1!important}</style></noscript>
 </head>
 <body>
 <div class="bg-grad" id="bgGrad"></div>
@@ -182,6 +212,11 @@
   <footer id="footer"></footer>
 </div>
 
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <span class="ti" id="toastIco" aria-hidden="true"></span>
+  <span id="toastText">内网模式</span>
+</div>
+
 <div class="toolbar">
   <button class="tb" id="lanBtn" title="切换到公网模式" aria-label="内外网切换" aria-pressed="true">
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 20v-3q0-.825.588-1.412T5 15h1v-2q0-.825.588-1.412T8 11h3V9h-1q-.825 0-1.412-.587T8 7V4q0-.825.588-1.412T10 2h4q.825 0 1.413.588T16 4v3q0 .825-.587 1.413T14 9h-1v2h3q.825 0 1.413.588T18 13v2h1q.825 0 1.413.588T21 17v3q0 .825-.587 1.413T19 22h-4q-.825 0-1.412-.587T13 20v-3q0-.825.588-1.412T15 15h1v-2H8v2h1q.825 0 1.413.588T11 17v3q0 .825-.587 1.413T9 22H5q-.825 0-1.412-.587T3 20Zm7-13h4V4h-4v3ZM5 20h4v-3H5v3Zm10 0h4v-3h-4v3Z"/></svg>
@@ -198,6 +233,7 @@
   <div class="box">
     <div class="bar"><span id="modalTitle">管理后台</span><button class="close" id="modalClose" title="关闭">✕</button></div>
     <iframe id="modalFrame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms"></iframe>
+    <div id="adminRoot" hidden><div class="adm-boot"><i></i>正在加载后台…</div></div>
   </div>
 </div>
 
@@ -206,12 +242,22 @@ const $ = s => document.querySelector(s);
 const state = { config: {}, groups: [], engine: null, engines: [], intranet: false };
 
 /* ---------- 渲染 ---------- */
+/* 主题：访客页 CSS 认 data-theme，后台 theme.css 认 html.dark。
+   后台现在是同文档组件，两边共用同一个 <html>，所以必须同时写这两个标记，
+   否则会出现「后台变浅色、背后访客页还是深色」。 */
+function applyThemeAttr(t) {
+  const root = document.documentElement;
+  const v = t === 'light' ? 'light' : 'dark';
+  root.dataset.theme = v;
+  root.classList.toggle('dark', v === 'dark');
+}
+
 function applyConfig(c) {
   state.config = c;
   document.title = c.logo_text || 'udenav';
   $('#logo').textContent = c.logo_text || 'udenav';
   $('#fav').setAttribute('href', String(c.favicon||'').trim() || $('#fav').dataset.def);
-  document.documentElement.dataset.theme = c.theme || 'dark';
+  applyThemeAttr(c.theme || 'dark');
   $('#themeBtn').innerHTML = svgOf(ICON[(c.theme || 'dark') === 'dark' ? 'moon' : 'sun']);
   const bg = c.background_image;
   if (bg) { $('#bg').style.backgroundImage = `url("${bg.replace(/"/g,'')}" )`; $('#bg').style.display = 'block'; }
@@ -271,37 +317,25 @@ function clipName(s) {
   }
   return out + '…';
 }
-/* 各处名称的字号档位：键=字宽档（向上取整），值=px */
-const FS_TEXT = { 1: 32, 2: 26, 3: 20, 4: 15 };   // 底板上的大字（70px 底板内要放得下）
-const FS_NAME = { 1: 22, 2: 18, 3: 15, 4: 13 };   // 底板下方的名称
-const FS_CARD = { 1: 22, 2: 19, 3: 16, 4: 15 };   // 卡片标题
-function fsOf(t, table) {
+/* 图标底板上的文字按字数分档缩放（70px 底板内要放得下）；卡片标题与下方名称字号固定，不参与缩放 */
+const FS_TEXT = { 1: 32, 2: 26, 3: 20, 4: 15 };
+function fsOf(t) {
   const u = Math.max(1, Math.min(NAME_UNITS_MAX, Math.ceil(nameUnits(t))));
-  return table[u];
+  return FS_TEXT[u];
 }
 
 /* 兜底：字宽算出来的字号仍可能放不下（如英文单词偏宽），
-   渲染后量一次真实宽度，塞不下就按比例缩一次 */
-const FS_FLOOR = { mtext: 11, mname: 10, title: 11 };
+   渲染后量一次真实宽度，塞不下就按比例缩一次。只处理底板文字 */
 function fitNames(root) {
-  (root || document).querySelectorAll('.mtext, .mname, .title').forEach(el => {
+  (root || document).querySelectorAll('.mtext').forEach(el => {
     if (!el.textContent) return;
-    const key = el.classList.contains('title') ? 'title' : (el.classList.contains('mtext') ? 'mtext' : 'mname');
-    const floor = FS_FLOOR[key] || 11;
-    /* 可用宽度：mtext 跟着底板走（92%），mname/title 走自身 max-width */
-    let limit;
-    if (key === 'mtext') {
-      const plate = el.parentElement;
-      limit = plate ? plate.clientWidth * 0.92 : 0;
-    } else {
-      limit = el.clientWidth;
-    }
+    const plate = el.parentElement;
+    const limit = plate ? plate.clientWidth * 0.92 : 0;
     if (!limit) return;
     const w = el.scrollWidth;              // 当前字号下的文字实际宽度
     if (w <= limit + 0.5) return;
     const cur = parseFloat(getComputedStyle(el).fontSize);
-    const next = Math.max(floor, cur * limit / w);
-    el.style.fontSize = next.toFixed(1) + 'px';
+    el.style.fontSize = Math.max(11, cur * limit / w).toFixed(1) + 'px';
   });
 }
 
@@ -318,7 +352,11 @@ function renderGroups() {
     return g.items.filter(it => !kw || (it.title + ' ' + (it.description || '') + ' ' + (it.url || '')).toLowerCase().includes(kw));
   });
   box.innerHTML = '';
-  if (!filtered.length) { box.innerHTML = '<div class="empty">没有匹配的卡片</div>'; return; }
+  if (!filtered.length) {
+    /* 一个分组都没有（未登录且没有「免登录可见」的分组）时只保留头部，不显示空态文案 */
+    box.innerHTML = state.groups.length ? '<div class="empty">没有匹配的卡片</div>' : '';
+    return;
+  }
   filtered.forEach(g => {
     const sec = document.createElement('section');
     sec.className = 'group';
@@ -333,11 +371,11 @@ function renderGroups() {
         const short = clipName(it.title);
         const inner = it.iconUrl
           ? `<img src="${esc(it.iconUrl)}" alt="" loading="lazy">`
-          : `<span class="mtext" style="--fs:${fsOf(short, FS_TEXT)}px">${esc(short)}</span>`;
+          : `<span class="mtext" style="--fs:${fsOf(short)}px">${esc(short)}</span>`;
         const c = document.createElement('div');
         c.className = 'mini';
         c.innerHTML = `${it.lanUrl ? '<span class="lan-tag">内</span>' : ''}<span class="${micCls}"${plate}>${inner}</span>`
-          + `<span class="mname" style="--fs:${fsOf(short, FS_NAME)}px" title="${esc(it.title)}">${esc(short)}</span>`;
+          + `<span class="mname" title="${esc(it.title)}">${esc(short)}</span>`;
         c.onclick = () => openUrl(it);
         grid.appendChild(c);
         return;
@@ -346,7 +384,7 @@ function renderGroups() {
       c.className = 'card';
       const short = clipName(it.title);
       c.innerHTML = `${it.lanUrl ? '<span class="lan-tag">内</span>' : ''}<div class="ic" style="background:${esc(it.color || '#2a2a2a')}">${iconHtml(it)}</div>`
-        + `<div class="body"><div class="title" style="--fs:${fsOf(short, FS_CARD)}px" title="${esc(it.title)}">${esc(short)}</div>${it.description ? `<div class="dsc">${esc(it.description)}</div>` : ''}</div>`;
+        + `<div class="body"><div class="title" title="${esc(it.title)}">${esc(short)}</div>${it.description ? `<div class="dsc">${esc(it.description)}</div>` : ''}</div>`;
       c.onclick = () => openUrl(it);
       grid.appendChild(c);
     });
@@ -369,7 +407,10 @@ function openUrl(it) {
   if (!url) return;
   if (it.openMethod === 3) {
     $('#modalTitle').textContent = it.title || url;
-    $('#modalFrame').src = url;
+    const frame = $('#modalFrame');
+    $('#adminRoot').hidden = true;   // 后台和 iframe 共用这个弹窗，得互相让位
+    frame.style.display = '';
+    frame.src = url;
     $('#modal').classList.add('open');
   } else if (it.openMethod === 1) {
     location.href = url;
@@ -410,39 +451,115 @@ $('#lanBtn').onclick = () => {
   state.intranet = !state.intranet;
   localStorage.setItem(LAN_KEY, state.intranet ? '1' : '0');
   applyLanMode();
+  showToast(state.intranet);
 };
 applyLanMode();
+
+/* 顶部居中的模式提示：图标+文字，显示 1.6s 后自动收起。
+   连点时清掉上一个定时器，只显示最新状态，不会排队叠加 */
+let toastTimer = null;
+function showToast(isLan) {
+  const t = $('#toast');
+  $('#toastIco').innerHTML = svgOf(ICON[isLan ? 'lan' : 'wan']);
+  $('#toastText').textContent = isLan ? '内网模式' : '公网模式';
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1600);
+}
 
 /* ---------- 主题切换 ---------- */
 $('#themeBtn').onclick = async () => {
   const cur = document.documentElement.dataset.theme;
   const next = cur === 'dark' ? 'light' : 'dark';
-  applyConfig({ ...state.config, theme: next });
-  pushTheme();   // 后台弹窗开着的话也一起跟着换
+  applyConfig({ ...state.config, theme: next });   // 后台组件是同文档的，跟着 html.dark 自动变色
   await fetch('/api/admin/config', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme: next }) }).catch(() => {});
 };
 
-/* ---------- 管理后台弹窗（后台主题跟随访客页） ---------- */
-function pushTheme() {
-  const fr = $('#modalFrame');
-  try {
-    fr.contentWindow && fr.contentWindow.postMessage(
-      { type: 'udenav:theme', theme: document.documentElement.dataset.theme || 'dark' }, '*');
-  } catch (e) {}
+/* ---------- 管理后台弹窗（同文档组件，不再是 iframe） ---------- */
+/*
+ * 后台 bundle 是构建产物、文件名带哈希，纯静态页没法写死路径。
+ * 这里先读 /admin 这份 HTML，把它引用的 stylesheet / module 原样搬过来，
+ * 再 import 那个模块 —— 模块加载后会自己挂到 #adminRoot 上（见 admin-vue/src/mount.ts）。
+ * 只在第一次打开时做一次，之后复用同一个 Vue 实例（切标签页的状态都还在）。
+ */
+let adminBoot = null;
+let adminSrc = '';        // 当前已加载的后台入口脚本（带哈希，用来判断有没有出新版）
+function loadAdmin() {
+  if (adminBoot) return adminBoot;
+  adminBoot = (async () => {
+    const html = await (await fetch('/admin', { cache: 'no-store' })).text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    /* 收集本次新插的样式表，等它们真正加载完再挂载，
+       否则会先闪一下没有 Element Plus 样式的裸表单 */
+    const waits = [];
+    for (const l of doc.querySelectorAll('link[rel="stylesheet"]')) {
+      const href = l.getAttribute('href');
+      if (!href || document.querySelector(`link[data-udenav-admin][href="${href}"]`)) continue;
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = href;
+      link.setAttribute('data-udenav-admin', '');
+      document.head.appendChild(link);
+      waits.push(new Promise(res => { link.onload = res; link.onerror = res; }));
+    }
+    if (waits.length) await Promise.all(waits);
+
+    const src = doc.querySelector('script[type="module"]')?.getAttribute('src');
+    if (!src) throw new Error('未找到后台入口脚本');
+    adminSrc = src;
+    /* 先置位：模块据此跳过「独立页」那套初始化（压深色、删 boot 骨架） */
+    window.__udenavEmbedded = true;
+    await import(new URL(src, location.origin).href);
+  })();
+  return adminBoot;
 }
-$('#modalFrame').addEventListener('load', pushTheme);
+
+/* 部署新版后，这个标签页里跑的还是旧 bundle（模块只 import 一次、卸载不掉）。
+   每次开弹窗前比一下 /admin 引用的脚本名，变了就整页刷新，避免「功能像是没生效」。 */
+async function adminBuildChanged() {
+  if (!adminSrc) return false;
+  try {
+    const html = await (await fetch('/admin', { cache: 'no-store' })).text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const src = doc.querySelector('script[type="module"]')?.getAttribute('src');
+    return !!src && src !== adminSrc;
+  } catch { return false; }
+}
+
+/* 后台「返回前台」按钮 → 关弹窗 */
+window.__udenavClose = () => closeModal();
+/* 后台保存后 → 前台原地重渲染；'page' 才整页刷新 */
+window.__udenavHome = t => { t === 'page' ? location.reload() : syncFromAdmin(); };
 
 /* 打开后台弹窗 */
-function openAdmin() {
+async function openAdmin() {
+  /* 已经挂载过、但线上换了新 build → 刷新页面让新代码生效（只多一次 ~3KB 的 HTML 请求） */
+  if (adminBoot && await adminBuildChanged()) {
+    location.reload();
+    return;
+  }
   $('#modalTitle').textContent = '管理后台';
-  $('#modalFrame').src = '/admin';
+  const frame = $('#modalFrame');
+  frame.src = '';
+  frame.style.display = 'none';
+  $('#adminRoot').hidden = false;
   $('#modal').classList.add('open');
+  try {
+    await loadAdmin();
+  } catch (e) {
+    $('#modalTitle').textContent = '后台加载失败';
+    console.warn('[udenav] 后台加载失败', e);
+  }
 }
 
-/* 关闭弹窗 */
+/* 关闭弹窗：后台组件本身不销毁，只是藏起来 —— 下次打开还是原来那个标签页 */
 function closeModal() {
   $('#modal').classList.remove('open');
   $('#modalFrame').src = '';
+  $('#adminRoot').hidden = true;
+  /* 后台里可能预览过没保存的主题，按已保存的配置还原一次 */
+  applyThemeAttr(state.config.theme || 'dark');
 }
 
 $('#adminBtn').onclick = openAdmin;
@@ -463,12 +580,9 @@ function syncFromAdmin() {
     .catch(() => {});
 }
 
-window.addEventListener('message', e => {
-  if (!e.data || typeof e.data.type !== 'string') return;
-  if (e.data.type === 'udenav:close-modal') { closeModal(); syncFromAdmin(); }
-  else if (e.data.type === 'udenav:reload-panel') syncFromAdmin();
-  else if (e.data.type === 'udenav:refresh') location.reload();
-});
+/* 以前这里监听 iframe 发来的 postMessage（udenav:close-modal / reload-panel / refresh）。
+   后台改成同文档组件后，走的是上面挂的 window.__udenavClose / window.__udenavHome，
+   跨文档消息这条链路已经整条拆掉了。 */
 
 /* ---------- 交互 ---------- */
 $('#engBtn').onclick = e => { e.stopPropagation(); $('#engList').classList.toggle('open'); };
@@ -514,7 +628,7 @@ const FALLBACK = {
   tick();
   setInterval(tick, 1000);
   /* 兜底：动效编排异常时也不能让首屏内容一直不可见 */
-  setTimeout(() => document.querySelectorAll('.group:not(.in), .card:not(.in), .mini:not(.in)').forEach(el => {
+  setTimeout(() => document.querySelectorAll('#groups .group:not(.in), #groups .card:not(.in), #groups .mini:not(.in)').forEach(el => {
     if (el.getBoundingClientRect().top < innerHeight + 200) {
       el.style.setProperty('opacity', '1'); el.classList.add('in');
     }
@@ -526,7 +640,8 @@ const FALLBACK = {
    因此用函数声明而非 IIFE：IIFE 的函数名在外部作用域不可见 */
 function initMotion() {
   const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const els = () => [...document.querySelectorAll('.group:not(.in), .card:not(.in), .mini:not(.in)')];
+  /* 只选集访客页的节点：#adminRoot 里的后台分组也带 .group 类，不能一起参与入场编排 */
+  const els = () => [...document.querySelectorAll('#groups .group:not(.in), #groups .card:not(.in), #groups .mini:not(.in)')];
   const show = el => { el.style.setProperty('opacity', '1'); el.classList.add('in'); };
 
   /* 视差：背景层随滚动缓慢反向位移。用 transform 走合成层，不触发重排。

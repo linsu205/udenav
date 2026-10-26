@@ -1,30 +1,37 @@
 /**
- * 后台改动 -> 通知访客前台同步
+ * 后台改动 → 通知访客前台同步
  *
- * 后台只在两种位置运行：
- *   1) 访客页弹窗里的 iframe -> 让父页重新拉取公开数据（不整页刷新：不闪屏、不丢滚动位置）
- *   2) 独立标签页打开的 /admin -> 只能刷新自己
+ * 后台现在直接挂在访客页的弹窗里，和前台是同一个文档，
+ * 所以不再走跨 iframe 的 postMessage：访客页把自己的同步函数挂到 window 上，
+ * 后台直接调用即可。
  *
- * 前台是纯静态页，配置与分组都从 /api/public/panel 实时读取，
- * 所以「重新拉取一次」就等于按新设置刷新页面。
+ *   window.__udenavHome(target)  target='panel' 只重拉数据原地重渲染（默认，无感）
+ *                               target='page'  整页刷新
+ *   window.__udenavClose()      关掉弹窗回前台
+ *
+ * 独立访问 /admin 时没人接管，退回「刷新自己 / 回首页」。
  */
+export type HomeTarget = 'panel' | 'page';
 
-/** 是否运行在 iframe 里（即访客页的弹窗内） */
-export function inEmbedFrame(): boolean {
-  try { return window.self !== window.top; } catch { return false; }
+declare global {
+  interface Window {
+    __udenavHome?: (target: HomeTarget) => void;
+    __udenavClose?: () => void;
+  }
 }
 
-/**
- * @param target 'panel' = 只同步前台数据（默认，无感）；'page' = 让前台整页刷新
- */
-export function notifyHome(target: 'panel' | 'page' = 'panel'): void {
-  if (inEmbedFrame()) {
-    const top = window.top;
-    if (top) {
-      try { top.postMessage({ type: target === 'page' ? 'udenav:refresh' : 'udenav:reload-panel' }, '*'); }
-      catch { /* 跨域受限，忽略 */ }
-    }
+export function notifyHome(target: HomeTarget = 'panel'): void {
+  if (typeof window.__udenavHome === 'function') {
+    window.__udenavHome(target);
     return;
   }
   location.reload();
+}
+
+export function closeHome(): void {
+  if (typeof window.__udenavClose === 'function') {
+    window.__udenavClose();
+    return;
+  }
+  location.href = '/';
 }

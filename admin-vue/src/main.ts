@@ -1,20 +1,25 @@
-import { createApp } from 'vue';
-import { createPinia } from 'pinia';
-import ElementPlus from 'element-plus';
-import 'element-plus/dist/index.css';
-import 'element-plus/theme-chalk/dark/css-vars.css';
-import './styles/theme.css';
-import App from './App.vue';
-import { applyTheme, watchThemeFromParent } from './lib/theme';
+/**
+ * 独立页入口（/admin）。
+ * 内嵌到访客页时走的是同一个 bundle：访客页先置 window.__udenavEmbedded = true，
+ * 再动态 import 本文件 —— 那时不碰主题、不删 boot 骨架，挂载点由弹窗提供。
+ */
+import { mountAdmin } from './mount';
+import { applyTheme } from './lib/theme';
 
-// 主题：默认深色（防闪白），随后被 /api/public/config 或父页 postMessage 覆盖
-applyTheme('dark');
-watchThemeFromParent();
+declare global {
+  interface Window {
+    __udenavEmbedded?: boolean;
+  }
+}
 
-const app = createApp(App);
-app.use(createPinia());
-app.use(ElementPlus, { size: 'default' });
-app.mount('#app');
+const embedded = window.__udenavEmbedded === true;
 
-// 隐藏 loading 骨架
-document.getElementById('boot')?.remove();
+// 独立访问：先压深色，避免主题回来之前闪白
+if (!embedded) applyTheme('dark');
+
+const el = document.getElementById('adminRoot');
+if (el) mountAdmin(el);
+
+if (!embedded) document.getElementById('boot')?.remove();
+
+export { mountAdmin, unmountAdmin } from './mount';

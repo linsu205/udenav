@@ -7,8 +7,10 @@
 <style>
   *{box-sizing:border-box}
   /* 底色跟主题走，--sp-* 由 styles/theme.css 提供；括号里是深色兜底，防止加载瞬间闪白 */
+  html,body{height:100%}
   html{background:var(--sp-bg,#17191c)}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--sp-bg,#17191c);color:var(--sp-text,#f0f2f5);font-size:14px}
+  #adminRoot{height:100%}
   /* loading 骨架 */
   #boot{position:fixed;inset:0;background:var(--sp-bg,#17191c);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:var(--sp-dim,#8b929a);font-size:14px;z-index:100}
   #boot .dot{width:8px;height:8px;border-radius:50%;background:#18a058;animation:pulse 1s ease-in-out infinite}
@@ -23,18 +25,18 @@
   *{scrollbar-width:thin;scrollbar-color:var(--sp-scrollbar,#2b3036) transparent}
 </style>
 <script>
-  /* 主题跟随访客页：默认深色，随后由公开配置或父页消息覆盖（在样式生效前执行，避免闪色） */
+  /* 独立访问：默认深色压住闪白，随后由公开配置校准 */
   (function () {
     var root = document.documentElement;
-    function set(t) { root.classList.toggle('dark', t !== 'light'); }
+    function set(t) {
+      root.classList.toggle('dark', t !== 'light');
+      root.dataset.theme = (t === 'light') ? 'light' : 'dark';
+    }
     set('dark');
     fetch('/api/public/config')
       .then(function (r) { return r.ok ? r.json() : {}; })
       .then(function (d) { set(d && d.config && d.config.theme || 'dark'); })
       .catch(function () {});
-    window.addEventListener('message', function (e) {
-      if (e && e.data && e.data.type === 'udenav:theme') set(e.data.theme);
-    });
   })();
 </script>
 </head>

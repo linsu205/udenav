@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run admin:build",
+    "build": "node scripts/build-admin.mjs",
     "dev": "wrangler dev --local",
-    "admin:build": "vite build --config vite.config.ts",
+    "admin:build": "node scripts/build-admin.mjs",
     "admin:dev": "vite --config vite.config.ts",
     "typecheck": "tsc --noEmit",
     "deploy": "wrangler deploy",
-    "db": "wrangler d1 execute udenav-database --remote --command"
+    "db": "wrangler d1 execute udenav-database --remote --command",
+    "passwd": "node scripts/reset-password.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261019.1",

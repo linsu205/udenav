@@ -3,7 +3,8 @@ import { ref } from 'vue';
 import { useStore } from '../store';
 
 const store = useStore();
-const mode = ref<'login' | 'register'>('login');
+/* 单租户：已有账号时注册入口永久关闭，直接进登录态 */
+const mode = ref<'login' | 'register'>(store.needSetup ? 'register' : 'login');
 const username = ref('');
 const password = ref('');
 const err = ref('');
@@ -24,7 +25,7 @@ async function submit() {
   <div class="sp-login">
     <div class="sp-card">
       <h1>{{ mode === 'login' ? '登录管理后台' : '注册管理后台' }}</h1>
-      <p class="tip">{{ mode === 'login' ? '使用管理员账号登录' : '首次使用请注册（唯一 owner 账号）' }}</p>
+      <p class="tip">{{ mode === 'login' ? '使用管理员账号登录' : '首次使用请注册唯一管理员账号' }}</p>
       <el-form @submit.prevent="submit" label-position="top">
         <el-form-item label="用户名">
           <el-input v-model="username" placeholder="3-20 位字母/数字/下划线" autocomplete="username" />
@@ -37,7 +38,7 @@ async function submit() {
           {{ mode === 'login' ? '登录' : '注册' }}
         </el-button>
       </el-form>
-      <div style="text-align:center;margin-top:16px;font-size:13px">
+      <div v-if="store.needSetup" style="text-align:center;margin-top:16px;font-size:13px">
         <el-link type="primary" :underline="'never'" @click="mode = mode === 'login' ? 'register' : 'login'">
           {{ mode === 'login' ? '还没有账号？注册' : '已有账号？登录' }}
         </el-link>

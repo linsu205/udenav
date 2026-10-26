@@ -1,6 +1,8 @@
 // 公开接口：访客打开首页时读取配置 + 分组 + 卡片
 
 import { json } from '../lib/http';
+import { readSessionCookie, verifyToken } from '../lib/auth';
+import { getSecret } from '../lib/secret';
 import { DEFAULT_CONFIG, type Env, type GroupRow, type IconRow, type ConfigRow } from '../lib/schema';
 
 function parseConfig(rows: ConfigRow[]): Record<string, unknown> {
@@ -24,10 +26,21 @@ async function hashIp(ip: string | undefined): Promise<string> {
   return out.slice(0, 16);
 }
 
+/** 访客页与后台同源，登录后浏览器会带上 sp_session，据此判断要不要放开全部内容 */
+async function isLoggedIn(env: Env, req: Request): Promise<boolean> {
+  const token = readSessionCookie(req);
+  if (!token) return false;
+  return (await verifyToken(token, await getSecret(env))) != null;
+}
+
 export async function publicPanel(env: Env, req: Request): Promise<Response> {
+  const authed = await isLoggedIn(env, req);
+  /* 未登录：只看「免登录可见」的分组；已登录：看全部未隐藏的 */
+  const where = authed ? 'public_hide = 0' : 'public_hide = 0 AND public_show = 1';
+
   const [cfg, groups] = await Promise.all([
     env.DB.prepare('SELECT * FROM user_config').all<ConfigRow>(),
-    env.DB.prepare('SELECT * FROM item_icon_group WHERE public_hide = 0 ORDER BY sort, id').all<GroupRow>(),
+    env.DB.prepare(`SELECT * FROM item_icon_group WHERE ${where} ORDER BY sort, id`).all<GroupRow>(),
   ]);
   const visible = groups.results.filter((g) => g.card_style !== 'hide');
   const ids = visible.map((g) => g.id);
@@ -51,6 +64,7 @@ export async function publicPanel(env: Env, req: Request): Promise<Response> {
 
   return json({
     ok: true,
+    authed,
     config: parseConfig(cfg.results),
     groups: visible.map((g) => ({
       id: g.id,
