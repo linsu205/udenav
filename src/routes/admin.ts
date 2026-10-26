@@ -1,7 +1,7 @@
 // 管理接口：登录 / 注册 / 配置 / 分组 / 卡片 / 导入导出
 // 全部要求 owner 或 editor 会话；写操作限流。
 
-import { json, bad, q, num, readJson, httpErr } from '../lib/http';
+import { json, bad, q, num, numBody, readJson, httpErr } from '../lib/http';
 import { hashPassword, verifyPassword, signToken, verifyToken, setSessionCookie, clearSessionCookie, readSessionCookie, requireAccess, type Session, type Role, nowSec } from '../lib/auth';
 import { DEFAULT_CONFIG, type Env, type GroupRow, type IconRow, type IconType, type ConfigRow } from '../lib/schema';
 import { getSecret } from '../lib/secret';
@@ -184,18 +184,17 @@ export async function patchGroup(env: Env, req: Request, id: number): Promise<Re
   const body = await readJson(req);
   const title = body.title !== undefined ? String(body.title).trim() : g.title;
   if (!title) return bad('分组名不能为空');
-  const fields: Array<[string, any]> = [
-    ['description', String(body.description ?? g.description)],
-    ['icon_type', body.icon_type ?? g.icon_type],
-    ['icon_name', String(body.icon_name ?? g.icon_name)],
-    ['icon_url', String(body.icon_url ?? g.icon_url)],
-    ['sort', num(body, 'sort', g.sort, -1e7, 1e7)],
-    ['public_hide', body.public_hide ?? g.public_hide],
-    ['card_style', body.card_style ?? g.card_style],
-  ];
+  /* 与 SQL 列一一对应，别再用下标索引元组数组（之前 fields[7] 越界必然 500） */
+  const description = String(body.description ?? g.description);
+  const icon_type = body.icon_type ?? g.icon_type;
+  const icon_name = String(body.icon_name ?? g.icon_name);
+  const icon_url = String(body.icon_url ?? g.icon_url);
+  const sort = numBody(body, 'sort', g.sort, -1e7, 1e7);
+  const public_hide = (body.public_hide ?? g.public_hide) ? 1 : 0;
+  const card_style = body.card_style ?? g.card_style;
   await env.DB
     .prepare('UPDATE item_icon_group SET title=?, description=?, icon_type=?, icon_name=?, icon_url=?, sort=?, public_hide=?, card_style=? WHERE id=?')
-    .bind(title, fields[1][1], fields[2][1], fields[3][1], fields[4][1], fields[5][1], fields[6][1] ? 1 : 0, fields[7][1], id)
+    .bind(title, description, icon_type, icon_name, icon_url, sort, public_hide, card_style, id)
     .run();
   return json({ ok: true });
 }

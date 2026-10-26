@@ -29,6 +29,15 @@ export function num(params: URLSearchParams, key: string, dflt: number, min = -I
   return Math.min(Math.max(n, min), max);
 }
 
+/** 同 num()，但面向 JSON 请求体（键值对象）而不是 URLSearchParams */
+export function numBody(body: Record<string, unknown>, key: string, dflt: number, min = -Infinity, max = Infinity): number {
+  const raw = body?.[key];
+  if (raw == null || raw === '') return dflt;
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n)) return dflt;
+  return Math.min(Math.max(n, min), max);
+}
+
 /** 解析 JSON 请求体；非法 JSON 抛带 httpStatus 的错误 */
 export async function readJson(req: Request): Promise<any> {
   const text = await req.text();
