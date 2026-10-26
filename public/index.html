@@ -28,7 +28,12 @@
   .bg-mask{position:fixed;inset:0;z-index:-1;background:rgba(0,0,0,var(--mask,.2))}
   html[data-theme="light"] .bg-mask{background:rgba(255,255,255,var(--mask,.2))}
   /* 背景视差：滚动时背景以约 1/7 的速度反向移动，避免内容硬平移、背景钉死 */
-  .bg-parallax{position:fixed;inset:0;z-index:-2;transform:translate3d(0,var(--py,0),0);will-change:transform}
+  /* 背景渐变层：比视口上下各多留 20vh，滚动时以约 1/7 速度反向位移形成视差。
+     独立成层（而不是画在 body 上），否则没配背景图时视差根本看不见。
+     配了背景图时 .bg 会盖住这层，视差自然让位（背景图本身保持钉住，不会露边） */
+  .bg-grad{position:fixed;inset:-20vh 0;z-index:-3;transform:translate3d(0,var(--py,0),0);will-change:transform;
+    background:linear-gradient(155deg,#262c36 0%,#1c2027 42%,#272e38 100%)}
+  html[data-theme="light"] .bg-grad{background:linear-gradient(160deg,#f4f7fa 0%,#eaeff3 55%,#f1f5f8 100%)}
 
   .wrap{max-width:1200px;margin:0 auto;padding:0 18px 90px}
   header{display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;padding-top:var(--mt,6vh)}
@@ -137,7 +142,8 @@
 <noscript><style>.group,.card{opacity:1!important}</style></noscript>
 </head>
 <body>
-<div class="bg-parallax" id="bgParallax"><div class="bg" id="bg"></div></div>
+<div class="bg-grad" id="bgGrad"></div>
+<div class="bg" id="bg"></div>
 <div class="bg-blur"></div>
 <div class="bg-mask"></div>
 
@@ -389,7 +395,7 @@ function initMotion() {
   const show = el => { el.style.setProperty('opacity', '1'); el.classList.add('in'); };
 
   /* 视差：背景层随滚动缓慢反向位移。用 transform 走合成层，不触发重排 */
-  const parallax = $('#bgParallax');
+  const parallax = $('#bgGrad');
   if (parallax && !RM) {
     let raf = 0;
     const apply = () => { raf = 0; parallax.style.setProperty('--py', (-window.scrollY * 0.14).toFixed(2) + 'px'); };
