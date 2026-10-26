@@ -7,12 +7,12 @@
 <link id="fav" rel="icon" type="image/svg+xml" data-def="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%23409EFF'/><path d='M22 22 V36 Q22 46 32 46 Q42 46 42 36 V14' fill='none' stroke='%23FFFFFF' stroke-width='7' stroke-linecap='round'/><path d='M34 22 L42 12 L50 22' fill='none' stroke='%23FFFFFF' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/></svg>" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%23409EFF'/><path d='M22 22 V36 Q22 46 32 46 Q42 46 42 36 V14' fill='none' stroke='%23FFFFFF' stroke-width='7' stroke-linecap='round'/><path d='M34 22 L42 12 L50 22' fill='none' stroke='%23FFFFFF' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <style>
   :root{
-    --card-bg:rgba(74,82,98,.36); --card-bg-hover:rgba(96,106,124,.48);
+    --card-bg:rgba(74,82,98,.52); --card-bg-hover:rgba(96,106,124,.66);
     --text:#f5f6f7; --text-dim:#a9afb6; --radius:16px; --accent:#18a058;
     --blur:blur(10px);
   }
   html[data-theme="light"]{
-    --card-bg:rgba(255,255,255,.72); --card-bg-hover:rgba(255,255,255,.92);
+    --card-bg:rgba(255,255,255,.82); --card-bg-hover:rgba(255,255,255,.95);
     --text:#1f2328; --text-dim:#57606a;
   }
   *{box-sizing:border-box}
@@ -23,8 +23,9 @@
   *::-webkit-scrollbar-thumb{background:rgba(128,128,128,.35);border-radius:4px}
   *::-webkit-scrollbar-thumb:hover{background:rgba(128,128,128,.55)}
   *{scrollbar-width:thin;scrollbar-color:rgba(128,128,128,.35) transparent}
-  .bg{position:fixed;inset:0;z-index:-2;background-size:cover;background-repeat:no-repeat;background-position:center}
-  .bg-blur{position:fixed;inset:0;z-index:-1;backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
+  .bg{position:fixed;inset:0;z-index:-2;background-size:cover;background-repeat:no-repeat;background-position:center;filter:var(--blur);-webkit-filter:var(--blur)}
+  /* 整页背景模糊改为直接作用在背景图本身（.bg 的 filter），静态计算、不随滚动每帧重算，避免卡顿。
+     原 .bg-blur 满屏 backdrop-filter 在视差渐变层背后，每帧都要重模糊整个视口，是滚动卡顿主因，已移除。 */
   .bg-mask{position:fixed;inset:0;z-index:-1;background:rgba(0,0,0,var(--mask,.2))}
   html[data-theme="light"] .bg-mask{background:rgba(255,255,255,var(--mask,.2))}
   /* 背景视差：滚动时背景以约 1/7 的速度反向移动，避免内容硬平移、背景钉死 */
@@ -48,14 +49,14 @@
   @media(max-width:620px){.sep{display:none}}
 
   .search{margin:26px auto 0;max-width:680px;display:flex;align-items:center;gap:8px;
-    background:var(--card-bg);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    background:var(--card-bg);box-shadow:0 6px 20px rgba(0,0,0,.18);
     border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:8px 10px}
   .search input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text);font-size:15px}
   .search input::placeholder{color:var(--text-dim)}
   .eng{position:relative}
   .eng-btn{background:var(--card-bg-hover);border:0;border-radius:999px;padding:7px 14px;color:var(--text);font-size:13px;cursor:pointer}
   .eng-list{display:none;position:absolute;top:44px;right:0;z-index:20;background:var(--card-bg-hover);
-    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    border-radius:12px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
   .eng-list.open{display:block}
   .eng-list button{display:block;width:100%;background:none;border:0;color:var(--text);padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;text-align:left}
   .eng-list button:hover{background:rgba(24,160,88,.22)}
@@ -66,10 +67,10 @@
   .group-head h2{margin:0;font-size:19px;font-weight:700}
   .group-head .desc{font-size:13px;color:var(--text-dim)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px}
-  .card{display:flex;align-items:center;gap:12px;background:var(--card-bg);border:1px solid rgba(255,255,255,.06);
+  .card{display:flex;align-items:center;gap:12px;background:var(--card-bg);border:1px solid rgba(255,255,255,.08);
     border-radius:var(--radius);padding:14px;cursor:pointer;transition:transform .18s,box-shadow .18s,background .18s;
-    backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);overflow:hidden}
-  .card:hover{transform:translateY(-3px);background:var(--card-bg-hover);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    box-shadow:0 4px 16px rgba(0,0,0,.18);overflow:hidden}
+  .card:hover{transform:translateY(-3px);background:var(--card-bg-hover);
     box-shadow:0 14px 34px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.06),0 0 22px rgba(24,160,88,.16)}
   .card .ic{flex:0 0 46px;width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;
     font-size:20px;font-weight:700;color:#fff;overflow:hidden}
@@ -94,7 +95,7 @@
   .search{animation:rise .72s cubic-bezier(.22,.61,.36,1) .13s both}
   .group{opacity:0}
   .group.in{animation:rise .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) both}
-  .card{opacity:0;will-change:transform,opacity}
+  .card{opacity:0}
   .card.in{animation:cardIn .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) both}
   /* 偏好减少动效时不做动画 */
   @media(prefers-reduced-motion:reduce){
@@ -144,7 +145,6 @@
 <body>
 <div class="bg-grad" id="bgGrad"></div>
 <div class="bg" id="bg"></div>
-<div class="bg-blur"></div>
 <div class="bg-mask"></div>
 
 <div class="wrap">
