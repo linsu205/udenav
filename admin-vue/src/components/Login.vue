@@ -38,7 +38,7 @@ async function submit() {
         </el-button>
       </el-form>
       <div style="text-align:center;margin-top:16px;font-size:13px">
-        <el-link type="primary" :underline="false" @click="mode = mode === 'login' ? 'register' : 'login'">
+        <el-link type="primary" :underline="'never'" @click="mode = mode === 'login' ? 'register' : 'login'">
           {{ mode === 'login' ? '还没有账号？注册' : '已有账号？登录' }}
         </el-link>
       </div>

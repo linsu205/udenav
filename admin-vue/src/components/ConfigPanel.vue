@@ -49,7 +49,7 @@ function rmEngine(i: number) { f.search_engines.splice(i, 1); }
 
     <div class="sp-card">
       <div class="sp-card-title">基础</div>
-      <el-form label-position="top">
+      <el-form label-position="top" @submit.prevent>
         <el-form-item label="首页标题">
           <el-input v-model="f.logo_text" placeholder="我的导航" />
         </el-form-item>
@@ -64,7 +64,7 @@ function rmEngine(i: number) { f.search_engines.splice(i, 1); }
 
     <div class="sp-card">
       <div class="sp-card-title">壁纸</div>
-      <el-form label-position="top">
+      <el-form label-position="top" @submit.prevent>
         <el-row :gutter="18">
           <el-col :span="7"><el-form-item label="主题"><el-select v-model="f.theme" style="width:100%"><el-option value="dark" label="深色" /><el-option value="light" label="浅色" /></el-select></el-form-item></el-col>
           <el-col :span="11"><el-form-item label="壁纸地址"><el-input v-model="f.background_image" placeholder="留空用纯色背景" /></el-form-item></el-col>

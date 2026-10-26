@@ -63,7 +63,7 @@ function save() {
       </div>
     </div>
 
-    <el-form label-position="top">
+    <el-form label-position="top" @submit.prevent>
       <!-- 图标风格 tab -->
       <el-radio-group v-model="f.icon_type" style="margin-bottom:16px">
         <el-radio-button value="color">文字</el-radio-button>

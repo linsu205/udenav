@@ -22,7 +22,7 @@ function save() {
 
 <template>
   <el-dialog :model-value="true" title="分组信息" width="500px" @close="emit('close')" :close-on-click-modal="false">
-    <el-form label-position="top">
+    <el-form label-position="top" @submit.prevent>
       <el-form-item label="分组名称 *">
         <el-input v-model="f.title" placeholder="例：AI 与工具" maxlength="30" />
       </el-form-item>
