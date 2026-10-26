@@ -7,7 +7,7 @@
 <link id="fav" rel="icon" type="image/svg+xml" data-def="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2318a058'/><path d='M9 17l5 5 9-10' stroke='white' stroke-width='3.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2318a058'/><path d='M9 17l5 5 9-10' stroke='white' stroke-width='3.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <style>
   :root{
-    --card-bg:rgba(42,42,42,.42); --card-bg-hover:rgba(42,42,42,.68);
+    --card-bg:rgba(74,82,98,.36); --card-bg-hover:rgba(96,106,124,.48);
     --text:#f5f6f7; --text-dim:#a9afb6; --radius:16px; --accent:#18a058;
     --blur:blur(10px);
   }
@@ -16,7 +16,7 @@
     --text:#1f2328; --text-dim:#57606a;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--text)}
+  body{margin:0;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--text)}
   /* 滚动条美化：细、圆角、半透明 */
   *::-webkit-scrollbar{width:8px;height:8px}
   *::-webkit-scrollbar-track{background:transparent}
@@ -136,7 +136,12 @@ function applyConfig(c) {
   $('#themeBtn').textContent = (c.theme || 'dark') === 'dark' ? '🌙' : '☀️';
   const bg = c.background_image;
   if (bg) { $('#bg').style.backgroundImage = `url("${bg.replace(/"/g,'')}" )`; $('#bg').style.display = 'block'; }
-  else { $('#bg').style.display = 'none'; document.body.style.background = (c.theme||'dark')==='dark' ? '#15171a' : '#eef1f4'; }
+  else {
+    $('#bg').style.display = 'none';
+    document.body.style.background = (c.theme||'dark')==='dark'
+      ? 'linear-gradient(155deg,#262c36 0%,#1c2027 42%,#272e38 100%)'
+      : 'linear-gradient(160deg,#f4f7fa 0%,#eaeff3 55%,#f1f5f8 100%)';
+  }
   document.documentElement.style.setProperty('--blur', `blur(${c.background_blur ?? 10}px)`);
   document.documentElement.style.setProperty('--mask', c.background_mask ?? 0.2);
   document.documentElement.style.setProperty('--mt', `${c.margin_top ?? 6}vh`);
