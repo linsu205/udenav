@@ -27,6 +27,8 @@
   .bg-blur{position:fixed;inset:0;z-index:-1;backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
   .bg-mask{position:fixed;inset:0;z-index:-1;background:rgba(0,0,0,var(--mask,.2))}
   html[data-theme="light"] .bg-mask{background:rgba(255,255,255,var(--mask,.2))}
+  /* 背景视差：滚动时背景以约 1/7 的速度反向移动，避免内容硬平移、背景钉死 */
+  .bg-parallax{position:fixed;inset:0;z-index:-2;transform:translate3d(0,var(--py,0),0);will-change:transform}
 
   .wrap{max-width:1200px;margin:0 auto;padding:0 18px 90px}
   header{display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;padding-top:var(--mt,6vh)}
@@ -72,6 +74,28 @@
   .card .dsc{font-size:12px;color:var(--text-dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .empty{color:var(--text-dim);font-size:14px;padding:24px 4px}
   footer{margin-top:46px;text-align:center;font-size:12px;color:var(--text-dim)}
+
+  /* ---------- 入场与滚动动画 ---------- */
+  @keyframes rise{
+    from{opacity:0;transform:translate3d(0,26px,0)}
+    to{opacity:1;transform:translate3d(0,0,0)}
+  }
+  @keyframes cardIn{
+    from{opacity:0;transform:translate3d(0,18px,0) scale(.975)}
+    to{opacity:1;transform:translate3d(0,0,0) scale(1)}
+  }
+  /* 首屏：header -> 搜索框 -> 卡片 依次浮起 */
+  header{animation:rise .72s cubic-bezier(.22,.61,.36,1) both}
+  .search{animation:rise .72s cubic-bezier(.22,.61,.36,1) .13s both}
+  .group{opacity:0}
+  .group.in{animation:rise .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) both}
+  .card{opacity:0;will-change:transform,opacity}
+  .card.in{animation:cardIn .56s cubic-bezier(.22,.61,.36,1) var(--d,0s) both}
+  /* 偏好减少动效时不做动画 */
+  @media(prefers-reduced-motion:reduce){
+    header,.search{animation:none}
+    .group,.card{opacity:1!important;animation:none!important;transition:none!important}
+  }
   .theme{position:fixed;right:18px;bottom:18px;z-index:30}
   /* 管理入口：胶囊滑块开关（参照 sun-panel）—— 左「前台」右「后台」，点一下白色滑块右滑并弹出后台 */
   .admin-toggle{position:fixed;right:18px;top:18px;z-index:30;width:82px;height:40px;border-radius:13px;padding:3px;
@@ -110,9 +134,10 @@
   .modal .bar .close:hover{background:rgba(128,128,128,.18);color:var(--text)}
   .modal iframe{flex:1;border:0;background:var(--card-bg)}
 </style>
+<noscript><style>.group,.card{opacity:1!important}</style></noscript>
 </head>
 <body>
-<div class="bg" id="bg"></div>
+<div class="bg-parallax" id="bgParallax"><div class="bg" id="bg"></div></div>
 <div class="bg-blur"></div>
 <div class="bg-mask"></div>
 
@@ -344,9 +369,53 @@ const FALLBACK = {
   applyConfig(data.config || FALLBACK.config);
   state.groups = data.groups || [];
   renderGroups();
+  initMotion();
   tick();
   setInterval(tick, 1000);
+  /* 兜底：动效编排异常时也不能让首屏内容一直不可见 */
+  setTimeout(() => document.querySelectorAll('.group:not(.in), .card:not(.in)').forEach(el => {
+    if (el.getBoundingClientRect().top < innerHeight + 200) {
+      el.style.setProperty('opacity', '1'); el.classList.add('in');
+    }
+  }), 2600);
 })();
+
+/* ---------- 入场动画 + 滚动视差 ----------
+   必须在 renderGroups() 之后调用（卡片由 JS 渲染），
+   因此用函数声明而非 IIFE：IIFE 的函数名在外部作用域不可见 */
+function initMotion() {
+  const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const els = () => [...document.querySelectorAll('.group:not(.in), .card:not(.in)')];
+  const show = el => { el.style.setProperty('opacity', '1'); el.classList.add('in'); };
+
+  /* 视差：背景层随滚动缓慢反向位移。用 transform 走合成层，不触发重排 */
+  const parallax = $('#bgParallax');
+  if (parallax && !RM) {
+    let raf = 0;
+    const apply = () => { raf = 0; parallax.style.setProperty('--py', (-window.scrollY * 0.14).toFixed(2) + 'px'); };
+    window.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(apply); }, { passive: true });
+    apply();
+  }
+
+  if (RM) { els().forEach(show); return; }   // 用户关掉动效时直接显示
+
+  const inViewport = el => { const r = el.getBoundingClientRect(); return r.top < innerHeight + 120; };
+
+  /* 首屏：按视口纵坐标顺序排队，依次浮起 */
+  const first = els().filter(inViewport).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+  first.forEach((el, i) => { el.style.setProperty('--d', (i * 10) + 'ms'); show(el); });
+
+  /* 滚动进入视口的部分，滚到才播一次 */
+  const io = new IntersectionObserver(entries => {
+    entries.filter(e => e.isIntersecting).forEach(e => {
+      const g = e.target;
+      const cards = g.classList.contains('group') ? [...g.querySelectorAll('.card:not(.in)')] : [g];
+      cards.forEach((c, i) => { c.style.setProperty('--d', (i * 14) + 'ms'); show(c); });
+      io.unobserve(g);
+    });
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.06 });
+  els().filter(el => !inViewport(el)).forEach(el => io.observe(el));
+}
 </script>
 </body>
 </html>
