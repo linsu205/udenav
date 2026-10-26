@@ -2,6 +2,7 @@
 import { reactive, onMounted, watch } from 'vue';
 import { useStore } from '../store';
 import { put, post } from '../api';
+import { applyTheme } from '../lib/theme';
 import { ElMessage } from 'element-plus';
 
 const store = useStore();
@@ -22,6 +23,8 @@ function fill() {
 
 onMounted(fill);
 watch(() => store.config, fill);
+// 在后台改主题时即时预览（无需保存刷新）
+watch(() => f.theme, t => applyTheme(t));
 
 async function save() {
   await put('/api/admin/config', f);
@@ -79,7 +82,7 @@ function moveEngine(i: number, dir: -1 | 1) {
           <div style="display:flex;align-items:center;gap:12px;width:100%">
             <el-input v-model="f.favicon" placeholder="粘贴图片 URL，或点右边上传" />
             <el-upload :show-file-list="false" accept="image/*" :http-request="uploadFav" style="flex:none"><el-button>上传图标</el-button></el-upload>
-            <img v-if="f.favicon" :src="f.favicon" alt="icon" style="width:28px;height:28px;border-radius:6px;object-fit:contain;background:#fff;flex:none" />
+            <img v-if="f.favicon" :src="f.favicon" alt="icon" style="width:28px;height:28px;border-radius:6px;object-fit:contain;background:var(--sp-preview-bg);flex:none" />
           </div>
         </el-form-item>
         <el-form-item label="页脚文字">
@@ -117,7 +120,7 @@ function moveEngine(i: number, dir: -1 | 1) {
         <el-button @click="moveEngine(i, 1)" :disabled="i === f.search_engines.length - 1" style="flex:none;width:36px">↓</el-button>
         <el-button type="danger" plain @click="rmEngine(i)">删除</el-button>
       </div>
-      <div style="font-size:12px;color:#9aa3ab;margin:-4px 0 8px">排在第 1 位的是访客页默认选中的搜索引擎</div>
+      <div style="font-size:12px;color:var(--sp-dim);margin:-4px 0 8px">排在第 1 位的是访客页默认选中的搜索引擎</div>
       <div style="display:flex;gap:10px;margin-top:6px">
         <el-button @click="addEngine">＋ 添加搜索引擎</el-button>
         <el-button type="success" @click="save">保存配置</el-button>

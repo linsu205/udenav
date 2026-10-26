@@ -47,5 +47,5 @@ async function submit() {
 </template>
 
 <style scoped>
-  .err { color: #f78989; font-size: 13px; margin: 0 0 10px; }
+  .err { color: var(--sp-danger); font-size: 13px; margin: 0 0 10px; }
 </style>

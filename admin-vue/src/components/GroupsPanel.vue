@@ -162,13 +162,13 @@ const dragClass = (kind: 'group' | 'icon') => ({ 'drag-target': dragSrc.value?.k
     display: flex; align-items: center; gap: 12px;
     padding: 13px 18px;
     background: var(--sp-card-in);
-    border-bottom: 1px solid rgba(255, 255, 255, .04);
+    border-bottom: 1px solid var(--sp-card-border);
   }
   .g-icon { font-size: 17px; }
   .g-title { font-weight: 600; font-size: 14.5px; flex: 1; display: flex; align-items: center; gap: 9px; }
   .g-count {
     font-size: 11.5px; font-weight: 400; color: var(--sp-dim);
-    background: rgba(255, 255, 255, .05); padding: 1px 8px; border-radius: 20px;
+    background: var(--sp-chip-bg); padding: 1px 8px; border-radius: 20px;
   }
   .g-ops { display: flex; gap: 6px; }
 

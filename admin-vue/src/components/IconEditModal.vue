@@ -51,7 +51,7 @@ function save() {
 <template>
   <el-dialog :model-value="true" :title="isAdd ? '添加卡片' : '编辑卡片'" width="640px" @close="emit('close')" :close-on-click-modal="false">
     <!-- 效果预览 -->
-    <div style="background:#15171a;border:1px dashed #3a4048;border-radius:12px;padding:16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;min-height:70px">
+    <div style="background:var(--sp-preview-bg);border:1px dashed var(--sp-preview-border);border-radius:12px;padding:16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;min-height:70px">
       <div style="flex:0 0 46px;width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;overflow:hidden;font-size:20px"
            :style="{ background: f.background_color }">
         <img v-if="previewIconUrl" :src="previewIconUrl" style="width:100%;height:100%;object-fit:cover" />
@@ -59,7 +59,7 @@ function save() {
       </div>
       <div>
         <div style="font-size:15px;font-weight:600">{{ f.title || '卡片标题' }}</div>
-        <div style="font-size:12px;color:#8b929a;margin-top:3px">{{ f.description || '描述信息' }}</div>
+        <div style="font-size:12px;color:var(--sp-dim);margin-top:3px">{{ f.description || '描述信息' }}</div>
       </div>
     </div>
 
@@ -90,7 +90,7 @@ function save() {
         <el-form-item label="在线图标（Iconify 名）">
           <el-input v-model="f.icon_name" placeholder="例：ri:home-fill / mdi:github" />
         </el-form-item>
-        <div style="color:#8b929a;font-size:12px;margin:-6px 0 12px">格式：前缀:图标名，如 ri:home-fill、mdi:github、fa:github。留空则用标题首字。</div>
+        <div style="color:var(--sp-dim);font-size:12px;margin:-6px 0 12px">格式：前缀:图标名，如 ri:home-fill、mdi:github、fa:github。留空则用标题首字。</div>
       </div>
 
       <el-row :gutter="16">
@@ -119,7 +119,7 @@ function save() {
         </el-select>
       </el-form-item>
 
-      <el-collapse style="background:#15171a;border:1px solid #2b3036;border-radius:10px">
+      <el-collapse style="background:var(--sp-preview-bg);border:1px solid var(--sp-preview-border);border-radius:10px">
         <el-collapse-item title="更多选项（背景色、排序、所属分组）" name="more">
           <el-row :gutter="16">
             <el-col :span="8">

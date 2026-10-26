@@ -48,7 +48,7 @@ function goHome() {
       <nav class="menu">
         <button v-for="m in menus" :key="m.key" class="menu-item" :class="{ active: active === m.key }"
                 @click="active = m.key; store.tab = m.key">
-          <el-icon :size="17" :color="active === m.key ? m.color : '#8f99a3'">
+          <el-icon :size="17" :color="active === m.key ? m.color : 'var(--sp-dim)'">
             <component :is="m.icon" />
           </el-icon>
           <span>{{ m.label }}</span>
@@ -84,7 +84,7 @@ function goHome() {
     flex: 0 0 218px; display: flex; flex-direction: column;
     padding: 18px 14px 16px;
     background: var(--sp-panel);
-    border-right: 1px solid rgba(255, 255, 255, .04);
+    border-right: 1px solid var(--sp-card-border);
     position: sticky; top: 0; height: 100vh; box-sizing: border-box;
   }
   .side-logo {
@@ -101,12 +101,12 @@ function goHome() {
   .menu-item {
     display: flex; align-items: center; gap: 10px;
     padding: 10px 13px; border: none; border-radius: 9px;
-    background: transparent; color: #c3c9d0;
+    background: transparent; color: var(--sp-dim);
     font-size: 13.5px; font-family: inherit; cursor: pointer;
     transition: background .15s, color .15s;
     text-align: left;
   }
-  .menu-item:hover { background: var(--sp-card-in); color: #e8eaed; }
+  .menu-item:hover { background: var(--sp-card-in); color: var(--sp-text); }
   .menu-item.active { background: var(--sp-card-in); color: var(--sp-accent); font-weight: 600; }
 
   .side-foot { display: flex; flex-direction: column; gap: 7px; padding-top: 14px; }
@@ -121,10 +121,10 @@ function goHome() {
     display: flex; align-items: center; justify-content: center; gap: 6px;
     padding: 8px 0; border-radius: 8px; font-size: 13px; font-family: inherit;
     background: var(--sp-card-in); border: 1px solid var(--sp-border);
-    color: #c3c9d0; cursor: pointer; transition: all .15s;
+    color: var(--sp-dim); cursor: pointer; transition: all .15s;
   }
-  .foot-btn:hover { background: var(--sp-hover); color: #fff; }
-  .foot-btn.danger { color: #e8908f; border-color: rgba(245, 108, 108, .3); }
+  .foot-btn:hover { background: var(--sp-hover); color: var(--sp-btn-fg); }
+  .foot-btn.danger { color: var(--sp-danger-text); border-color: rgba(245, 108, 108, .3); }
   .foot-btn.danger:hover { background: rgba(245, 108, 108, .12); border-color: rgba(245, 108, 108, .5); }
 
   /* 右侧 */

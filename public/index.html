@@ -233,10 +233,19 @@ $('#themeBtn').onclick = async () => {
   const cur = document.documentElement.dataset.theme;
   const next = cur === 'dark' ? 'light' : 'dark';
   applyConfig({ ...state.config, theme: next });
+  pushTheme();   // 后台弹窗开着的话也一起跟着换
   await fetch('/api/admin/config', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme: next }) }).catch(() => {});
 };
 
-/* ---------- 管理后台弹窗 ---------- */
+/* ---------- 管理后台弹窗（后台主题跟随访客页） ---------- */
+function pushTheme() {
+  const fr = $('#modalFrame');
+  try {
+    fr.contentWindow && fr.contentWindow.postMessage(
+      { type: 'udenav:theme', theme: document.documentElement.dataset.theme || 'dark' }, '*');
+  } catch (e) {}
+}
+$('#modalFrame').addEventListener('load', pushTheme);
 $('#adminBtn').onclick = () => {
   $('#modalTitle').textContent = '管理后台';
   $('#modalFrame').src = '/admin';

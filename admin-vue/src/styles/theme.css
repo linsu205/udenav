@@ -1,29 +1,104 @@
 /* ============================================================
-   UDENAV 后台主题 —— 参考 sun-panel 深色风格
-   分层面板：底 #17191c → 侧栏/卡片 #1f2327 → 卡片内嵌 #262b30 → 控件 #2d3339
+   UDENAV 后台主题 —— 参考 sun-panel，双主题跟随访客页
+   深色分层：底 #17191c → 侧栏/卡片 #1f2327 → 内嵌 #2b3036 → 控件 #2e343a
+   浅色分层：底 #eef1f5 → 卡片 #ffffff → 内嵌 #f6f8fa → 控件 #f7f8fa
    强调色：薄荷绿 #2fbf6b
+   所有颜色一律走 --sp-* 变量，禁止在组件里写死色值
    ============================================================ */
 
 :root {
-  --sp-bg: #17191c;        /* 页面最底层 */
-  --sp-panel: #1f2327;     /* 侧栏 / 大卡片 */
-  --sp-card: #24282d;      /* 内容卡片 */
-  --sp-card-in: #2b3036;   /* 卡片内嵌块 / 菜单项 */
-  --sp-ctrl: #2e343a;      /* 输入控件底色 */
-  --sp-hover: #363d44;     /* 悬停 */
-  --sp-border: #32383f;    /* 边框 */
+  color-scheme: light;
+  --sp-bg: #eef1f5;            /* 页面最底层 */
+  --sp-panel: #ffffff;         /* 侧栏 / 大卡片 */
+  --sp-card: #ffffff;          /* 内容卡片 */
+  --sp-card-in: #f6f8fa;       /* 卡片内嵌块 / 菜单项 */
+  --sp-ctrl: #f7f8fa;          /* 输入控件底色 */
+  --sp-hover: #eceff3;         /* 悬停 */
+  --sp-border: #e4e8ee;        /* 边框 */
+  --sp-border-hover: #d2d9e1;  /* 悬停/聚焦边框 */
+  --sp-card-border: #e9edf2;   /* 卡片外边框 */
+  --sp-chip-bg: #eef1f5;       /* 小徽标底色 */
+  --sp-text: #1f2328;
+  --sp-dim: #6b7480;
+  --sp-faint: #99a2ac;
+  --sp-accent: #2fbf6b;
+  --sp-accent-hover: #2bb25f;
+  --sp-danger: #f56c6c;
+  --sp-danger-text: #d65251;
+  --sp-btn-text: #4a525c;      /* 普通按钮文字 */
+  --sp-btn-fg: #1f2328;        /* 悬停后的按钮文字 */
+  --sp-alert-bg: rgba(64, 158, 255, .07);
+  --sp-alert-border: rgba(64, 158, 255, .22);
+  --sp-alert-text: #2c6da8;
+  --sp-preview-bg: #f0f3f6;    /* 图标预览方块底 */
+  --sp-preview-border: #e0e5eb;
+  --sp-scrollbar: #ccd2d9;
+  --sp-scrollbar-hover: #b4bcc6;
+  --sp-radius: 12px;
+
+  /* 品牌主色两种主题一致 */
+  --el-color-primary: var(--sp-accent);
+  --el-color-primary-dark-2: #28a75d;
+  --el-color-primary-light-3: #52c987;
+  --el-color-primary-light-5: #7ad6a3;
+  --el-color-primary-light-7: #a3e4bf;
+  --el-color-primary-light-8: #bfebd3;
+  --el-color-primary-light-9: #eef8f2;
+  --el-color-success: var(--sp-accent);
+  --el-color-success-dark-2: #28a75d;
+  --el-color-success-light-3: #52c987;
+  --el-color-success-light-5: #7ad6a3;
+  --el-color-success-light-7: #a3e4bf;
+  --el-color-success-light-8: #bfebd3;
+  --el-color-success-light-9: #eef8f2;
+
+  /* Element Plus 基础变量（浅色）：与深色块一一对应，保证控件不串色 */
+  --el-bg-color: var(--sp-panel);
+  --el-bg-color-page: var(--sp-bg);
+  --el-bg-color-overlay: var(--sp-card);
+  --el-fill-color-blank: var(--sp-ctrl);
+  --el-fill-color: var(--sp-ctrl);
+  --el-fill-color-light: var(--sp-ctrl);
+  --el-fill-color-lighter: var(--sp-card);
+  --el-fill-color-extra-light: var(--sp-card);
+  --el-border-color: var(--sp-border);
+  --el-border-color-light: var(--sp-border);
+  --el-border-color-lighter: #e0e5eb;
+  --el-border-color-extra-light: #e9edf2;
+  --el-text-color-primary: var(--sp-text);
+  --el-text-color-regular: #4b535d;
+  --el-text-color-secondary: var(--sp-dim);
+  --el-text-color-placeholder: var(--sp-faint);
+  --el-text-color-disabled: #b8bfc7;
+  --el-mask-color: rgba(0, 0, 0, .45);
+}
+
+/* 深色：覆盖背景 / 文字 / 边框 / 填充 */
+html.dark {
+  color-scheme: dark;
+  --sp-bg: #17191c;
+  --sp-panel: #1f2327;
+  --sp-card: #24282d;
+  --sp-card-in: #2b3036;
+  --sp-ctrl: #2e343a;
+  --sp-hover: #363d44;
+  --sp-border: #32383f;
+  --sp-border-hover: #3d444c;
+  --sp-card-border: rgba(255, 255, 255, .05);
+  --sp-chip-bg: rgba(255, 255, 255, .05);
   --sp-text: #e8eaed;
   --sp-dim: #9aa3ab;
   --sp-faint: #6b7480;
-  --sp-accent: #2fbf6b;
-  --sp-accent-hover: #3acf7a;
-  --sp-danger: #f56c6c;
-  --sp-radius: 12px;
-}
-
-/* 加上 dark class，激活 Element Plus 暗色变量 */
-html.dark {
-  color-scheme: dark;
+  --sp-danger-text: #e8908f;
+  --sp-btn-text: #d3d8dd;
+  --sp-btn-fg: #ffffff;
+  --sp-alert-bg: rgba(64, 158, 255, .08);
+  --sp-alert-border: rgba(64, 158, 255, .18);
+  --sp-alert-text: #a8c3d8;
+  --sp-preview-bg: #15171a;
+  --sp-preview-border: #3a4048;
+  --sp-scrollbar: #31373d;
+  --sp-scrollbar-hover: #3d444c;
   --el-bg-color: var(--sp-panel);
   --el-bg-color-page: var(--sp-bg);
   --el-bg-color-overlay: var(--sp-card);
@@ -41,20 +116,6 @@ html.dark {
   --el-text-color-secondary: var(--sp-dim);
   --el-text-color-placeholder: var(--sp-faint);
   --el-text-color-disabled: #525a63;
-  --el-color-primary: var(--sp-accent);
-  --el-color-primary-dark-2: #28a75d;
-  --el-color-primary-light-3: #52c987;
-  --el-color-primary-light-5: #7ad6a3;
-  --el-color-primary-light-7: #a3e4bf;
-  --el-color-primary-light-8: #bfebd3;
-  --el-color-primary-light-9: #1f2c26;
-  --el-color-success: var(--sp-accent);
-  --el-color-success-dark-2: #28a75d;
-  --el-color-success-light-3: #52c987;
-  --el-color-success-light-5: #7ad6a3;
-  --el-color-success-light-7: #a3e4bf;
-  --el-color-success-light-8: #bfebd3;
-  --el-color-success-light-9: #1f2c26;
   --el-mask-color: rgba(0, 0, 0, .55);
 }
 
@@ -66,6 +127,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
+  transition: background .2s, color .2s;
 }
 
 /* ---------- 通用卡片 / 页面骨架 ---------- */
@@ -79,7 +141,7 @@ body {
 
 .sp-card {
   background: var(--sp-card);
-  border: 1px solid rgba(255, 255, 255, .05);
+  border: 1px solid var(--sp-card-border);
   border-radius: var(--sp-radius);
   padding: 20px 22px;
   margin-bottom: 16px;
@@ -94,9 +156,9 @@ body {
   background: var(--sp-accent); display: inline-block;
 }
 
-/* ---------- Element Plus 控件深色化 ---------- */
+/* ---------- Element Plus 控件 ---------- */
 
-/* 输入框：深底、无边框感、聚焦亮绿描边 */
+/* 输入框：无边框感、聚焦亮绿描边 */
 .el-input__wrapper, .el-textarea__inner {
   background-color: var(--sp-ctrl) !important;
   box-shadow: 0 0 0 1px var(--sp-border) inset !important;
@@ -107,7 +169,7 @@ body {
 }
 .el-input__inner { color: var(--sp-text); }
 .el-input__inner::placeholder, .el-textarea__inner::placeholder { color: var(--sp-faint); }
-.el-input:hover .el-input__wrapper { box-shadow: 0 0 0 1px #3d444c inset !important; }
+.el-input:hover .el-input__wrapper { box-shadow: 0 0 0 1px var(--sp-border-hover) inset !important; }
 
 /* 选择器 / 数字输入 */
 .el-select__wrapper {
@@ -115,7 +177,7 @@ body {
   box-shadow: 0 0 0 1px var(--sp-border) inset !important;
   border-radius: 8px; min-height: 34px;
 }
-.el-select__wrapper.is-hovering { box-shadow: 0 0 0 1px #3d444c inset !important; }
+.el-select__wrapper.is-hovering { box-shadow: 0 0 0 1px var(--sp-border-hover) inset !important; }
 .el-select__wrapper.is-focused { box-shadow: 0 0 0 1.5px var(--sp-accent) inset !important; }
 .el-select__selected-item { color: var(--sp-text); }
 .el-select__placeholder { color: var(--sp-faint); }
@@ -145,9 +207,9 @@ body {
   --el-button-bg-color: var(--sp-card-in);
   --el-button-border-color: var(--sp-border);
   --el-button-hover-bg-color: var(--sp-hover);
-  --el-button-hover-border-color: #454d55;
-  --el-button-text-color: #d3d8dd;
-  --el-button-hover-text-color: #fff;
+  --el-button-hover-border-color: var(--sp-border-hover);
+  --el-button-text-color: var(--sp-btn-text);
+  --el-button-hover-text-color: var(--sp-btn-fg);
 }
 .el-button--primary, .el-button--success {
   background: var(--sp-accent); border-color: var(--sp-accent); color: #fff;
@@ -161,13 +223,13 @@ body {
 .el-button--danger { background: var(--sp-danger); border-color: var(--sp-danger); color: #fff; }
 .el-button--danger:hover { background: #f78989; border-color: #f78989; }
 .el-button--danger.is-plain {
-  background: rgba(245, 108, 108, .1); border-color: rgba(245, 108, 108, .45); color: #f78989;
+  background: rgba(245, 108, 108, .1); border-color: rgba(245, 108, 108, .45); color: var(--sp-danger-text);
 }
 
-/* 复选框 / 开关 */
+/* 复选框 */
 .el-checkbox__inner { background: var(--sp-ctrl); border-color: var(--sp-border); }
 .el-checkbox__input.is-checked .el-checkbox__inner { background: var(--sp-accent); border-color: var(--sp-accent); }
-.el-checkbox__label { color: #c6ccd2; }
+.el-checkbox__label { color: var(--sp-dim); }
 
 /* 对话框 / 消息框 */
 .el-dialog, .el-message-box {
@@ -188,11 +250,11 @@ body {
 
 /* 提示条 */
 .el-alert--info {
-  background: rgba(64, 158, 255, .08) !important;
-  border: 1px solid rgba(64, 158, 255, .18);
+  background: var(--sp-alert-bg) !important;
+  border: 1px solid var(--sp-alert-border);
   border-radius: 10px;
 }
-.el-alert__title, .el-alert__description { color: #a8c3d8 !important; font-size: 13px; line-height: 1.7; }
+.el-alert__title, .el-alert__description { color: var(--sp-alert-text) !important; font-size: 13px; line-height: 1.7; }
 
 /* 统计数字 */
 .el-statistic__head { color: var(--sp-dim) !important; font-size: 13px; }
@@ -211,9 +273,9 @@ body {
 /* ---------- 滚动条 ---------- */
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: #31373d; border-radius: 4px; }
-*::-webkit-scrollbar-thumb:hover { background: #3d444c; }
-* { scrollbar-width: thin; scrollbar-color: #31373d transparent; }
+*::-webkit-scrollbar-thumb { background: var(--sp-scrollbar); border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--sp-scrollbar-hover); }
+* { scrollbar-width: thin; scrollbar-color: var(--sp-scrollbar) transparent; }
 
 /* ---------- 登录页 ---------- */
 .sp-login {

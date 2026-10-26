@@ -5,9 +5,11 @@ import 'element-plus/dist/index.css';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 import './styles/theme.css';
 import App from './App.vue';
+import { applyTheme, watchThemeFromParent } from './lib/theme';
 
-// 激活 Element Plus 暗色模式（不加这个控件全是白底）
-document.documentElement.classList.add('dark');
+// 主题：默认深色（防闪白），随后被 /api/public/config 或父页 postMessage 覆盖
+applyTheme('dark');
+watchThemeFromParent();
 
 const app = createApp(App);
 app.use(createPinia());
