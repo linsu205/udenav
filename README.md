@@ -1,8 +1,8 @@
-# unav
+# udenav
 
 Cloudflare Workers 导航页（GitHub 自动部署，**无需 R2**）
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?repository=https%3A%2F%2Fgithub.com%2Flinsu205%2Funav)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?repository=https%3A%2F%2Fgithub.com%2Flinsu205%2Fudenav)
 
 ---
 
@@ -15,7 +15,7 @@ Cloudflare Workers 导航页（GitHub 自动部署，**无需 R2**）
 ## 快速部署（推荐，和 NotePlus 一样一键）
 
 点上面的 **Deploy to Cloudflare** 按钮，**一次都不用再配置**：
-1. 自动关联本仓库 `linsu205/unav`（连接后每次 `git push` 自动构建部署）
+1. 自动关联本仓库 `linsu205/udenav`（连接后每次 `git push` 自动构建部署）
 2. 自动创建 D1 数据库 `unav-database`
 3. 自动读取 `package.json` 的 `npm run build` 作为构建命令
 4. 自动部署上线
@@ -42,12 +42,12 @@ npx wrangler dev --local
 2. 创建 D1 数据库 `unav-database`
 3. Worker 关联 D1（变量名 `DB`）
 4. Worker Settings → Variables & Secrets → 加 `SECRET`（32 位以上随机串）
-5. Worker Settings → Build → 连接 GitHub 仓库 `linsu205/unav`（分支 main）
+5. Worker Settings → Build → 连接 GitHub 仓库 `linsu205/udenav`（分支 main）
 6. Build command 填 `npm run build`（部署命令 `npm run deploy`）
 7. 之后每次 `git push` 自动部署
 
 > ⚠️ 最容易踩的坑：第 5 步连的仓库必须和本地推送的仓库一致。
-> 本项目推送 `linsu205/unav`；若连成 `unav-2026` 等其它仓库，push 不会触发构建。
+> 本项目推送 `linsu205/udenav`；若连成 `unav-2026` 等其它仓库，push 不会触发构建。
 
 详细步骤见 [docs/DEPLOY.md](docs/DEPLOY.md)。
 

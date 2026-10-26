@@ -29,7 +29,7 @@ async function logout() {
 
 function goHome() {
   if (window.self !== window.top) {
-    window.top.postMessage({ type: 'unav:close-modal' }, '*');
+    window.top.postMessage({ type: 'udenav:close-modal' }, '*');
   } else {
     location.href = '/';
   }

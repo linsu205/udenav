@@ -20,7 +20,7 @@ async function save() {
   ElMessage.success('配置已保存');
   // 通知主页刷新
   if (window.self !== window.top) {
-    setTimeout(() => window.top.postMessage({ type: 'unav:refresh' }, '*'), 600);
+    setTimeout(() => window.top.postMessage({ type: 'udenav:refresh' }, '*'), 600);
   } else {
     setTimeout(() => location.reload(), 600);
   }

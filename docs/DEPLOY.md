@@ -57,11 +57,11 @@ Worker → **Settings → Bindings**：
 
 ```bash
 # 首次
-cd unav
+cd udenav
 git init
 git add .
-git commit -m "init: unav"
-git remote add origin https://github.com/你的用户名/unav.git
+git commit -m "init: udenav"
+git remote add origin https://github.com/你的用户名/udenav.git
 git push -u origin main
 ```
 
@@ -72,7 +72,7 @@ git push -u origin main
 Worker `unav` → **Settings → Repository**：
 
 1. 点 **Connect** → 选 GitHub → 授权 Cloudflare 访问仓库
-2. 选仓库 `unav`，分支 `main`
+2. 选仓库 `udenav`，分支 `main`
 3. **Build command** 填：
    ```
    npm install

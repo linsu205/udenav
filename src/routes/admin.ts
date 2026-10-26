@@ -274,7 +274,7 @@ export async function exportAll(env: Env, req: Request): Promise<Response> {
   ]);
   return json({
     ok: true,
-    app: 'unav',
+    app: 'udenav',
     exported_at: Date.now(),
     config: c.results.map((r) => ({ key: r.key, value: safeParse(r.value) })),
     users: u.results.map((r) => ({ ...r, password: '<请用 JSON 导入界面单独设置>' })),

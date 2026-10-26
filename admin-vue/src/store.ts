@@ -19,7 +19,7 @@ export interface IconItem {
   open_method: number; background_color: string; sort: number;
 }
 
-export const useStore = defineStore('unav', () => {
+export const useStore = defineStore('udenav', () => {
   const user = ref<User | null>(null);
   const config = ref<ConfigRow | null>(null);
   const groups = ref<Group[]>([]);

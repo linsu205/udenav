@@ -231,10 +231,10 @@ $('#adminBtn').onclick = () => {
   $('#modal').classList.add('open');
 };
 window.addEventListener('message', e => {
-  if (e.data && e.data.type === 'unav:close-modal') {
+  if (e.data && e.data.type === 'udenav:close-modal') {
     $('#modal').classList.remove('open');
     $('#modalFrame').src = '';
-  } else if (e.data && e.data.type === 'unav:refresh') {
+  } else if (e.data && e.data.type === 'udenav:refresh') {
     location.reload();
   }
 });
