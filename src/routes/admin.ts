@@ -462,22 +462,31 @@ export async function importAll(env: Env, req: Request): Promise<Response> {
 
   const stmts: D1PreparedStatement[] = [env.DB.prepare('DELETE FROM item_icon'), env.DB.prepare('DELETE FROM item_icon_group'), env.DB.prepare('DELETE FROM user_config')];
   for (const c of cfg) stmts.push(env.DB.prepare('INSERT INTO user_config (key, value) VALUES (?, ?)').bind(String(c.key), JSON.stringify(c.value ?? '')));
-  await env.DB.batch(stmts);
+  for (const g of groups) {
+    stmts.push(env.DB.prepare('INSERT INTO item_icon_group (id, title, description, icon_type, icon_name, icon_url, sort, public_hide, public_show, card_style, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(Number(g.id), String(g.title), String(g.description ?? ''), g.icon_type || 'iconify', String(g.icon_name ?? ''), String(g.icon_url ?? ''), Number(g.sort ?? 0), g.public_hide ? 1 : 0, g.public_show ? 1 : 0, g.card_style || 'info', s.sub));
+  }
+  for (const ic of icons) {
+    stmts.push(env.DB.prepare('INSERT INTO item_icon (id, group_id, title, url, lan_url, icon_type, icon_text, icon_url, description, open_method, background_color, sort, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(Number(ic.id), Number(ic.group_id), String(ic.title), String(ic.url ?? ''), String(ic.lan_url ?? ''), ic.icon_type || 'color', String(ic.icon_text ?? ''), String(ic.icon_url ?? ''), String(ic.description ?? ''), Number(ic.open_method ?? 2), String(ic.background_color ?? '#2a2a2a6b'), Number(ic.sort ?? 0), s.sub));
+  }
 
-  await env.DB.batch(groups.map((g: any) =>
-    env.DB.prepare('INSERT INTO item_icon_group (id, title, description, icon_type, icon_name, icon_url, sort, public_hide, public_show, card_style, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(Number(g.id), String(g.title), String(g.description ?? ''), g.icon_type || 'iconify', String(g.icon_name ?? ''), String(g.icon_url ?? ''), Number(g.sort ?? 0), g.public_hide ? 1 : 0, g.public_show ? 1 : 0, g.card_style || 'info', s.sub),
-  ));
-
-  const iconStmts = icons.map((ic: any) =>
-    env.DB.prepare('INSERT INTO item_icon (id, group_id, title, url, lan_url, icon_type, icon_text, icon_url, description, open_method, background_color, sort, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(Number(ic.id), Number(ic.group_id), String(ic.title), String(ic.url ?? ''), String(ic.lan_url ?? ''), ic.icon_type || 'color', String(ic.icon_text ?? ''), String(ic.icon_url ?? ''), String(ic.description ?? ''), Number(ic.open_method ?? 2), String(ic.background_color ?? '#2a2a2a6b'), Number(ic.sort ?? 0), s.sub),
-  );
-  for (let i = 0; i < iconStmts.length; i += 500) await env.DB.batch(iconStmts.slice(i, i + 500));
+  /* D1 的 batch 是单个事务：全部成功或全部回滚。
+     以前分 4 次 batch（清空 / 配置 / 分组 / 卡片），一旦后面失败，
+     前面的 DELETE 已经生效——旧数据没了、新数据只进来一半。
+     500 条以内一次事务完成；超大备份才退化成分批（batch 语句数有上限）。 */
+  if (stmts.length <= 500) {
+    await env.DB.batch(stmts);
+  } else {
+    for (let i = 0; i < stmts.length; i += 500) await env.DB.batch(stmts.slice(i, i + 500));
+  }
 
   if (body.users && Array.isArray(body.users)) {
     for (const u of body.users) {
-      if (!u.password) continue;
+      /* 导出时密码被替换成占位符「<请用 JSON 导入界面单独设置>」，
+         必须跳过——不跳过就会把占位符当成真密码写进库，导入一次全体账号都登不上。 */
+      const pw = u.password ? String(u.password) : '';
+      if (!pw || pw.startsWith('<')) continue;
       const salt = randomSalt();
       const hash = await hashPassword(String(u.password), salt);
       await env.DB.prepare('INSERT INTO users (username, pass_meta, role) VALUES (?, ?, ?) ON CONFLICT(username) DO UPDATE SET pass_meta = excluded.pass_meta').bind(String(u.username), JSON.stringify({ iter: 15000, salt, hash }), u.role || 'editor').run();

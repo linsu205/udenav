@@ -29,6 +29,12 @@ watch(() => props.modelValue, v => {
   }
 }, { immediate: true });
 
+/* Vue 3 模板里访问不到 document，内联 @click="document..." 会静默失败，
+   文件选择框弹不出来 —— 必须包成函数。 */
+function pickIconFile() {
+  document.getElementById('iconFile')?.click();
+}
+
 async function uploadIcon(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file) return;
@@ -100,7 +106,7 @@ async function fetchFavicon() {
           <div style="display:flex;gap:8px">
             <el-input v-model="f.icon_url" placeholder="粘贴图片 URL 或本地上传" />
             <input type="file" accept="image/*" style="display:none" id="iconFile" @change="uploadIcon">
-            <el-button @click="document.getElementById('iconFile')?.click()">📁 本地上传</el-button>
+            <el-button @click="pickIconFile">📁 本地上传</el-button>
           </div>
         </el-form-item>
       </div>
