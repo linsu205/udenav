@@ -478,10 +478,10 @@ function esc(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','
 function letter(t) { return (String(t || '?').trim()[0] || '?').toUpperCase(); }
 
 /* ---------- 名称显示规则 ----------
-   1) 最多显示 6 个字宽：中文/全角算 1 个字，英文字母数字算半个字
-      （这样「哔哩哔哩」=4 个字宽，「GitHub」=3 个字宽，不会被砍成「GitH」）
-   2) 超出就截断：保留 6 个实字 + 省略号
-   3) 字号随字数递减：1 个字最大，6 个字最小 */
+   1) 字宽按中文/全角 1、英文数字 0.5 计（「哔哩哔哩」=4，「GitHub」=2.5）
+   2) 名称（卡片标题、图标下方名称）：最多 6 个字宽，超出截断 + 省略号
+   3) 小图标底板文字：最多 4 个字宽，超出直接截掉（无省略号）
+   4) 底板字号随字数递减：1 个字最大，6 个字最小 */
 const NAME_UNITS_MAX = 6;
 const WIDE_CHAR = /[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF\u3000\u2026]/;
 const unitOf = ch => WIDE_CHAR.test(ch) ? 1 : 0.5;
@@ -496,6 +496,19 @@ function clipName(s) {
     out += ch; u += w;
   }
   return out + '…';
+}
+/* 小图标底板上的文字：最多 4 个字宽，超出直接截掉（不加省略号，底板里放不下） */
+const PLATE_UNITS_MAX = 4;
+function clipPlate(s) {
+  const str = String(s ?? '');
+  if (nameUnits(str) <= PLATE_UNITS_MAX) return str;
+  let out = '', u = 0;
+  for (const ch of str) {
+    const w = unitOf(ch);
+    if (u + w > PLATE_UNITS_MAX) break;
+    out += ch; u += w;
+  }
+  return out;
 }
 /* 图标底板上的文字按字数分档缩放（70px 底板内要放得下）；卡片标题与下方名称字号固定，不参与缩放
    字号上限 18px：1~2 个字也不再放大到 32/26px，避免小底板里字撑满、看着发闷 */
@@ -616,6 +629,9 @@ function fitNames(root) {
 
 function iconHtml(item) {
   if (item.iconUrl) return `<img src="${esc(item.iconUrl)}" alt="" loading="lazy">`;
+  /* 自定义图标文字优先（后台「图标文字」填了就用它），否则列表卡图标块用标题首字 */
+  const custom = String(item.iconText || '').trim();
+  if (custom) { const t = clipPlate(custom); return `<span style="font-size:${fsOf(t)}px">${esc(t)}</span>`; }
   return `<span>${esc(letter(item.title))}</span>`;
 }
 
@@ -644,9 +660,11 @@ function renderGroups(instant) {
         const plate = it.color ? ` style="background:${esc(it.color)}"` : '';
         const micCls = it.color ? 'mic' : 'mic plain';
         const short = clipName(it.title);
+        /* 底板文字：自定义图标文字优先，留空取标题；同样 4 字宽封顶 */
+        const plateTxt = clipPlate(String(it.iconText || '').trim() || it.title);
         const inner = it.iconUrl
           ? `<img src="${esc(it.iconUrl)}" alt="" loading="lazy">`
-          : `<span class="mtext" style="--fs:${fsOf(short)}px">${esc(short)}</span>`;
+          : `<span class="mtext" style="--fs:${fsOf(plateTxt)}px">${esc(plateTxt)}</span>`;
         const c = document.createElement('div');
         c.className = 'mini';
         c.dataset.id = String(it.id ?? '');

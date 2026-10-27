@@ -15,11 +15,31 @@ const isAdd = computed(() => !props.modelValue.it);
 
 const f = reactive({
   title: '', url: '', lan_url: '', description: '', icon_type: 'color',
-  icon_url: '', icon_name: '', background_color: '', open_method: 2, sort: 0, group_id: 0,
+  icon_url: '', icon_name: '', icon_text: '', background_color: '', open_method: 2, sort: 0, group_id: 0,
 });
 
 const previewIconUrl = computed(() => f.icon_type === 'data' ? f.icon_url : '');
-const previewChar = computed(() => (f.title || '?').charAt(0).toUpperCase());
+/* 图标文字规则与前台一致：字宽=中文/全角1、英文数字0.5，最多 4 个字宽，超出截掉（无省略号）。
+   优先用自定义 icon_text，留空则取标题。 */
+const WIDE_CHAR = /[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF\u3000\u2026]/;
+const clip4 = (s: string) => {
+  let out = '', u = 0;
+  for (const ch of String(s ?? '')) {
+    const w = WIDE_CHAR.test(ch) ? 1 : 0.5;
+    if (u + w > 4) break;
+    out += ch; u += w;
+  }
+  return out;
+};
+const derivedPlate = computed(() => clip4(f.title || '') || '?');
+const previewPlate = computed(() => {
+  const t = (f.icon_text || '').trim();
+  return clip4(t) || derivedPlate.value;
+});
+const previewFs = computed(() => {
+  let u = 0; for (const ch of previewPlate.value) u += WIDE_CHAR.test(ch) ? 1 : 0.5;
+  return (u <= 2 ? 18 : u === 3 ? 15 : 13) + 'px';
+});
 
 watch(() => props.modelValue, v => {
   if (v.it) {
@@ -81,7 +101,7 @@ async function fetchFavicon() {
       <div style="flex:0 0 46px;width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;overflow:hidden;font-size:20px"
            :style="{ background: f.background_color }">
         <img v-if="previewIconUrl" :src="previewIconUrl" style="width:100%;height:100%;object-fit:cover" />
-        <span v-else>{{ previewChar }}</span>
+        <span v-else :style="{ fontSize: previewFs }">{{ previewPlate }}</span>
       </div>
       <div>
         <div style="font-size:15px;font-weight:600">{{ f.title || '卡片标题' }}</div>
@@ -99,8 +119,8 @@ async function fetchFavicon() {
 
       <!-- 图标内容 -->
       <div v-if="f.icon_type === 'color'">
-        <el-form-item label="使用标题首字作为图标">
-          <el-input :model-value="previewChar" readonly />
+        <el-form-item label="图标文字（留空取标题，最多 4 字，超出截断）">
+          <el-input v-model="f.icon_text" maxlength="8" :placeholder="'留空显示：' + derivedPlate" clearable />
         </el-form-item>
       </div>
       <div v-else-if="f.icon_type === 'data'">
