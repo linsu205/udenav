@@ -22,6 +22,12 @@ function toggleGroup(id: number) {
 
 onMounted(() => { if (!store.groups.length) store.loadAll(); });
 
+/* 关闭卡片编辑弹窗。前台右键走的是一条完全独立的路径（见 EditApp.vue），
+   不经过后台面板，这里只管后台「分组与卡片」页里自己的弹窗 */
+function closeEdit() {
+  iEdit.value = null;
+}
+
 async function saveGroup(g: Partial<Group> & { title: string }) {
   const isNew = gEdit.value === 'new';
   try {
@@ -45,14 +51,14 @@ async function saveGroup(g: Partial<Group> & { title: string }) {
 async function saveIcon(it: Partial<IconItem> & { title: string; url: string }) {
   if (iEdit.value!.it) await patch('/api/admin/icons/' + iEdit.value!.it.id, it);
   else await post('/api/admin/icons', { ...it, group_id: iEdit.value!.gid });
-  iEdit.value = null;
+  closeEdit();
   await store.loadAll();
   notifyHome();
   ElMessage.success('已保存，前台已同步');
 }
 
 async function delGroup(id: number) {
-  await ElMessageBox.confirm('删除该分组及其全部卡片？', '确认删除', { type: 'warning' });
+  await ElMessageBox.confirm('删除该分组及其全部卡片？', '确认删除', { type: 'warning', lockScroll: false });
   await del('/api/admin/groups/' + id);
   await store.loadAll();
   opened.value = opened.value.filter(x => x !== id);
@@ -61,7 +67,7 @@ async function delGroup(id: number) {
 }
 
 async function delIcon(id: number) {
-  await ElMessageBox.confirm('删除此卡片？', '确认删除', { type: 'warning' });
+  await ElMessageBox.confirm('删除此卡片？', '确认删除', { type: 'warning', lockScroll: false });
   await del('/api/admin/icons/' + id);
   await store.loadAll();
   notifyHome();
@@ -162,7 +168,7 @@ const dragClass = (kind: 'group' | 'icon') => ({ 'drag-target': dragSrc.value?.k
     </div>
 
     <GroupEditModal v-if="gEdit" :model-value="gEdit" @close="gEdit = null" @save="saveGroup" />
-    <IconEditModal v-if="iEdit" :model-value="iEdit" :groups="store.groups" @close="iEdit = null" @save="saveIcon" />
+    <IconEditModal v-if="iEdit" :model-value="iEdit" :groups="store.groups" @close="closeEdit" @save="saveIcon" />
   </div>
 </template>
 

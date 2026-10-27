@@ -116,6 +116,7 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (m === 'POST' && a === 'groups') return admin.createGroup(env, req);
     if (m === 'PATCH' && a === 'groups' && id) return admin.patchGroup(env, req, id);
     if (m === 'DELETE' && a === 'groups' && id) return admin.deleteGroup(env, req, id);
+    if (m === 'POST' && a === 'icons' && id && parts[3] === 'move') return admin.moveIcon(env, req, id);
     if (m === 'POST' && a === 'icons') return admin.createIcon(env, req);
     if (m === 'PATCH' && a === 'icons' && id) return admin.patchIcon(env, req, id);
     if (m === 'DELETE' && a === 'icons' && id) return admin.deleteIcon(env, req, id);

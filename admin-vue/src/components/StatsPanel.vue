@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { api, get } from '../api';
 import { useStore } from '../store';
 import { ElMessage } from 'element-plus';
+import ModalShell from './ModalShell.vue';
 import { VideoPlay, Odometer, Clock, User, TrendCharts, Coin, DataLine, Monitor, Link, Connection, WarningFilled } from '@element-plus/icons-vue';
 
 const store = useStore();
@@ -297,7 +298,8 @@ async function doPurge() {
     </div>
 
     <!-- 清理访问日志 -->
-    <el-dialog v-model="purgeOpen" title="清理访问日志" width="440px" :close-on-click-modal="false">
+    <!-- 弹窗统一走 ModalShell：不锁 body 滚动，滚动条不会消失、页面不抖 -->
+    <ModalShell v-if="purgeOpen" title="清理访问日志" width="440px" @close="purgeOpen = false">
       <div class="pg-now">
         当前共 <b>{{ st.log?.rows || 0 }}</b> 行 · <b>{{ fmt(st.log?.bytes || 0) }}</b>
       </div>
@@ -319,7 +321,7 @@ async function doPurge() {
         <el-button @click="purgeOpen = false">取消</el-button>
         <el-button type="danger" :loading="purging" @click="doPurge">确认清理</el-button>
       </template>
-    </el-dialog>
+    </ModalShell>
   </div>
 </template>
 

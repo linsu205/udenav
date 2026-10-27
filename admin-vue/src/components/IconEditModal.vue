@@ -2,6 +2,7 @@
 import { reactive, computed, watch, ref } from 'vue';
 import { post, get } from '../api';
 import { ElMessage } from 'element-plus';
+import ModalShell from './ModalShell.vue';
 import { type Group, type IconItem } from '../store';
 
 const props = defineProps<{
@@ -73,7 +74,8 @@ async function fetchFavicon() {
 </script>
 
 <template>
-  <el-dialog :model-value="true" :title="isAdd ? '添加卡片' : '编辑卡片'" width="640px" @close="emit('close')" :close-on-click-modal="false">
+  <!-- 弹窗层（遮罩、层级、不锁滚动、ESC 关闭）统一交给 ModalShell -->
+  <ModalShell :title="isAdd ? '添加卡片' : '编辑卡片'" width="640px" @close="emit('close')">
     <!-- 效果预览 -->
     <div style="background:var(--sp-preview-bg);border:1px dashed var(--sp-preview-border);border-radius:12px;padding:16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;min-height:70px">
       <div style="flex:0 0 46px;width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;overflow:hidden;font-size:20px"
@@ -175,5 +177,5 @@ async function fetchFavicon() {
       <el-button @click="emit('close')">取消</el-button>
       <el-button type="success" @click="save">保存</el-button>
     </template>
-  </el-dialog>
+  </ModalShell>
 </template>

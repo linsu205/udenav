@@ -3,6 +3,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { get, patch, del } from '../api';
 import { useStore } from '../store';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import ModalShell from './ModalShell.vue';
 import { Edit, Delete, Refresh, Lock, User } from '@element-plus/icons-vue';
 
 interface U {
@@ -126,7 +127,7 @@ async function save() {
 
 async function remove(u: U) {
   try {
-    await ElMessageBox.confirm(`删除账号「${u.username}」？该账号将无法再登录。`, '确认删除', { type: 'warning' });
+    await ElMessageBox.confirm(`删除账号「${u.username}」？该账号将无法再登录。`, '确认删除', { type: 'warning', lockScroll: false });
   } catch { return; }
   try {
     await del('/api/admin/users/' + u.id);
@@ -186,7 +187,8 @@ async function remove(u: U) {
       </div>
     </div>
 
-    <el-dialog v-model="open" title="修改账号" width="460px" :close-on-click-modal="false">
+    <!-- 弹窗统一走 ModalShell：不锁 body 滚动，滚动条不会消失、页面不抖 -->
+    <ModalShell v-if="open" title="修改账号" width="460px" @close="open = false">
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="用户名">
           <el-input v-model="f.username" maxlength="20" placeholder="3-20 位字母 / 数字 / 下划线" />
@@ -215,7 +217,7 @@ async function remove(u: U) {
         <el-button @click="open = false">取消</el-button>
         <el-button type="success" :loading="saving" :disabled="!canSave" @click="save">保存</el-button>
       </template>
-    </el-dialog>
+    </ModalShell>
   </div>
 </template>
 

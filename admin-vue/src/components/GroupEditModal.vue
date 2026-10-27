@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, watch } from 'vue';
 import { type Group } from '../store';
+import ModalShell from './ModalShell.vue';
 
 const props = defineProps<{ modelValue: Group | 'new' }>();
 const emit = defineEmits<{ (e: 'close'): void; (e: 'save', g: any): void }>();
@@ -27,7 +28,8 @@ function onHide(v: any) { if (v) f.public_show = 0; }
 </script>
 
 <template>
-  <el-dialog :model-value="true" title="分组信息" width="500px" @close="emit('close')" :close-on-click-modal="false">
+  <!-- 与卡片编辑弹窗同一套弹窗外壳：body 级独立遮罩层，不锁 body 滚动 -->
+  <ModalShell title="分组信息" width="500px" @close="emit('close')">
     <el-form label-position="top" @submit.prevent>
       <el-form-item label="分组名称 *">
         <el-input v-model="f.title" placeholder="例：AI 与工具" maxlength="30" />
@@ -56,7 +58,7 @@ function onHide(v: any) { if (v) f.public_show = 0; }
       <el-button @click="emit('close')">取消</el-button>
       <el-button type="success" @click="save">保存</el-button>
     </template>
-  </el-dialog>
+  </ModalShell>
 </template>
 
 <style scoped>

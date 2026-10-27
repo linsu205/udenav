@@ -16,6 +16,7 @@ import 'element-plus/dist/index.css';
 import 'element-plus/theme-chalk/dark/css-vars.css';
 import './styles/theme.css';
 import App from './App.vue';
+import EditApp from './EditApp.vue';
 
 let instance: VueApp | null = null;
 let observer: ResizeObserver | null = null;
@@ -45,7 +46,9 @@ export function mountAdmin(el: HTMLElement): VueApp {
 
   const app = createApp(App);
   app.use(createPinia());
-  app.use(ElementPlus, { size: 'default' });
+  /* zIndex 起始值 2500：访客页的右键菜单(2100)/Tooltip(2400) 都在它下面，
+     编辑弹窗的遮罩不会被它们穿透；后续下拉框、消息提示按同一管理器发号，自动更高 */
+  app.use(ElementPlus, { size: 'default', zIndex: 2500 });
   app.mount(el);
   instance = app;
   return app;
@@ -56,4 +59,40 @@ export function unmountAdmin(): void {
   observer = null;
   instance?.unmount();
   instance = null;
+}
+
+/* ---------- 独立卡片编辑弹窗（前台右键「编辑」） ---------- */
+
+let editInstance: VueApp | null = null;
+let editHost: HTMLElement | null = null;
+
+/**
+ * 在指定容器上单独挂一个「卡片编辑弹窗」Vue 实例。
+ * 它和 mountAdmin 是两个互不相干的 app：容器不同、组件树不同，
+ * 打开它不会创建后台面板的任何东西，所以后台不会闪。
+ */
+export function openItemEditor(el: HTMLElement, gid: number, id: number): void {
+  closeItemEditor();
+  el.hidden = false;
+  editHost = el;
+  const app = createApp(EditApp, {
+    gid,
+    id,
+    onDone: () => closeItemEditor(),
+  });
+  app.use(ElementPlus, { size: 'default', zIndex: 2500 });
+  app.mount(el);
+  editInstance = app;
+}
+
+export function closeItemEditor(): void {
+  if (editInstance) {
+    editInstance.unmount();
+    editInstance = null;
+  }
+  if (editHost) {
+    editHost.innerHTML = '';
+    editHost.hidden = true;
+    editHost = null;
+  }
 }

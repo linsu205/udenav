@@ -41,6 +41,7 @@ function openAccount() {
   store.tab = 'users';
   store.usersHit++;   // 让用户管理页把自己那一行高亮一下，指明「改的是这里」
 }
+
 </script>
 
 <template>

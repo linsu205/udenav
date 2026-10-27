@@ -10,19 +10,50 @@
     --card-bg:rgba(74,82,98,.52); --card-bg-hover:rgba(96,106,124,.66);
     --text:#f5f6f7; --text-dim:#a9afb6; --radius:16px; --accent:#18a058;
     --blur:blur(10px);
+    /* 直接压在背景图上的文字（logo / 分隔线 / 时钟 / 分组标题 / 图标名）：
+       两个主题都固定用白色，不跟随 --text。浅色主题里深灰字扣在背景图上经常看不清，
+       而这些元素本身没有底色可依托，所以统一按深色主题那套走 */
+    --on-bg:#fff; --on-bg-dim:rgba(255,255,255,.92);
+    /* 给这类白字配的暗色投影：浅色壁纸下也能压出层次，不会糊成一片 */
+    --on-bg-shadow:0 1px 8px rgba(0,0,0,.42),0 2px 20px rgba(0,0,0,.28);
+    /* 滚动条：轨道宽 12px，滑块只占中间 4px（靠 4px 透明边框内缩），
+       所以是「一根悬在页面边缘内侧的细圆条」，而不是贴着边的一条粗灰杠。
+       默认很淡，鼠标进到页面里才变明显 —— 静止时几乎不抢背景的戏 */
+    --sb-track:12px;
+    --sb-thumb:rgba(255,255,255,.20);
+    --sb-thumb-hover:rgba(255,255,255,.46);
   }
+  html:hover{--sb-thumb:rgba(255,255,255,.34)}
   html[data-theme="light"]{
     --card-bg:rgba(255,255,255,.82); --card-bg-hover:rgba(255,255,255,.95);
     --text:#606266; --text-dim:#909399;
+    /* 浅色主题背景偏亮，滑块改用浅黑，白条会看不见 */
+    --sb-thumb:rgba(31,35,40,.16); --sb-thumb-hover:rgba(31,35,40,.34);
   }
+  html[data-theme="light"]:hover{--sb-thumb:rgba(31,35,40,.24)}
   *{box-sizing:border-box}
-  body{margin:0;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--text)}
-  /* 滚动条美化：细、圆角、半透明 */
-  *::-webkit-scrollbar{width:8px;height:8px}
-  *::-webkit-scrollbar-track{background:transparent}
-  *::-webkit-scrollbar-thumb{background:rgba(128,128,128,.35);border-radius:4px}
-  *::-webkit-scrollbar-thumb:hover{background:rgba(128,128,128,.55)}
-  *{scrollbar-width:thin;scrollbar-color:rgba(128,128,128,.35) transparent}
+  html,body{height:100%}
+  body{margin:0;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--text)}
+  /* 唯一滚动容器：铺满视口、背景透明，滚动条就压在壁纸层上面 */
+  .scroller{height:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}
+  /* 滚动条：sunpanel 那种「细圆胶囊」质感
+     —— 轨道全透明；滑块圆头 (999px)、半透明，靠 4px 透明边框 + background-clip
+        在 12px 宽的轨道里收成 4px 细条，距页面右边缘留出 4px 呼吸位；
+     —— 页面静止时很淡，鼠标进入页面才加深（html:hover 改 --sb-thumb），
+        滚起来不会突然多出一条深灰杠打断背景图 */
+  *::-webkit-scrollbar{width:var(--sb-track);height:var(--sb-track)}
+  *::-webkit-scrollbar-track{background:transparent;border:0}
+  *::-webkit-scrollbar-thumb{background:var(--sb-thumb);background-clip:content-box;
+    border:4px solid transparent;border-radius:999px;
+    transition:background-color .25s ease}
+  *::-webkit-scrollbar-thumb:hover{background:var(--sb-thumb-hover);background-clip:content-box}
+  *::-webkit-scrollbar-corner{background:transparent}
+  /* Firefox 兜底。注意必须用 @supports 限死在「不支持 ::-webkit-scrollbar」的浏览器里：
+     Chrome 只要看到 scrollbar-width / scrollbar-color，就会切到系统滚动条实现，
+     上面那套 ::-webkit-scrollbar 圆角细条会被整段忽略（宽度也变回系统的 10px） */
+  @supports not selector(::-webkit-scrollbar){
+    *{scrollbar-width:thin;scrollbar-color:var(--sb-thumb) transparent}
+  }
   .bg{position:fixed;inset:0;z-index:-2;background-size:cover;background-repeat:no-repeat;background-position:center;filter:var(--blur);-webkit-filter:var(--blur)}
   /* 整页背景模糊改为直接作用在背景图本身（.bg 的 filter），静态计算、不随滚动每帧重算，避免卡顿。
      原 .bg-blur 满屏 backdrop-filter 在视差渐变层背后，每帧都要重模糊整个视口，是滚动卡顿主因，已移除。 */
@@ -41,17 +72,16 @@
      裸标签选择器会把访客页的 header/footer 样式打到 .el-dialog__header / __footer 上
      （表现为弹窗顶部多出一大块空白、标题被居中）。class 自己带前缀的规则没有这个问题。 */
   .wrap>header{display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;padding-top:var(--mt,6vh)}
-  .logo{font-size:46px;font-weight:800;letter-spacing:1px;text-shadow:0 2px 18px rgba(0,0,0,.45),0 0 44px rgba(0,0,0,.25)}
-  html[data-theme="light"] .logo{text-shadow:0 2px 14px rgba(255,255,255,.85),0 0 36px rgba(255,255,255,.5)}
-  .sep{width:2px;height:34px;border-radius:1px;background:var(--text);opacity:.32;flex:none}
+  .logo{font-size:60px;font-weight:800;letter-spacing:1px;color:var(--on-bg);
+    text-shadow:0 2px 18px rgba(0,0,0,.45),0 0 44px rgba(0,0,0,.25)}
+  .sep{width:2px;height:34px;border-radius:1px;background:var(--on-bg);opacity:.32;flex:none}
   .clock{text-align:center;line-height:1.25}
-  .clock .t{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;text-shadow:0 2px 18px rgba(0,0,0,.45),0 0 40px rgba(0,0,0,.22)}
-  html[data-theme="light"] .clock .t{text-shadow:0 2px 14px rgba(255,255,255,.85),0 0 34px rgba(255,255,255,.5)}
-  .clock .d{font-size:13px;color:rgba(255,255,255,.92);text-shadow:0 1px 4px rgba(0,0,0,.55),0 2px 14px rgba(0,0,0,.45)}
-  html[data-theme="light"] .clock .d{color:var(--text-dim);text-shadow:0 1px 10px rgba(255,255,255,.7)}
+  .clock .t{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--on-bg);
+    text-shadow:0 2px 18px rgba(0,0,0,.45),0 0 40px rgba(0,0,0,.22)}
+  .clock .d{font-size:13px;color:var(--on-bg-dim);text-shadow:0 1px 4px rgba(0,0,0,.55),0 2px 14px rgba(0,0,0,.45)}
   @media(max-width:620px){.sep{display:none}}
 
-  .search{margin:26px auto 0;max-width:680px;display:flex;align-items:center;gap:8px;
+  .search{margin:10px auto 0;max-width:680px;display:flex;align-items:center;gap:8px;
     background:var(--card-bg);box-shadow:0 6px 20px rgba(0,0,0,.18);
     border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:8px 10px}
   .search input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text);font-size:15px}
@@ -70,17 +100,22 @@
      它的分组卡片也用了 .group 类，不限定作用域会被这里的 opacity:0 直接隐掉。 */
   .wrap .group{margin-top:38px}
   .group-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:0 4px}
-  .group-head h2{margin:0;font-size:19px;font-weight:700}
-  .group-head .desc{font-size:13px;color:var(--text-dim)}
+  /* 分组标题也压在背景图上：两个主题都用白字 + 轻微暗投影（浅色壁纸下也能看清） */
+  .group-head h2{margin:0;font-size:19px;font-weight:700;color:var(--on-bg);text-shadow:var(--on-bg-shadow)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px}
   .card{position:relative;display:flex;align-items:center;gap:12px;background:var(--card-bg);border:1px solid rgba(255,255,255,.08);
     border-radius:var(--radius);height:70px;padding:11px 14px;cursor:pointer;transition:transform .18s,box-shadow .18s,background .18s;
     box-shadow:0 4px 16px rgba(0,0,0,.18);overflow:hidden}
-  /* 卡片与图标卡片共用同一套 hover 动画：背景变实、抬升 3px、同一组阴影 */
-  .card:hover,.mini:hover{transform:translateY(-3px);background:var(--card-bg-hover);
+  /* 卡片 hover：底色加深 + 抬升 + 阴影（玻璃卡材质，整卡动） */
+  .card:hover{transform:translateY(-3px);background:var(--card-bg-hover);
     box-shadow:0 14px 34px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.06),0 0 22px rgba(24,160,88,.16)}
   .card .ic{flex:0 0 46px;width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;
-    font-size:20px;font-weight:700;color:#fff;overflow:hidden}
+    font-size:20px;font-weight:700;color:#fff;overflow:hidden;line-height:1}
+  /* CJK 字面在行盒里自带「下沉」（字体把降部空间留在基线下方），flex 居中 +
+     line-height:1 后字面仍偏低。translateY 的具体值按实测墨迹中心闭环校准：
+     canvas 字体度量显示 -4.5px 会把字面抬到图标框中心上方约 3px（偏上），
+     改 -1.5px 后拉丁字母与 CJK 的墨迹中心都落在 ±0.5px 内。 */
+  .card .ic span{transform:translateY(-1.5px)}
   .card .ic img{width:100%;height:100%;object-fit:cover}
   .card .body{min-width:0}
   .card .title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -89,28 +124,88 @@
   .card .lan-tag,.mini .lan-tag{position:absolute;top:7px;right:8px;font-size:10px;font-weight:700;line-height:1;
     padding:3px 5px;border-radius:6px;background:rgba(24,160,88,.92);color:#fff;letter-spacing:.5px;
     box-shadow:0 2px 8px rgba(0,0,0,.28);z-index:2}
-  .empty{color:var(--text-dim);font-size:14px;padding:24px 4px}
+  .empty{color:var(--on-bg-dim);font-size:14px;padding:24px 4px;text-shadow:var(--on-bg-shadow)}
   /* ---------- 小图标模式（card_style=icon，参照 sun-panel「图标」） ---------- */
   .grid.icons{grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:14px}
+  /* 图标模式：容器永远透明 —— 鼠标移上去也不能给它加背景或阴影。
+     容器本身没有背景，给容器投影等于画出一个透明的圆角矩形轮廓，
+     浅色主题下看着就是「一块白/灰底板」浮在图标后面（用户明确不要）。
+     所以悬停反馈全部落在有实体的图标底板上：容器抬 3px，底板放大 + 加深阴影 */
   .mini{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 4px 8px;border-radius:14px;
-    cursor:pointer;transition:transform .18s,box-shadow .18s,background .18s}
+    cursor:pointer;background:transparent;
+    transition:transform .18s}
+  .mini:hover{transform:translateY(-3px)}
   .mini .mic{width:70px;height:70px;border-radius:18px;background:#8a8e93;display:flex;align-items:center;justify-content:center;
-    overflow:hidden;box-shadow:0 6px 10px rgba(0,0,0,.18),0 14px 26px rgba(0,0,0,.26)}
-  /* 未设置背景色时：底板与卡片同款玻璃（同 --card-bg + 细边 + 轻阴影），不再用纯灰实色 */
+    overflow:hidden;box-shadow:0 6px 10px rgba(0,0,0,.18),0 14px 26px rgba(0,0,0,.26);
+    transition:transform .28s cubic-bezier(.34,1.56,.64,1),box-shadow .22s}
+  /* 未设置背景色时：底板用玻璃质感（同 --card-bg + 细边 + 轻阴影） */
   .mini .mic.plain{background:var(--card-bg);border:1px solid rgba(255,255,255,.08);
     box-shadow:0 4px 16px rgba(0,0,0,.18)}
   html[data-theme="light"] .mini .mic.plain{border-color:rgba(31,35,40,.10);box-shadow:0 4px 16px rgba(31,35,40,.14)}
+  /* 悬停：底板放大 + 阴影加深。必须写在 .plain / 浅色那几条之后 ——
+     它们选择性相同或更高，写在前面会被盖掉（深色主题下曾是这个问题） */
+  .mini:hover .mic,
+  .mini:hover .mic.plain{transform:scale(1.08);
+    box-shadow:0 10px 18px rgba(0,0,0,.26),0 20px 36px rgba(0,0,0,.34)}
+  html[data-theme="light"] .mini:hover .mic,
+  html[data-theme="light"] .mini:hover .mic.plain{box-shadow:0 8px 16px rgba(31,35,40,.18),0 18px 32px rgba(31,35,40,.22)}
   /* 图片图标内缩居中（约 68%），四周露出底板 */
   .mini .mic img{width:68%;height:68%;object-fit:contain;border-radius:9px}
-  /* 无图标时：文字直接显示在底板上 */
-  .mini .mic .mtext{max-width:92%;font-size:var(--fs,17px);font-weight:700;color:#fff;letter-spacing:.5px;
+  /* 无图标时：文字直接显示在底板上。
+     限宽 76%：92% 时 4 个字的墨迹几乎顶到 70px 底板两边（只剩 ~5px），
+     收到 76% 后左右各留 ~8px，字号由 fitNames 按这个宽度自动缩一档 */
+  .mini .mic .mtext{max-width:76%;font-size:min(var(--fs,17px),18px);font-weight:700;color:#fff;letter-spacing:.5px;line-height:1;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,.25)}
   /* 玻璃底板上，浅色主题改用深色字，避免白字看不见 */
   html[data-theme="light"] .mini .mic.plain .mtext{color:var(--text);text-shadow:none}
   /* 底板下方的名称：固定字号，超长只省略不缩放 */
-  .mini .mname{max-width:92px;font-size:14px;color:var(--text);text-align:center;
+  .mini .mname{max-width:92px;font-size:14px;color:var(--on-bg);text-align:center;
+    text-shadow:var(--on-bg-shadow);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .wrap>footer{margin-top:46px;text-align:center;font-size:12px;color:var(--text-dim)}
+  .wrap>footer{margin-top:46px;text-align:center;font-size:12px;color:var(--on-bg-dim);text-shadow:var(--on-bg-shadow)}
+
+  /* ---------- 悬停提示（替代浏览器原生 title） ----------
+     深色主题：黑底白字；浅色主题：白底黑字。圆角 + 小箭头 + 淡入位移 */
+  .tip{position:fixed;left:-9999px;top:0;z-index:2400;pointer-events:none;
+    max-width:300px;padding:6px 10px;border-radius:8px;font-size:12.5px;line-height:1.55;
+    white-space:pre-line;word-break:break-word;text-align:left;
+    background:#17191d;color:#f5f6f7;border:1px solid rgba(255,255,255,.14);
+    box-shadow:0 10px 28px rgba(0,0,0,.46);opacity:0;transform:translateY(4px);
+    transition:opacity .15s ease,transform .15s ease}
+  .tip.on{opacity:1;transform:none}
+  /* 箭头与被悬停元素中心对齐，颜色跟随气泡 */
+  .tip::after{content:'';position:absolute;left:var(--ax,50%);bottom:-4.5px;width:8px;height:8px;
+    transform:translateX(-50%) rotate(45deg);background:inherit;
+    border-right:1px solid rgba(255,255,255,.14);border-bottom:1px solid rgba(255,255,255,.14)}
+  .tip.below::after{top:-4.5px;bottom:auto;border-right:0;border-bottom:0;
+    border-left:1px solid rgba(255,255,255,.14);border-top:1px solid rgba(255,255,255,.14)}
+  /* 右侧出泡（data-tip-pos="right"，组名描述用）：箭头在左缘指向元素 */
+  .tip.right::after{left:-4.5px;right:auto;top:var(--ay,50%);bottom:auto;
+    transform:translateY(-50%) rotate(45deg);
+    border-right:0;border-bottom:0;
+    border-left:1px solid rgba(255,255,255,.14);border-top:1px solid rgba(255,255,255,.14)}
+  html[data-theme="light"] .tip{background:#fff;color:#20242a;border-color:rgba(31,35,40,.12);
+    box-shadow:0 10px 26px rgba(31,35,40,.2)}
+  html[data-theme="light"] .tip::after{border-color:rgba(31,35,40,.12)}
+
+  /* ---------- 卡片右键菜单（sun-panel 同款） ---------- */
+  .ctx-menu{position:fixed;z-index:2100;min-width:118px;background:#2b2f36;border:1px solid rgba(255,255,255,.09);
+    border-radius:10px;padding:6px;color:var(--text);box-shadow:0 18px 44px rgba(0,0,0,.5);font-size:12px;user-select:none}
+  html[data-theme="light"] .ctx-menu{background:#fff;border-color:rgba(31,35,40,.12);box-shadow:0 18px 44px rgba(31,35,40,.22)}
+  .ctx-menu .mi{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;cursor:pointer;white-space:nowrap}
+  .ctx-menu .mi:hover{background:rgba(255,255,255,.09)}
+  html[data-theme="light"] .ctx-menu .mi:hover{background:rgba(31,35,40,.06)}
+  .ctx-menu .mi svg{width:14px;height:14px;fill:currentColor;flex:none}
+  .ctx-menu .mi.danger{color:#ff7875}
+  .ctx-menu .row3,.ctx-menu .row2{display:flex;gap:6px;margin:7px 2px}
+  .ctx-menu .row3 button,.ctx-menu .row2 button{flex:1;height:28px;border:1px solid rgba(255,255,255,.12);border-radius:7px;background:transparent;
+    color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .ctx-menu .row3 button svg,.ctx-menu .row2 button svg{width:15px;height:15px;fill:currentColor}
+  .ctx-menu .row3 button:hover,.ctx-menu .row2 button:hover{background:rgba(255,255,255,.09)}
+  .ctx-menu .row3 button:disabled,.ctx-menu .row2 button:disabled{opacity:.3;cursor:not-allowed}
+  html[data-theme="light"] .ctx-menu .row3 button,html[data-theme="light"] .ctx-menu .row2 button{border-color:rgba(31,35,40,.16)}
+  .ctx-menu .sep{height:1px;background:rgba(255,255,255,.09);margin:5px 2px}
+  html[data-theme="light"] .ctx-menu .sep{background:rgba(31,35,40,.1)}
 
   /* ---------- 入场与滚动动画 ---------- */
   @keyframes rise{
@@ -160,7 +255,7 @@
   .modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;
     opacity:0;visibility:hidden;pointer-events:none;transition:opacity .2s,visibility .2s}
   .modal.open{opacity:1;visibility:visible;pointer-events:auto}
-  .modal .box{width:min(1240px,96vw);height:min(820px,90vh);background:var(--card-bg);
+  .modal .box{width:min(1000px,96vw);height:min(820px,90vh);background:var(--card-bg);
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
     border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;
     box-shadow:0 24px 60px rgba(0,0,0,.55);transform:translateY(12px) scale(.985);
@@ -186,12 +281,61 @@
   @keyframes admSpin{to{transform:rotate(360deg)}}
 </style>
 <noscript><style>.wrap .group,.wrap .card{opacity:1!important}</style></noscript>
+<script>
+/* ---------- 首帧反闪（主题 / 布局变量）----------
+   主题、留白、背景模糊这些都在服务端 config 里，页面要等 fetch /api/public/panel 返回
+   才知道当前值。可 HTML 上写死的是 data-theme="dark"，而壁纸是浅色 → 每次刷新都是一次
+   「深灰空页 → 浅色壁纸」的明暗跳变，看起来就是「闪了一下」。
+   所以这里在解析 body 之前，把上一次持久化的值先写回去；本段是同步脚本、无外部依赖，
+   不会阻塞也不会有二次跳变。applyConfig 拿到新鲜配置后会重新写一次，缓存始终追平服务端。 */
+(function(){
+  try {
+    var raw = localStorage.getItem('udenav.config');
+    if (!raw) return;
+    var c = JSON.parse(raw);
+    if (!c || typeof c !== 'object') return;
+    var root = document.documentElement;
+    if (c.theme === 'light' || c.theme === 'dark') root.dataset.theme = c.theme;
+    if (c.margin_top != null) root.style.setProperty('--mt', c.margin_top + 'vh');
+    if (c.background_blur != null) root.style.setProperty('--blur', 'blur(' + c.background_blur + 'px)');
+    if (c.background_mask != null) root.style.setProperty('--mask', c.background_mask);
+    if (c.title) document.title = c.title;
+  } catch (e) {}
+})();
+</script>
 </head>
 <body>
 <div class="bg-grad" id="bgGrad"></div>
 <div class="bg" id="bg"></div>
 <div class="bg-mask"></div>
+<script>
+/* ---------- 首帧反闪（背景图）----------
+   壁纸同样在 config 里（存的是 base64 data URL，跟页面一起返回）。上面那段在 head 里跑，
+   那时 <body> 还没解析、#bg 拿不到，所以壁纸这部分必须等 #bg 出来再铺，放在它后面。
+   html 本身也铺一份同样的壁纸 + 同色遮罩：滚动条占的十几 px 在布局视口之外，
+   fixed 定位的 #bg 铺不到那里，不补会露出一条刺眼的白缝。 */
+(function(){
+  try {
+    var raw = localStorage.getItem('udenav.config');
+    if (!raw) return;
+    var c = JSON.parse(raw);
+    var url = (typeof c.background_image === 'string' ? c.background_image : '').trim();
+    if (!url) return;
+    var isDark = (c.theme || 'dark') === 'dark';
+    var maskV = (c.background_mask == null) ? 0.2 : c.background_mask;
+    var tint = isDark ? 'rgba(0,0,0,' + maskV + ')' : 'rgba(255,255,255,' + maskV + ')';
+    var bgEl = document.getElementById('bg');
+    if (bgEl) { bgEl.style.backgroundImage = 'url("' + url + '")'; bgEl.style.display = 'block'; }
+    document.documentElement.style.background =
+      'linear-gradient(' + tint + ',' + tint + '), url("' + url + '") center / cover no-repeat fixed';
+  } catch (e) {}
+})();
+</script>
 
+<!-- 页面滚动交给这个容器，而不是 body：
+     根滚动条画在布局视口之外，轨道只能用纯色，没法露出壁纸；
+     换成内层容器后，滚动条就压在壁纸上（sun-panel 那种悬浮质感） -->
+<div class="scroller" id="scroller">
 <div class="wrap">
   <header>
     <div class="logo" id="logo">udenav</div>
@@ -205,11 +349,12 @@
       <div class="eng-list" id="engList"></div>
     </div>
     <input id="q" placeholder="搜索网站，或输入关键词搜索">
-    <button class="icon-btn" id="clearBtn" title="清空" aria-label="清空">✕</button>
+    <button class="icon-btn" id="clearBtn" data-tip="清空" aria-label="清空">✕</button>
   </div>
 
   <div id="groups"></div>
   <footer id="footer"></footer>
+</div>
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite">
@@ -218,28 +363,32 @@
 </div>
 
 <div class="toolbar">
-  <button class="tb" id="lanBtn" title="切换到公网模式" aria-label="内外网切换" aria-pressed="true">
+  <button class="tb" id="lanBtn" data-tip="切换到公网模式" aria-label="内外网切换" aria-pressed="true">
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 20v-3q0-.825.588-1.412T5 15h1v-2q0-.825.588-1.412T8 11h3V9h-1q-.825 0-1.412-.587T8 7V4q0-.825.588-1.412T10 2h4q.825 0 1.413.588T16 4v3q0 .825-.587 1.413T14 9h-1v2h3q.825 0 1.413.588T18 13v2h1q.825 0 1.413.588T21 17v3q0 .825-.587 1.413T19 22h-4q-.825 0-1.412-.587T13 20v-3q0-.825.588-1.412T15 15h1v-2H8v2h1q.825 0 1.413.588T11 17v3q0 .825-.587 1.413T9 22H5q-.825 0-1.412-.587T3 20Zm7-13h4V4h-4v3ZM5 20h4v-3H5v3Zm10 0h4v-3h-4v3Z"/></svg>
   </button>
-  <button class="tb" id="themeBtn" title="切换主题" aria-label="切换主题">
+  <button class="tb" id="themeBtn" data-tip="切换主题" aria-label="切换主题">
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8C13.02 2.96 12.56 3 12 3z"/></svg>
   </button>
-  <button class="tb" id="adminBtn" title="管理后台" aria-label="管理后台">
+  <button class="tb" id="adminBtn" data-tip="管理后台" aria-label="管理后台">
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3.2" y="3.2" width="7.4" height="7.4" rx="2.1"/><rect x="13.4" y="3.2" width="7.4" height="7.4" rx="2.1"/><rect x="3.2" y="13.4" width="7.4" height="7.4" rx="2.1"/><rect x="13.4" y="13.4" width="7.4" height="7.4" rx="2.1"/></svg>
   </button>
 </div>
 
 <div class="modal" id="modal">
   <div class="box">
-    <div class="bar"><span id="modalTitle">管理后台</span><button class="close" id="modalClose" title="关闭">✕</button></div>
+    <div class="bar"><span id="modalTitle">管理后台</span><button class="close" id="modalClose" data-tip="关闭" aria-label="关闭">✕</button></div>
     <iframe id="modalFrame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms"></iframe>
     <div id="adminRoot" hidden><div class="adm-boot"><i></i>正在加载后台…</div></div>
   </div>
 </div>
 
+<!-- 卡片编辑弹窗的独立挂载点：和上面的后台弹窗没有任何层级关系。
+     右键「编辑」只往这里挂一个编辑组件，后台面板不会被创建，也就不会闪 -->
+<div id="editRoot" hidden></div>
+
 <script>
 const $ = s => document.querySelector(s);
-const state = { config: {}, groups: [], engine: null, engines: [], intranet: false };
+const state = { config: {}, groups: [], engine: null, engines: [], intranet: false, admin: false };
 
 /* ---------- 渲染 ---------- */
 /* 主题：访客页 CSS 认 data-theme，后台 theme.css 认 html.dark。
@@ -252,6 +401,20 @@ function applyThemeAttr(t) {
   root.classList.toggle('dark', v === 'dark');
 }
 
+/* ---------- 首帧反闪：把 config 缓存下来 ----------
+   服务端 config 是权威源，这里只做「上一次已知配置」的副本，供 head/body 那两段内联脚本
+   在 API 返回前把首帧拉回正确状态。背景图是 base64、体积不小，localStorage 超限时会抛错，
+   所以先试全量，写不进去就退回不含壁纸的精简版（至少主题不闪）。 */
+function cacheConfig(c) {
+  const slim = {
+    title: document.title, theme: c.theme, margin_top: c.margin_top,
+    background_blur: c.background_blur, background_mask: c.background_mask,
+  };
+  const full = Object.assign({ background_image: c.background_image }, slim);
+  try { localStorage.setItem('udenav.config', JSON.stringify(full)); }
+  catch (e) { try { localStorage.setItem('udenav.config', JSON.stringify(slim)); } catch (e2) {} }
+}
+
 function applyConfig(c) {
   state.config = c;
   document.title = c.logo_text || 'udenav';
@@ -260,8 +423,21 @@ function applyConfig(c) {
   applyThemeAttr(c.theme || 'dark');
   $('#themeBtn').innerHTML = svgOf(ICON[(c.theme || 'dark') === 'dark' ? 'moon' : 'sun']);
   const bg = c.background_image;
-  if (bg) { $('#bg').style.backgroundImage = `url("${bg.replace(/"/g,'')}" )`; $('#bg').style.display = 'block'; }
+  const maskV = c.background_mask ?? 0.2;
+  const isDark = (c.theme || 'dark') === 'dark';
+  if (bg) {
+    const url = bg.replace(/"/g, '');
+    $('#bg').style.backgroundImage = `url("${url}")`;
+    $('#bg').style.display = 'block';
+    /* 画布也铺同一张壁纸（带同色遮罩）。原因：视口滚动条占的那十几 px 在布局视口之外，
+       固定定位的 .bg 铺不到，不补的话滚动条轨道会露出一条纯白 —— 深色主题下尤其刺眼。
+       这里少了 .bg 那层 blur，但滚动条只有一条窄缝，加上同色遮罩基本看不出来 */
+    const tint = isDark ? `rgba(0,0,0,${maskV})` : `rgba(255,255,255,${maskV})`;
+    document.documentElement.style.background =
+      `linear-gradient(${tint},${tint}), url("${url}") center / cover no-repeat fixed`;
+  }
   else {
+    document.documentElement.style.background = '';
     $('#bg').style.display = 'none';
     document.body.style.background = (c.theme||'dark')==='dark'
       ? 'linear-gradient(155deg,#262c36 0%,#1c2027 42%,#272e38 100%)'
@@ -275,6 +451,7 @@ function applyConfig(c) {
   state.engines = Array.isArray(c.search_engines) && c.search_engines.length ? c.search_engines : DEFAULT_ENGINES;
   if (!state.engine || !state.engines.some(e => e.name === state.engine.name)) state.engine = state.engines[0];
   renderEngines();
+  cacheConfig(c);   // 追平首帧反闪用的缓存：下次刷新不闪
 }
 
 const DEFAULT_ENGINES = [
@@ -298,11 +475,11 @@ function esc(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','
 function letter(t) { return (String(t || '?').trim()[0] || '?').toUpperCase(); }
 
 /* ---------- 名称显示规则 ----------
-   1) 最多显示 4 个字宽：中文/全角算 1 个字，英文字母数字算半个字
+   1) 最多显示 6 个字宽：中文/全角算 1 个字，英文字母数字算半个字
       （这样「哔哩哔哩」=4 个字宽，「GitHub」=3 个字宽，不会被砍成「GitH」）
-   2) 超出 4 个字宽就截断，末尾加省略号
-   3) 字号随字数递减：1 个字最大，4 个字最小 */
-const NAME_UNITS_MAX = 4;
+   2) 超出就截断：保留 6 个实字 + 省略号
+   3) 字号随字数递减：1 个字最大，6 个字最小 */
+const NAME_UNITS_MAX = 6;
 const WIDE_CHAR = /[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF\u3000\u2026]/;
 const unitOf = ch => WIDE_CHAR.test(ch) ? 1 : 0.5;
 function nameUnits(s) { let u = 0; for (const ch of String(s ?? '')) u += unitOf(ch); return u; }
@@ -312,30 +489,125 @@ function clipName(s) {
   let out = '', u = 0;
   for (const ch of str) {
     const w = unitOf(ch);
-    if (u + w > NAME_UNITS_MAX - 1) break;   // 留 1 个字宽给省略号
+    if (u + w > NAME_UNITS_MAX) break;   // 截断时保留 6 个实字，省略号另算（卡片最窄时 6字+… 仍放得下）
     out += ch; u += w;
   }
   return out + '…';
 }
-/* 图标底板上的文字按字数分档缩放（70px 底板内要放得下）；卡片标题与下方名称字号固定，不参与缩放 */
-const FS_TEXT = { 1: 32, 2: 26, 3: 20, 4: 15 };
+/* 图标底板上的文字按字数分档缩放（70px 底板内要放得下）；卡片标题与下方名称字号固定，不参与缩放
+   字号上限 18px：1~2 个字也不再放大到 32/26px，避免小底板里字撑满、看着发闷 */
+const FS_TEXT = { 1: 18, 2: 18, 3: 16, 4: 15, 5: 13, 6: 12 };
+const FS_TEXT_MAX = 18;
 function fsOf(t) {
   const u = Math.max(1, Math.min(NAME_UNITS_MAX, Math.ceil(nameUnits(t))));
   return FS_TEXT[u];
 }
 
-/* 兜底：字宽算出来的字号仍可能放不下（如英文单词偏宽），
-   渲染后量一次真实宽度，塞不下就按比例缩一次。只处理底板文字 */
+/* ---------- 悬停提示：替代浏览器原生 title ----------
+   原生 title 的气泡由系统绘制（灰底、直角、延迟不可控），这里统一换成自定义气泡：
+   深色主题黑底白字、浅色主题白底黑字，圆角 + 箭头 + 淡入。
+   用法：元素加 data-tip="文案" 即可；data-tip-pos="right" 让气泡出现在右侧（组名描述用）。
+   不要再写 title，否则原生气泡和自定义气泡会同时出现 */
+const tipEl = document.createElement('div');
+tipEl.className = 'tip';
+document.body.appendChild(tipEl);
+let tipTimer = 0, tipHost = null;
+
+function tipHide() {
+  clearTimeout(tipTimer);
+  tipHost = null;
+  tipEl.classList.remove('on');
+}
+
+function tipShow(host) {
+  const text = host.dataset.tip;
+  if (!text) return;
+  tipEl.textContent = text;
+  tipEl.style.left = '-9999px';
+  tipEl.style.top = '0px';
+  tipEl.classList.add('on');                       // 先上屏，才能量到气泡真实尺寸
+  const r = host.getBoundingClientRect();
+  const tr = tipEl.getBoundingClientRect();
+  const gap = 9;
+  const clampX = x => Math.max(8, Math.min(x, window.innerWidth - tr.width - 8));
+  const clampY = y => Math.max(8, Math.min(y, window.innerHeight - tr.height - 8));
+
+  if ((host.dataset.tipPos || 'top') === 'right') {
+    /* 右侧出泡：垂直居中于元素，水平排在元素右边；右边放不下再翻到左边 */
+    let x = r.right + gap;
+    if (x + tr.width > window.innerWidth - 8) x = Math.max(8, r.left - tr.width - gap);
+    const y = clampY(r.top + r.height / 2 - tr.height / 2);
+    tipEl.style.left = x + 'px';
+    tipEl.style.top = y + 'px';
+    tipEl.classList.remove('below');
+    tipEl.classList.add('right');
+    tipEl.style.setProperty('--ay', Math.max(11, Math.min(tr.height - 11, r.top + r.height / 2 - y)) + 'px');
+    return;
+  }
+
+  let below = false;
+  let y = r.top - tr.height - gap;
+  if (y < 8) { below = true; y = r.bottom + gap; }  // 上方放不下就翻到下方
+  const x = clampX(r.left + r.width / 2 - tr.width / 2);
+  tipEl.style.left = x + 'px';
+  tipEl.style.top = y + 'px';
+  /* 箭头对准元素中心，同时夹在气泡两端的圆角以内 */
+  const ax = Math.max(11, Math.min(tr.width - 11, r.left + r.width / 2 - x));
+  tipEl.style.setProperty('--ax', ax + 'px');
+  tipEl.classList.remove('right');
+  tipEl.classList.toggle('below', below);
+}
+
+document.addEventListener('mouseover', e => {
+  const host = e.target.closest && e.target.closest('[data-tip]');
+  if (!host || host === tipHost) return;
+  tipHost = host;
+  clearTimeout(tipTimer);
+  tipTimer = setTimeout(() => { if (tipHost === host) tipShow(host); }, 240);
+});
+document.addEventListener('mouseout', e => {
+  const host = e.target.closest && e.target.closest('[data-tip]');
+  if (!host || host !== tipHost) return;
+  const to = e.relatedTarget;
+  if (to && host.contains(to)) return;   // 在同一元素内部移动，不收起
+  tipHide();
+});
+/* 滚动、缩放、点击、右键都应立刻收起，避免气泡留在原地 */
+addEventListener('scroll', tipHide, true);
+addEventListener('resize', tipHide);
+document.addEventListener('pointerdown', tipHide, true);
+document.addEventListener('contextmenu', tipHide, true);
+
+/* 兜底：字宽算出来的字号仍可能放不下（如英文单词偏宽），渲染后按真实字宽再缩。
+   不用 el.scrollWidth 量宽 —— 元素带 text-overflow:ellipsis 时它的返回值语义
+   和「是否截断」对不上（曾导致「哔哩哔哩」被截成「哔哩哔…」）。
+   用隐藏探针量纯文本宽度：宽度对照底板的 clientWidth（玻璃底板有 1px 边框，
+   clientWidth=68 而不是 70），留 1px 安全余量，最多缩 3 轮 */
 function fitNames(root) {
   (root || document).querySelectorAll('.mtext').forEach(el => {
     if (!el.textContent) return;
     const plate = el.parentElement;
-    const limit = plate ? plate.clientWidth * 0.92 : 0;
-    if (!limit) return;
-    const w = el.scrollWidth;              // 当前字号下的文字实际宽度
-    if (w <= limit + 0.5) return;
-    const cur = parseFloat(getComputedStyle(el).fontSize);
-    el.style.fontSize = Math.max(11, cur * limit / w).toFixed(1) + 'px';
+    const limit = (plate ? plate.clientWidth : 0) * 0.76 - 1;   // 与 max-width:76% 一致，再留 1px
+    if (limit <= 0) return;
+    const probe = document.createElement('span');
+    probe.style.cssText = 'position:absolute;left:-9999px;top:0;white-space:nowrap';
+    probe.style.font = getComputedStyle(el).font;
+    probe.style.letterSpacing = getComputedStyle(el).letterSpacing;
+    probe.textContent = el.textContent;
+    plate.appendChild(probe);
+    try {
+      for (let i = 0; i < 3; i++) {
+        const w = probe.getBoundingClientRect().width;
+        if (w <= limit) break;
+        const cur = parseFloat(getComputedStyle(el).fontSize);
+        const next = Math.max(11, cur * limit / w);
+        if (next >= cur - 0.05) break;
+        el.style.fontSize = next.toFixed(1) + 'px';
+        probe.style.fontSize = el.style.fontSize;
+      }
+    } finally {
+      probe.remove();
+    }
   });
 }
 
@@ -360,7 +632,7 @@ function renderGroups() {
   filtered.forEach(g => {
     const sec = document.createElement('section');
     sec.className = 'group';
-    sec.innerHTML = `<div class="group-head"><h2>${esc(g.title)}</h2>${g.description ? `<span class="desc">${esc(g.description)}</span>` : ''}</div>`;
+    sec.innerHTML = `<div class="group-head"><h2${g.description ? ` data-tip="${esc(g.description)}" data-tip-pos="right"` : ''}>${esc(g.title)}</h2></div>`;
     const grid = document.createElement('div');
     grid.className = g.cardStyle === 'icon' ? 'grid icons' : 'grid';
     g.items.forEach(it => {
@@ -374,8 +646,11 @@ function renderGroups() {
           : `<span class="mtext" style="--fs:${fsOf(short)}px">${esc(short)}</span>`;
         const c = document.createElement('div');
         c.className = 'mini';
-        c.innerHTML = `${it.lanUrl ? '<span class="lan-tag">内</span>' : ''}<span class="${micCls}"${plate}>${inner}</span>`
-          + `<span class="mname" title="${esc(it.title)}">${esc(short)}</span>`;
+        c.dataset.id = String(it.id ?? '');
+        c.dataset.gid = String(g.id);
+        /* 底板下方的名称：所有小图标卡片都渲染（图片图标、文字图标都要有名字） */
+        const label = `<span class="mname">${esc(short)}</span>`;
+        c.innerHTML = `${it.lanUrl ? '<span class="lan-tag">内</span>' : ''}<span class="${micCls}"${plate}>${inner}</span>${label}`;
         c.onclick = () => openUrl(it);
         grid.appendChild(c);
         return;
@@ -383,8 +658,10 @@ function renderGroups() {
       const c = document.createElement('div');
       c.className = 'card';
       const short = clipName(it.title);
+      c.dataset.id = String(it.id ?? '');
+      c.dataset.gid = String(g.id);
       c.innerHTML = `${it.lanUrl ? '<span class="lan-tag">内</span>' : ''}<div class="ic" style="background:${esc(it.color || '#2a2a2a')}">${iconHtml(it)}</div>`
-        + `<div class="body"><div class="title" title="${esc(it.title)}">${esc(short)}</div>${it.description ? `<div class="dsc">${esc(it.description)}</div>` : ''}</div>`;
+        + `<div class="body"><div class="title">${esc(short)}</div>${it.description ? `<div class="dsc">${esc(it.description)}</div>` : ''}</div>`;
       c.onclick = () => openUrl(it);
       grid.appendChild(c);
     });
@@ -483,6 +760,7 @@ $('#themeBtn').onclick = async () => {
  * 只在第一次打开时做一次，之后复用同一个 Vue 实例（切标签页的状态都还在）。
  */
 let adminBoot = null;
+let adminMod = null;      // 后台 bundle 的模块命名空间（mountAdmin / openItemEditor 都在里面）
 let adminSrc = '';        // 当前已加载的后台入口脚本（带哈希，用来判断有没有出新版）
 function loadAdmin() {
   if (adminBoot) return adminBoot;
@@ -508,9 +786,10 @@ function loadAdmin() {
     const src = doc.querySelector('script[type="module"]')?.getAttribute('src');
     if (!src) throw new Error('未找到后台入口脚本');
     adminSrc = src;
-    /* 先置位：模块据此跳过「独立页」那套初始化（压深色、删 boot 骨架） */
+    /* 先置位：模块据此跳过「独立页」那套初始化（压深色、删 boot 骨架、自动挂后台面板）。
+       内嵌场景由本页决定挂什么：要后台就 mountAdmin，只改一张卡就用 openItemEditor */
     window.__udenavEmbedded = true;
-    await import(new URL(src, location.origin).href);
+    adminMod = await import(new URL(src, location.origin).href);
   })();
   return adminBoot;
 }
@@ -532,7 +811,7 @@ window.__udenavClose = () => closeModal();
 /* 后台保存后 → 前台原地重渲染；'page' 才整页刷新 */
 window.__udenavHome = t => { t === 'page' ? location.reload() : syncFromAdmin(); };
 
-/* 打开后台弹窗 */
+/* 打开后台弹窗（完整后台面板） */
 async function openAdmin() {
   /* 已经挂载过、但线上换了新 build → 刷新页面让新代码生效（只多一次 ~3KB 的 HTML 请求） */
   if (adminBoot && await adminBuildChanged()) {
@@ -547,26 +826,50 @@ async function openAdmin() {
   $('#modal').classList.add('open');
   try {
     await loadAdmin();
+    /* 后台面板由本页按需挂载（首次真正打开、而不是右键编辑时才创建） */
+    window.__udenavAdmin?.mountAdmin?.($('#adminRoot'));
   } catch (e) {
     $('#modalTitle').textContent = '后台加载失败';
     console.warn('[udenav] 后台加载失败', e);
   }
 }
 
+/* 前台右键「编辑」：只挂一个卡片编辑弹窗组件，完全不碰后台面板。
+   它有自己的挂载点 #editRoot，与 #adminRoot 是两个独立 Vue 实例，
+   所以从点下去的第一帧起就只有编辑弹窗，不会有后台面板闪一下 */
+async function openItemEditor(gid, id) {
+  try {
+    await loadAdmin();                       // 只取 JS/CSS，不挂后台面板
+    window.__udenavAdmin.openItemEditor($('#editRoot'), Number(gid), Number(id));
+  } catch (e) {
+    console.warn('[udenav] 编辑弹窗加载失败', e);
+    ctxToast('加载失败，请重试');
+  }
+}
+
 /* 关闭弹窗：后台组件本身不销毁，只是藏起来 —— 下次打开还是原来那个标签页 */
 function closeModal() {
-  $('#modal').classList.remove('open');
+  const m = $('#modal');
+  m.classList.remove('open');
   $('#modalFrame').src = '';
   $('#adminRoot').hidden = true;
   /* 后台里可能预览过没保存的主题，按已保存的配置还原一次 */
   applyThemeAttr(state.config.theme || 'dark');
 }
 
-$('#adminBtn').onclick = openAdmin;
+/* 编辑弹窗撞上会话过期（cookie 没了但页面还以为是登录态）→ 直接弹登录框 */
+window.addEventListener('udenav:login-required', () => {
+  refreshAdminState();
+  ctxToast('登录已过期，请重新登录');
+  openAdmin();
+});
+
+$('#adminBtn').onclick = () => openAdmin();
 
 /* 后台保存后同步前台：重新拉一次公开数据并原地重渲染。
    不整页刷新 —— 不闪屏、不丢滚动位置、弹窗不用被迫关掉 */
 function syncFromAdmin() {
+  refreshAdminState();   // 登录/退出后右键菜单的可用性要跟着变
   fetch('/api/public/panel', { cache: 'no-store' })
     .then(r => r.ok ? r.json() : null)
     .then(j => {
@@ -580,6 +883,15 @@ function syncFromAdmin() {
     .catch(() => {});
 }
 
+/* 前台要知道「当前浏览器是否登录了管理员」：
+   只有登录时卡片右键才提供编辑/删除等管理功能，访客右键走浏览器默认菜单 */
+function refreshAdminState() {
+  return fetch('/api/admin/me', { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { state.admin = !!(j && j.logged_in); })
+    .catch(() => { state.admin = false; });
+}
+
 /* 以前这里监听 iframe 发来的 postMessage（udenav:close-modal / reload-panel / refresh）。
    后台改成同文档组件后，走的是上面挂的 window.__udenavClose / window.__udenavHome，
    跨文档消息这条链路已经整条拆掉了。 */
@@ -591,7 +903,7 @@ $('#q').addEventListener('input', renderGroups);
 $('#clearBtn').onclick = () => { $('#q').value = ''; renderGroups(); };
 $('#modalClose').onclick = closeModal;
 $('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeCtx(); closeModal(); } });
 
 $('#q').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
@@ -600,6 +912,186 @@ $('#q').addEventListener('keydown', e => {
   const url = state.engine.url.replace('%s', encodeURIComponent(kw));
   window.open(url, '_blank');
 });
+
+/* ---------- 卡片右键菜单（sun-panel 同款：打开 / 公网 / 内网 / 复制链接 + 编辑 / 删除） ---------- */
+const CTX_ICONS = {
+  ok: '<path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"/>',
+  open: '<path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"/>',
+  edit: '<path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z"/>',
+  link: '<path d="M3.9,12C3.9,10.29 5.29,8.9 7,8.9H11V7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H11V15.1H7C5.29,15.1 3.9,13.71 3.9,12M8,13H16V11H8V13M17,7H13V8.9H17C18.71,8.9 20.1,10.29 20.1,12C20.1,13.71 18.71,15.1 17,15.1H13V17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7Z"/>',
+  trash: '<path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>',
+  prev: '<path d="M20,11H7.83l5.59,-5.59L12,4l-8,8l8,8l1.41,-1.41L7.83,13H20V11Z"/>',
+  next: '<path d="M12,4l-1.41,1.41L16.17,11H4v2h12.17l-5.58,5.59L12,20l8,-8L12,4Z"/>',
+};
+const ctxMenu = document.createElement('div');
+ctxMenu.className = 'ctx-menu';
+ctxMenu.style.display = 'none';
+document.body.appendChild(ctxMenu);
+let ctxItem = null;   // 当前菜单对应的数据 { gid, it }
+
+function closeCtx() { ctxMenu.style.display = 'none'; ctxItem = null; }
+
+function buildCtxMenu(it) {
+  const wan = String(it.url || '').trim();
+  const lan = String(it.lanUrl || '').trim();
+  const managed = it.id != null;   // 内置示例数据没有 id，不显示编辑/删除
+  const dis = ok => ok ? '' : 'disabled';
+  /* 移动按钮的首尾边界：按同组当前显示顺序（sort,id）判断，
+     第一张不能向前、最后一张不能向后，避免点了没反应 */
+  const g = ctxItem && state.groups.find(x => x.id === ctxItem.gid);
+  const items = (g && g.items) ? g.items : [];
+  const idx = items.findIndex(x => x.id === it.id);
+  const canPrev = idx > 0;
+  const canNext = idx >= 0 && idx < items.length - 1;
+  const moveRow = managed ? `<div class="row2">
+      <button data-act="prev" data-tip="向前移动一位" ${canPrev ? '' : 'disabled'}>${svgOf(CTX_ICONS.prev)}</button>
+      <button data-act="next" data-tip="向后移动一位" ${canNext ? '' : 'disabled'}>${svgOf(CTX_ICONS.next)}</button>
+    </div>` : '';
+  ctxMenu.innerHTML =
+    `<div class="mi" data-act="open">打开默认地址</div>`
+    + `<div class="row3">
+         <button data-act="wan" data-tip="打开公网地址" ${dis(wan)}>${svgOf(CTX_ICONS.open)}</button>
+         <button data-act="lan" data-tip="打开内网地址" ${dis(lan)}>${svgOf(ICON.lan)}</button>
+         <button data-act="copy" data-tip="复制链接" ${dis(pickUrl(it))}>${svgOf(CTX_ICONS.link)}</button>
+       </div>`
+    + moveRow
+    + (managed
+      ? `<div class="sep"></div>
+         <div class="mi" data-act="edit">${svgOf(CTX_ICONS.edit)}编辑</div>
+         <div class="mi danger" data-act="del">${svgOf(CTX_ICONS.trash)}删除</div>`
+      : '');
+}
+
+/* 复制兜底：HTTP 环境或旧浏览器没有 clipboard API 时走 execCommand */
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:-999px;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch {}
+  ta.remove();
+}
+
+/* 菜单动作的反馈复用顶部的模式提示条（图标 + 文字，1.6s 自动收起） */
+function ctxToast(text) {
+  const t = $('#toast');
+  $('#toastIco').innerHTML = svgOf(CTX_ICONS.ok);
+  $('#toastText').textContent = text;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1600);
+}
+
+/* 就地换位：移动卡片后只在 DOM 里交换相邻两张卡的位置 + 更新内存顺序，
+   不整页重新渲染。整页重渲染会让整组卡片重新上浮播一遍入场动画，
+   看起来就像「页面刷新了一下」—— 用户要的只是两张卡换位置。
+   返回 false 表示当前 DOM 不适合就地换位（搜索过滤态、隐藏分组等），调用方退回全量刷新 */
+function localMove(gid, id, dir) {
+  const g = state.groups.find(x => x.id === gid);
+  if (!g || !g.items) return false;
+  const i = g.items.findIndex(x => x.id === id);
+  const t = i + dir;
+  if (i < 0 || t < 0 || t >= g.items.length) return false;
+  const a = g.items[i], b = g.items[t];
+  [g.items[i], g.items[t]] = [b, a];
+  a.sort = t * 10;   // 与后端重编号规则一致（整组按 0,10,20... 递增）
+  b.sort = i * 10;
+  const pick = k => document.querySelector('#groups .card[data-id="' + k + '"], #groups .mini[data-id="' + k + '"]');
+  const da = pick(a.id), db = pick(b.id);
+  if (!da || !db) return false;
+  /* 相邻性检查要分方向：向后移时邻居 b 在 a 后面（a.nextSibling===b），
+     向前移时 b 在 a 前面（b.nextSibling===a）—— 只按后者判断会让向前移动
+     永远「不相邻」而退回整页重渲染 */
+  if (!(dir < 0 ? (db.nextSibling === da) : (da.nextSibling === db))) return false;
+  /* 把 a 插到邻居的对应一侧：向前移到 b 之前，向后移到 b 之后 */
+  da.parentNode.insertBefore(da, dir < 0 ? db : db.nextSibling);
+  // 节点被移动会重启 CSS 入场动画，用内联样式压住，避免两张卡重新上浮
+  da.style.animation = 'none';
+  db.style.animation = 'none';
+  return true;
+}
+
+async function ctxAction(act) {
+  const cur = ctxItem;
+  closeCtx();
+  if (!cur) return;
+  const it = cur.it;
+  if (act === 'open') return openUrl(it);
+  if (act === 'wan') { if (it.url) window.open(it.url, '_blank'); return; }
+  if (act === 'lan') { if (it.lanUrl) window.open(it.lanUrl, '_blank'); return; }
+  if (act === 'copy') {
+    const u = pickUrl(it);
+    if (!u) return;
+    try { await navigator.clipboard.writeText(u); } catch { fallbackCopy(u); }
+    ctxToast('链接已复制');
+    return;
+  }
+  if (act === 'prev' || act === 'next') {
+    if (it.id == null) return;
+    const gid = cur.gid;
+    const dir = act === 'prev' ? -1 : 1;
+    const r = await fetch('/api/admin/icons/' + it.id + '/move', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ dir: act === 'prev' ? 'up' : 'down' }),
+    }).catch(() => null);
+    if (!r || r.status === 401 || r.status === 403) { ctxToast('请先登录后台'); openAdmin(); return; }
+    if (!r.ok) { ctxToast('移动失败，请重试'); return; }
+    const j = await r.json().catch(() => null);
+    if (j && j.moved === false) return;   // 已在首尾（按钮本应禁用，兜底）
+    if (!localMove(gid, it.id, dir)) syncFromAdmin();   // DOM 不适宜就地换位才退回整页重渲染
+    ctxToast(act === 'prev' ? '已向前移动' : '已向后移动');
+    return;
+  }
+  if (act === 'edit') {
+    if (it.id == null) return;
+    openItemEditor(cur.gid, it.id);
+    return;
+  }
+  if (act === 'del') {
+    if (it.id == null) return;
+    if (!confirm(`删除卡片「${it.title}」？删除后不可恢复。`)) return;
+    const r = await fetch('/api/admin/icons/' + it.id, { method: 'DELETE' }).catch(() => null);
+    if (!r || r.status === 401 || r.status === 403) { ctxToast('请先登录后台'); openAdmin(); return; }
+    if (!r.ok) { ctxToast('删除失败，请重试'); return; }
+    ctxToast('已删除');
+    syncFromAdmin();
+  }
+}
+
+ctxMenu.addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]');
+  if (!btn || btn.disabled) return;
+  ctxAction(btn.dataset.act);
+});
+
+/* 事件委托：#groups 里任何 .card / .mini 上右键都弹菜单。
+   未登录的访客不提供这套管理菜单（编辑/删除都要求登录），走浏览器默认右键 */
+$('#groups').addEventListener('contextmenu', e => {
+  if (!state.admin) return;
+  const card = e.target.closest('.card,.mini');
+  if (!card) return;
+  const g = state.groups.find(x => x.id === Number(card.dataset.gid));
+  const it = g?.items.find(x => x.id === Number(card.dataset.id));
+  if (!it) return;
+  e.preventDefault();
+  e.stopPropagation();   // 别冒泡到 document 的 contextmenu 关闭逻辑，把刚开的菜单又关掉
+  ctxItem = { gid: g.id, it };
+  buildCtxMenu(it);
+  ctxMenu.style.display = 'block';
+  const r = ctxMenu.getBoundingClientRect();
+  const x = Math.max(8, Math.min(e.clientX, innerWidth - r.width - 8));
+  const y = Math.max(8, Math.min(e.clientY, innerHeight - r.height - 8));
+  ctxMenu.style.left = x + 'px';
+  ctxMenu.style.top = y + 'px';
+});
+
+/* 点别处 / 右键别处 / Esc / 滚动 / 改窗口大小 → 关菜单 */
+document.addEventListener('click', closeCtx);
+document.addEventListener('contextmenu', e => { if (!e.target.closest('.ctx-menu,.card,.mini')) closeCtx(); });
+window.addEventListener('scroll', closeCtx, true);
+window.addEventListener('resize', closeCtx);
 
 /* ---------- 启动：优先读后端，读不到就用内置数据 ---------- */
 const FALLBACK = {
@@ -618,7 +1110,10 @@ const FALLBACK = {
 (async function init() {
   let data = FALLBACK;
   try {
-    const r = await fetch('/api/public/panel', { cache: 'no-store' });
+    const [r] = await Promise.all([
+      fetch('/api/public/panel', { cache: 'no-store' }),
+      refreshAdminState(),   // 登录状态决定右键有没有管理功能
+    ]);
     if (r.ok) { const j = await r.json(); if (j && Array.isArray(j.groups)) data = j; }
   } catch { /* 离线打开时用内置数据 */ }
   applyConfig(data.config || FALLBACK.config);
@@ -652,8 +1147,10 @@ function initMotion() {
     const parallax = $('#bgGrad');
     if (parallax && !RM) {
       let raf = 0;
-      const apply = () => { raf = 0; parallax.style.setProperty('--py', (-window.scrollY * 0.14).toFixed(2) + 'px'); };
-      window.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(apply); }, { passive: true });
+      /* 页面不是 window 在滚了，视差要读容器自身的 scrollTop */
+      const sc = $('#scroller');
+      const apply = () => { raf = 0; parallax.style.setProperty('--py', (-(sc ? sc.scrollTop : window.scrollY) * 0.14).toFixed(2) + 'px'); };
+      (sc || window).addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(apply); }, { passive: true });
       apply();
     }
   }

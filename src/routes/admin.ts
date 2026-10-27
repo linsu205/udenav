@@ -390,6 +390,34 @@ export async function patchIcon(env: Env, req: Request, id: number): Promise<Res
   return json({ ok: true });
 }
 
+/**
+ * 卡片在同组内前移 / 后移一位（body.dir = 'up' | 'down'）。
+ * 采用「交换相邻位置 + 整组重新编号 sort = index*10」，而不是简单互换两行的 sort：
+ * 历史数据/新建时 sort 可能相同（例如都是 0），互换后两行 sort 仍相等，
+ * ORDER BY sort,id 的展示顺序不变，移动等于白点。整组重排保证 sort 唯一、顺序稳定。
+ * 用 D1 batch（单事务）一次提交，不会出现移了一半留下错乱顺序；超 500 行才分段。
+ */
+export async function moveIcon(env: Env, req: Request, id: number): Promise<Response> {
+  await requireRole(req, env, 'editor');
+  const body = await readJson(req);
+  const dir = body.dir === 'up' ? -1 : 1;   // -1 = 向前(上移)，1 = 向后(下移)
+  const cur = await env.DB.prepare('SELECT id, group_id FROM item_icon WHERE id = ?').bind(id).first<IconRow>();
+  if (!cur) return bad('卡片不存在', 404);
+  const rows = (await env.DB
+    .prepare('SELECT id, group_id, sort FROM item_icon WHERE group_id = ? ORDER BY sort, id')
+    .bind(cur.group_id).all<IconRow>()).results;
+  const idx = rows.findIndex(r => r.id === id);
+  const target = idx + dir;
+  if (idx < 0 || target < 0 || target >= rows.length) return json({ ok: true, moved: false });  // 已在边界
+  const arr = [...rows];
+  [arr[idx], arr[target]] = [arr[target], arr[idx]];
+  const now = Date.now();
+  const stmts = arr.map((r, i) =>
+    env.DB.prepare('UPDATE item_icon SET sort = ?, updated_at = ? WHERE id = ?').bind(i * 10, now, r.id));
+  for (let i = 0; i < stmts.length; i += 500) await env.DB.batch(stmts.slice(i, i + 500));
+  return json({ ok: true, moved: true });
+}
+
 export async function deleteIcon(env: Env, req: Request, id: number): Promise<Response> {
   await requireRole(req, env, 'editor');
   const res = await env.DB.prepare('DELETE FROM item_icon WHERE id = ?').bind(id).run();
