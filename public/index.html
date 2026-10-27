@@ -81,7 +81,10 @@
   .clock .d{font-size:13px;color:var(--on-bg-dim);text-shadow:0 1px 4px rgba(0,0,0,.55),0 2px 14px rgba(0,0,0,.45)}
   @media(max-width:620px){.sep{display:none}}
 
-  .search{margin:10px auto 0;max-width:680px;display:flex;align-items:center;gap:8px;
+  /* position+z-index 必须加：rise 动画末帧保留 transform，使 .search 成为独立层叠上下文，
+     下拉列表的 z-index 被困在里面，#groups 的分组标题（普通流内容）会画在下拉之上，
+     表现为「下拉里的引擎选项点不动」（点到标题上了）。提升为定位元素后整体盖过普通流 */
+  .search{position:relative;z-index:5;margin:10px auto 0;max-width:680px;display:flex;align-items:center;gap:8px;
     background:var(--card-bg);box-shadow:0 6px 20px rgba(0,0,0,.18);
     border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:8px 10px}
   .search input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text);font-size:15px}
@@ -255,7 +258,7 @@
   .modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;
     opacity:0;visibility:hidden;pointer-events:none;transition:opacity .2s,visibility .2s}
   .modal.open{opacity:1;visibility:visible;pointer-events:auto}
-  .modal .box{width:min(1000px,96vw);height:min(820px,90vh);background:var(--card-bg);
+  .modal .box{width:min(1240px,96vw);height:min(820px,90vh);background:var(--card-bg);
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
     border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;
     box-shadow:0 24px 60px rgba(0,0,0,.55);transform:translateY(12px) scale(.985);
@@ -616,7 +619,7 @@ function iconHtml(item) {
   return `<span>${esc(letter(item.title))}</span>`;
 }
 
-function renderGroups() {
+function renderGroups(instant) {
   const box = $('#groups');
   const kw = $('#q').value.trim().toLowerCase();
   const filtered = state.groups.filter(g => {
@@ -670,6 +673,20 @@ function renderGroups() {
   });
   /* 名称按实际渲染宽度再兜底缩一次（英文偏宽的情况） */
   fitNames(box);
+  /* 输入过滤 / 回车清空 / 点清除键后的重建：不重播入场动画。
+     重出来的节点没有 .in（opacity:0 初始态），不补显示的话整片图标会「消失」；
+     只补视口内的，滚动到下面的仍交给 initMotion 的 IntersectionObserver */
+  if (instant) {
+    document.querySelectorAll('#groups .group:not(.in), #groups .card:not(.in), #groups .mini:not(.in)').forEach(el => {
+      if (el.getBoundingClientRect().top < innerHeight + 200) {
+        /* animation:none 必须加：.in 的 rise/cardIn 动画期间 keyframes 会盖过内联 opacity，
+           不压掉的话每敲一个字整片卡片就重播一遍上浮动画（闪） */
+        el.style.setProperty('animation', 'none');
+        el.style.setProperty('opacity', '1');
+        el.classList.add('in');
+      }
+    });
+  }
 }
 
 /* 内外网互为兜底：开关选「内网」但这张卡没配内网地址 → 直接开外网地址；反之没配外网 → 开内网地址 */
@@ -899,8 +916,8 @@ function refreshAdminState() {
 /* ---------- 交互 ---------- */
 $('#engBtn').onclick = e => { e.stopPropagation(); $('#engList').classList.toggle('open'); };
 document.addEventListener('click', () => $('#engList').classList.remove('open'));
-$('#q').addEventListener('input', renderGroups);
-$('#clearBtn').onclick = () => { $('#q').value = ''; renderGroups(); };
+$('#q').addEventListener('input', () => renderGroups(true));
+$('#clearBtn').onclick = () => { $('#q').value = ''; renderGroups(true); };
 $('#modalClose').onclick = closeModal;
 $('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeCtx(); closeModal(); } });
@@ -908,9 +925,12 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeCtx()
 $('#q').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   const kw = e.target.value.trim();
-  if (!kw) return;
+  if (!kw) { ctxToast('请输入关键词'); return; }
   const url = state.engine.url.replace('%s', encodeURIComponent(kw));
   window.open(url, '_blank');
+  /* 跳转后清空搜索栏并恢复完整图标列表 */
+  e.target.value = '';
+  renderGroups(true);
 });
 
 /* ---------- 卡片右键菜单（sun-panel 同款：打开 / 公网 / 内网 / 复制链接 + 编辑 / 删除） ---------- */

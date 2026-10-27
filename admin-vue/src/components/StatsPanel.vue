@@ -28,6 +28,40 @@ const peakT = computed(() => {
 const stackList = computed(() => (st.value.db?.list || []).filter((t: any) => t.bytes > 0));
 const topT = computed(() => (st.value.db?.list || [])[0]);
 
+// 页面体积：总量与分段占比（用于堆叠比例条）
+const resTotal = computed(() => res.value.js + res.value.css + res.value.img + res.value.oth);
+const resSegs = computed(() => {
+  const r = res.value, t = resTotal.value || 1;
+  return [
+    { key: 'js', label: 'JS 脚本', v: r.js, color: '#409eff' },
+    { key: 'css', label: '样式表', v: r.css, color: '#a78bfa' },
+    { key: 'img', label: '图片', v: r.img, color: '#2fbf6b' },
+    { key: 'oth', label: '其他', v: r.oth, color: '#e6a23c' },
+  ].map(s => ({ ...s, pct: Math.max(s.v > 0 ? 1.5 : 0, s.v / t * 100) }));
+});
+// 浏览器 / 系统一句话摘要
+const uaBrief = computed(() => {
+  const ua = String(envInfo.value.ua || '');
+  const br = (() => {
+    if (/Edg\//.test(ua)) return 'Edge';
+    if (/Chrome\//.test(ua)) return 'Chrome';
+    if (/Firefox\//.test(ua)) return 'Firefox';
+    if (/Safari\//.test(ua)) return 'Safari';
+    return '未知浏览器';
+  })();
+  const os = (() => {
+    if (/Windows NT 10/.test(ua)) return 'Windows 10/11';
+    if (/Windows/.test(ua)) return 'Windows';
+    if (/Mac OS X/.test(ua)) return 'macOS';
+    if (/Android/.test(ua)) return 'Android';
+    if (/iPhone|iPad/.test(ua)) return 'iOS';
+    if (/Linux/.test(ua)) return 'Linux';
+    return '未知系统';
+  })();
+  const mv = ua.match(/(?:Chrome|Edg|Firefox|Version)\/(\d+)/);
+  return `${br}${mv ? ' ' + mv[1] : ''} · ${os}`;
+});
+
 function fmt(n: number): string {
   if (!n) return '0 B';
   if (n < 1024) return `${n} B`;
@@ -248,26 +282,18 @@ async function doPurge() {
           后台页面体积
           <span class="tt-note">performance API 实测本次加载</span>
         </div>
+        <div v-if="resTotal > 0" class="res-total">
+          <span class="res-total-n">{{ fmt(resTotal) }}</span>
+          <span class="res-total-l">本次加载总量</span>
+        </div>
+        <div v-if="resTotal > 0" class="res-bar">
+          <i v-for="s in resSegs" :key="s.key" :style="{ width: s.pct + '%', background: s.color }" :title="s.label + '  ' + fmt(s.v)"></i>
+        </div>
         <div class="res">
-          <div class="res-i">
-            <div class="res-n">{{ fmt(res.js) }}</div>
-            <div class="res-l">JS 脚本</div>
-            <div class="res-s">{{ res.jsN }} 个文件</div>
-          </div>
-          <div class="res-i">
-            <div class="res-n">{{ fmt(res.css) }}</div>
-            <div class="res-l">样式表</div>
-            <div class="res-s">Element Plus + 主题</div>
-          </div>
-          <div class="res-i">
-            <div class="res-n">{{ fmt(res.img) }}</div>
-            <div class="res-l">图片资源</div>
-            <div class="res-s">内联 SVG / favicon</div>
-          </div>
-          <div class="res-i">
-            <div class="res-n">{{ fmt(res.oth) }}</div>
-            <div class="res-l">其他</div>
-            <div class="res-s">字体 / 请求</div>
+          <div class="res-i" v-for="s in resSegs" :key="s.key">
+            <div class="res-hd"><i class="res-dot" :style="{ background: s.color }"></i><span class="res-l">{{ s.label }}</span></div>
+            <div class="res-n">{{ fmt(s.v) }}</div>
+            <div class="res-s">{{ s.key === 'js' ? res.jsN + ' 个文件' : s.key === 'css' ? 'Element Plus + 主题' : s.key === 'img' ? '内联 SVG / favicon' : '字体 / 请求' }}</div>
           </div>
         </div>
         <div v-if="!resOk" class="note">资源体积为 0，说明全部命中浏览器缓存；点「刷新」前按 Ctrl+F5 强制重载可测到实际大小。</div>
@@ -275,11 +301,22 @@ async function doPurge() {
 
       <div class="sp-card">
         <div class="sp-card-title">当前运行环境</div>
-        <div class="kv"><span>浏览器</span><b class="ell">{{ envInfo.ua || '—' }}</b></div>
-        <div class="kv"><span>屏幕 / 视口</span><b>{{ envInfo.screen }} · {{ envInfo.viewport }}</b></div>
-        <div class="kv"><span>缩放 / 时区</span><b>{{ envInfo.dpr }}× · {{ envInfo.tz }}</b></div>
-        <div class="kv"><span>DOM 节点</span><b>{{ envInfo.dom || 0 }} 个</b></div>
+        <div class="env-hero">
+          <el-icon :size="20"><Monitor /></el-icon>
+          <div>
+            <div class="env-hero-t">{{ uaBrief }}</div>
+            <div class="env-hero-s">{{ envInfo.lang || '—' }} · {{ envInfo.tz }}</div>
+          </div>
+        </div>
+        <div class="env-chips">
+          <div class="chip"><span>屏幕</span><b>{{ envInfo.screen || '—' }}</b></div>
+          <div class="chip"><span>视口</span><b>{{ envInfo.viewport || '—' }}</b></div>
+          <div class="chip"><span>缩放</span><b>{{ envInfo.dpr }}×</b></div>
+          <div class="chip"><span>DOM</span><b>{{ envInfo.dom || 0 }} 节点</b></div>
+        </div>
         <div class="kv"><span>登录身份</span><b>{{ store.user?.username }}</b></div>
+        <div class="kv"><span>浏览器 UA</span><b class="ell" :title="envInfo.ua">{{ envInfo.ua || '—' }}</b></div>
+        <div class="kv"><span>部署环境</span><b>Cloudflare Workers</b></div>
         <div class="note">站点跑在 Cloudflare Workers 上，是 Serverless 环境，没有本地磁盘，所以这里无法给出项目源码和文件系统的占用；能实测的就是数据库写入量和页面加载体积。</div>
       </div>
     </div>
@@ -287,14 +324,13 @@ async function doPurge() {
     <!-- 说明 -->
     <div class="sp-card">
       <div class="sp-card-title">统计口径说明</div>
-      <div class="note">
-        · 访问计数来自访客打开首页时的 /api/public/panel 请求，按 IP 哈希去重，只存哈希不存明文。<br>
-        · 数据占用是把每张表的文本列转成 UTF-8 字节累加、数字列每行按 8 字节计得出的估算值，
-        不是 Cloudflare 控制台上显示的 D1 磁盘用量（那个含页填充和索引开销，实际会更大一些）。<br>
-        · 页面体积只统计后台这一个页面本次加载的资源，不含访客首页和后台数据库。<br>
-        · 想清理占用，主要看「卡片图标占用」：把大图片改成外链地址，或减小上传尺寸，数据库会立刻变小。<br>
-        · 访问日志可以直接清：点「清理日志」，可选只保留最近 7 / 30 天或全部清空。清理后「累计访问」「今天」「24 小时」和趋势图会按剩余日志重新计算，历史数字会随之下降。
-      </div>
+      <ul class="notes">
+        <li><b>访问计数</b>来自访客打开首页时的 /api/public/panel 请求，按 IP 哈希去重，只存哈希不存明文。</li>
+        <li><b>数据占用</b>是把每张表的文本列转成 UTF-8 字节累加、数字列每行按 8 字节计得出的估算值，不是 Cloudflare 控制台上显示的 D1 磁盘用量（那个含页填充和索引开销，实际会更大一些）。</li>
+        <li><b>页面体积</b>只统计后台这一个页面本次加载的资源，不含访客首页和后台数据库。</li>
+        <li>想清理占用，主要看<b>「卡片图标占用」</b>：把大图片改成外链地址，或减小上传尺寸，数据库会立刻变小。</li>
+        <li><b>访问日志</b>可以直接清：点「清理日志」，可选只保留最近 7 / 30 天或全部清空。清理后「累计访问」「今天」「24 小时」和趋势图会按剩余日志重新计算，历史数字会随之下降。</li>
+      </ul>
     </div>
 
     <!-- 清理访问日志 -->
@@ -415,10 +451,51 @@ async function doPurge() {
   .kv b.ell { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .res { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
-  .res-i { background: var(--sp-card-in); border-radius: 10px; padding: 13px 14px; }
-  .res-n { font-size: 20px; font-weight: 700; color: var(--sp-text); }
-  .res-l { font-size: 12.5px; color: var(--sp-dim); margin-top: 4px; }
+  .res-i { background: var(--sp-card-in); border-radius: 10px; padding: 12px 14px; transition: transform .18s ease, box-shadow .18s ease; }
+  .res-i:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, .07); }
+  .res-hd { display: flex; align-items: center; gap: 7px; }
+  .res-dot { width: 8px; height: 8px; border-radius: 3px; flex: none; }
+  .res-n { font-size: 20px; font-weight: 700; color: var(--sp-text); margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .res-l { font-size: 12.5px; color: var(--sp-dim); }
   .res-s { font-size: 11px; color: var(--sp-faint); margin-top: 2px; }
+
+  /* 页面体积：汇总 + 占比条 */
+  .res-total { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .res-total-n { font-size: 26px; font-weight: 700; color: var(--sp-accent); line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .res-total-l { font-size: 12px; color: var(--sp-faint); }
+  .res-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--sp-card-in); margin-bottom: 12px; }
+  .res-bar i { display: block; height: 100%; transition: width .35s ease; }
+
+  /* 运行环境：英雄区 + 信息 chips */
+  .env-hero {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--sp-card-in); border-radius: 10px; padding: 13px 14px; margin-bottom: 12px;
+    color: var(--sp-accent);
+  }
+  .env-hero-t { font-size: 15px; font-weight: 700; color: var(--sp-text); line-height: 1.3; }
+  .env-hero-s { font-size: 11.5px; color: var(--sp-faint); margin-top: 3px; }
+  .env-chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  .chip {
+    background: var(--sp-card-in); border-radius: 9px; padding: 9px 6px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0;
+  }
+  .chip span { font-size: 10.5px; color: var(--sp-faint); }
+  .chip b { font-size: 12.5px; color: var(--sp-text); font-weight: 600; font-variant-numeric: tabular-nums; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* 说明列表 */
+  .notes { margin: 2px 0 0; padding: 0; list-style: none; }
+  .notes li {
+    position: relative; padding: 7px 0 7px 18px;
+    font-size: 12.5px; line-height: 1.8; color: var(--sp-dim);
+    border-top: 1px dashed var(--sp-card-border);
+  }
+  .notes li:first-child { border-top: 0; padding-top: 2px; }
+  .notes li::before {
+    content: ''; position: absolute; left: 3px; top: 15px;
+    width: 6px; height: 6px; border-radius: 2px; background: var(--sp-accent); opacity: .55;
+  }
+  .notes li:first-child::before { top: 10px; }
+  .notes li b { color: var(--sp-text); font-weight: 600; }
 
   .note { color: var(--sp-faint); font-size: 12.5px; line-height: 1.9; }
 
@@ -428,5 +505,6 @@ async function doPurge() {
     .srow { grid-template-columns: 10px 74px 1fr 66px 54px; gap: 8px; }
     .tbar .lb { font-size: 9.5px; }
     .kv b.ell { max-width: 210px; }
+    .env-chips { grid-template-columns: repeat(2, 1fr); }
   }
 </style>
