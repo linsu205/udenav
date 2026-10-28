@@ -75,8 +75,93 @@ async function loadWd() {
     wdLoading.value = false;
   }
 }
-onMounted(loadWd);
+/* ---------------- 定期备份到对象存储（S3 兼容） ----------------
+   七牛 Kodo / 阿里 OSS / 腾讯 COS / R2 / MinIO 都提供 S3 兼容端点，
+   后端用一套 AWS Signature V4 打通（src/routes/s3.ts），这里只负责把参数填对。
+   SecretKey 和 WebDAV 密码一样加密存 app_setting，不进导出的 JSON。 */
+const s3 = reactive({
+  enabled: false, endpoint: '', region: '', bucket: '', ak: '', sk: '', prefix: 'udenav-backup', keep: 7,
+  freq: 'daily' as 'hourly' | 'daily' | 'weekly', hour: 3, weekday: 1,
+  last_at: 0 as number, last_ok: null as boolean | null, last_msg: '', has_sk: false,
+});
+const s3Loading = ref(false);
+const s3Saving = ref(false);
+const s3Running = ref(false);
+const s3Testing = ref(false);
 
+/* 只放「端点格式确定」的三家做预设，其余让用户照服务商文档填，避免给错域名 */
+const S3_PRESETS = [
+  { label: '七牛 Kodo', endpoint: 'https://s3.cn-east-1.qiniucs.com', region: 'cn-east-1', tip: '区域按空间所在机房选，华东-浙江是 cn-east-1' },
+  { label: 'Cloudflare R2', endpoint: 'https://<账户ID>.r2.cloudflarestorage.com', region: 'auto', tip: '把 <账户ID> 换成 R2 概览页里的 Account ID' },
+  { label: 'MinIO', endpoint: 'http://127.0.0.1:9000', region: 'us-east-1', tip: '自建 MinIO 默认区域是 us-east-1' },
+];
+
+/* 预设只填 endpoint + region，桶名/密钥仍要自己填，避免误以为点一下就配好了 */
+function applyS3Preset(p: { endpoint: string; region: string }) {
+  s3.endpoint = p.endpoint;
+  s3.region = p.region;
+}
+
+async function loadS3() {  s3Loading.value = true;
+  try {
+    const r = await get<any>('/api/admin/backup/s3');
+    Object.assign(s3, r.cfg || {});
+    s3.sk = '';   // 密钥不回显，留空即沿用已保存的
+  } finally {
+    s3Loading.value = false;
+  }
+}
+
+async function saveS3() {
+  s3Saving.value = true;
+  try {
+    await put('/api/admin/backup/s3', { ...s3 });
+    await loadS3();
+    ElMessage.success('对象存储设置已保存');
+  } catch (e: any) {
+    ElMessage.error('保存失败：' + (e?.message || '未知错误'));
+  } finally {
+    s3Saving.value = false;
+  }
+}
+
+async function runS3Now() {
+  s3Running.value = true;
+  try {
+    const r = await post<any>('/api/admin/backup/s3/run', { ...s3 });
+    ElMessage.success(`${r.message}（${r.file}）` + (r.pruned ? `，清理旧备份 ${r.pruned} 份` : ''));
+    await loadS3();
+  } catch (e: any) {
+    ElMessage.error({ message: '备份失败：' + (e?.message || '未知错误'), duration: 8000, showClose: true });
+    await loadS3();
+  } finally {
+    s3Running.value = false;
+  }
+}
+
+async function testS3() {
+  s3Testing.value = true;
+  try {
+    const r = await post<any>('/api/admin/backup/s3/test', {
+      endpoint: s3.endpoint, region: s3.region, bucket: s3.bucket, ak: s3.ak, sk: s3.sk, prefix: s3.prefix,
+    });
+    if (r.ok) ElMessage.success(r.message || '连接成功');
+    else ElMessage.warning({ message: r.message || '连接失败', duration: 8000, showClose: true });
+  } catch (e: any) {
+    ElMessage.error({ message: '测试失败：' + (e?.message || '未知错误'), duration: 8000, showClose: true });
+  } finally {
+    s3Testing.value = false;
+  }
+}
+
+const s3FreqText = computed(() => {
+  if (!s3.enabled) return '当前未启用，仅手动备份';
+  if (s3.freq === 'hourly') return '每小时整点自动执行';
+  if (s3.freq === 'weekly') return `每${WEEKDAYS.find((d) => d.v === s3.weekday)?.label} ${hh(s3.hour)} 自动执行`;
+  return `每天 ${hh(s3.hour)} 自动执行`;
+});
+
+onMounted(() => { loadWd(); loadS3(); });
 function applyPreset(p: { url: string }) {
   wd.url = p.url;
 }
@@ -155,10 +240,14 @@ const rv = reactive({
   open: false,
   loading: false,
   running: false,
+  /* 两份备份共用这个恢复弹窗：dav = WebDAV，s3 = 对象存储，只差接口前缀 */
+  src: 'dav' as 'dav' | 's3',
   dir: '',
   pick: '',
   files: [] as Array<{ name: string; size: number; mtime: number }>,
 });
+
+const rvApi = () => (rv.src === 's3' ? '/api/admin/backup/s3' : '/api/admin/backup');
 
 function fmtSize(n: number): string {
   if (!n) return '';
@@ -167,13 +256,14 @@ function fmtSize(n: number): string {
   return (n / 1024 / 1024).toFixed(2) + ' MB';
 }
 
-async function openRestore() {
+async function openRestore(src: 'dav' | 's3' = 'dav') {
+  rv.src = src;
   rv.open = true;
   rv.loading = true;
   rv.files = [];
   rv.pick = '';
   try {
-    const r = await get<any>('/api/admin/backup/list');
+    const r = await get<any>(`${rvApi()}/list`);
     rv.dir = r.dir || '';
     rv.files = r.files || [];
     /* 后端已按文件名倒序（字典序即时间序），第一条就是最新 */
@@ -191,7 +281,7 @@ async function doRestore() {
   rv.running = true;
   try {
     /* 先干跑一次：只下载并解析，不写库，拿这份备份的真实内容去问用户 */
-    const p = await post<any>('/api/admin/backup/restore', { file: rv.pick, dry: true });
+    const p = await post<any>(`${rvApi()}/restore`, { file: rv.pick, dry: true });
     try {
       await ElMessageBox.confirm(
         `<div style="line-height:1.9">将用 <b>${p.file}</b> 覆盖当前数据。</div>` +
@@ -206,7 +296,7 @@ async function doRestore() {
       return;   // 用户点了取消
     }
 
-    const r = await post<any>('/api/admin/backup/restore', { file: rv.pick });
+    const r = await post<any>(`${rvApi()}/restore`, { file: rv.pick });
     rv.open = false;
     await store.loadAll();
     notifyHome();
@@ -336,7 +426,7 @@ async function doRestore() {
         <div class="wd-actions">
           <el-button type="primary" :loading="wdSaving" @click="saveWd"><el-icon><Check /></el-icon>保存设置</el-button>
           <el-button :loading="wdRunning" @click="runWdNow"><el-icon><Upload /></el-icon>立即备份</el-button>
-          <el-button @click="openRestore"><el-icon><Download /></el-icon>从云端恢复</el-button>
+          <el-button @click="openRestore('dav')"><el-icon><Download /></el-icon>从云端恢复</el-button>
           <!-- 用状态点替掉原来那句灰字，启用与否一眼能看出来 -->
           <span class="wd-state" :class="{ on: wd.enabled }"><i></i>{{ freqText }}</span>
         </div>
@@ -354,11 +444,131 @@ async function doRestore() {
       </el-alert>
     </div>
 
+    <!-- 定期备份到对象存储（S3 兼容：七牛 Kodo / R2 / MinIO / OSS / COS） -->
+    <div class="sp-card s3-card" v-loading="s3Loading">
+      <div class="sp-card-title">
+        定期备份（对象存储）
+        <el-switch v-model="s3.enabled" style="margin-left:10px" />
+      </div>
+
+      <el-form v-if="s3.enabled" label-position="top" class="wd-form">
+        <div class="wd-sec-label">连接信息</div>
+
+        <el-row :gutter="14">
+          <el-col :span="16">
+            <el-form-item label="Endpoint（填到域名，不带桶名）">
+              <el-input v-model="s3.endpoint" placeholder="https://s3.cn-east-1.qiniucs.com">
+                <template #prefix><el-icon><Link /></el-icon></template>
+              </el-input>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="Region">
+              <el-input v-model="s3.region" placeholder="cn-east-1" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <div class="wd-presets">
+          <span class="wd-presets-lab">常用</span>
+          <button v-for="p in S3_PRESETS" :key="p.label" type="button" class="wd-chip"
+                  :title="p.tip" @click="applyS3Preset(p)">{{ p.label }}</button>
+          <span class="wd-presets-tip">七牛要用 S3 兼容域名，不是空间绑定的下载域名</span>
+        </div>
+
+        <el-row :gutter="14">
+          <el-col :span="12">
+            <el-form-item label="桶名 / 空间名">
+              <el-input v-model="s3.bucket" placeholder="my-udenav-backup" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="目录前缀">
+              <el-input v-model="s3.prefix" placeholder="udenav-backup">
+                <template #prefix><el-icon><FolderOpened /></el-icon></template>
+              </el-input>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="14">
+          <el-col :span="12">
+            <el-form-item label="AccessKey">
+              <el-input v-model="s3.ak" placeholder="AK" autocomplete="off">
+                <template #prefix><el-icon><User /></el-icon></template>
+              </el-input>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item :label="s3.has_sk ? 'SecretKey（留空则不修改）' : 'SecretKey'">
+              <el-input v-model="s3.sk" type="password" show-password autocomplete="new-password"
+                        :placeholder="s3.has_sk ? '已保存，留空不改' : 'SK'">
+                <template #prefix><el-icon><Lock /></el-icon></template>
+                <template #append>
+                  <el-button :loading="s3Testing" @click="testS3">测试连接</el-button>
+                </template>
+              </el-input>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <div class="wd-sec-label with-line">执行计划</div>
+
+        <el-row :gutter="14">
+          <el-col :span="7">
+            <el-form-item label="执行策略">
+              <el-select v-model="s3.freq" style="width:100%">
+                <el-option value="hourly" label="每小时" />
+                <el-option value="daily" label="每天" />
+                <el-option value="weekly" label="每周" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="10">
+            <el-form-item :label="s3.freq === 'weekly' ? '星期与时间' : '时间'">
+              <div style="display:flex;gap:8px;width:100%">
+                <el-select v-if="s3.freq === 'weekly'" v-model="s3.weekday" style="flex:1">
+                  <el-option v-for="d in WEEKDAYS" :key="d.v" :value="d.v" :label="d.label" />
+                </el-select>
+                <el-select v-model="s3.hour" style="flex:1" :disabled="s3.freq === 'hourly'">
+                  <el-option v-for="h in HOURS" :key="h" :value="h" :label="hh(h)" />
+                </el-select>
+              </div>
+            </el-form-item>
+          </el-col>
+          <el-col :span="7">
+            <el-form-item label="保留份数">
+              <el-input-number v-model="s3.keep" :min="1" :max="60" style="width:100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <div class="wd-actions">
+          <el-button type="primary" :loading="s3Saving" @click="saveS3"><el-icon><Check /></el-icon>保存设置</el-button>
+          <el-button :loading="s3Running" @click="runS3Now"><el-icon><Upload /></el-icon>立即备份</el-button>
+          <el-button @click="openRestore('s3')"><el-icon><Download /></el-icon>从桶里恢复</el-button>
+          <span class="wd-state" :class="{ on: s3.enabled }"><i></i>{{ s3FreqText }}</span>
+        </div>
+      </el-form>
+
+      <el-alert
+        v-if="s3.enabled"
+        style="margin-top:16px"
+        :type="s3.last_ok === false ? 'error' : s3.last_ok ? 'success' : 'info'"
+        :closable="false" show-icon
+      >
+        <template #title>
+          上次备份：{{ fmtTime(s3.last_at) }}<span v-if="s3.last_msg"> · {{ s3.last_msg }}</span>
+        </template>
+      </el-alert>
+    </div>
+
     <!-- 从云端恢复：默认选中最新一版，也可以往回收历史版本 -->
-    <el-dialog v-model="rv.open" title="从云端恢复" width="540px" append-to-body>
+    <el-dialog v-model="rv.open" :title="rv.src === 's3' ? '从对象存储恢复' : '从云端恢复'" width="540px" append-to-body>
       <div v-loading="rv.loading" class="rv-body">
         <div class="rv-tip">
-          备份目录 <code>{{ rv.dir || wd.dir }}</code> 下共 <b>{{ rv.files.length }}</b> 份，
+          <template v-if="rv.src === 's3'">桶内目录</template><template v-else>备份目录</template>
+          <code>{{ rv.dir || (rv.src === 's3' ? s3.prefix : wd.dir) }}</code> 下共 <b>{{ rv.files.length }}</b> 份，
           已默认选中最新的一版。
         </div>
         <div v-if="!rv.loading && !rv.files.length" class="rv-empty">云端还没有备份文件，先点「立即备份」</div>

@@ -101,7 +101,7 @@ export async function login(env: Env, req: Request): Promise<Response> {
   const password = String(body.password || '');
 
   const user = await env.DB.prepare('SELECT * FROM users WHERE username = ?').bind(username).first<{
-    id: number; username: string; pass_meta: string; role: Role; failed_login: number; lock_until: number;
+    id: number; username: string; pass_meta: string; role: Role; failed_login: number; lock_until: number; avatar: string;
   }>();
   if (!user) return bad('用户名或密码错误', 401);
 
@@ -120,7 +120,7 @@ export async function login(env: Env, req: Request): Promise<Response> {
 
   await env.DB.prepare('UPDATE users SET failed_login = 0, lock_until = 0 WHERE id = ?').bind(user.id).run();
   const token = await signToken({ sub: user.id, username: user.username, role: user.role, exp: nowSec() + SESSION_HOURS * 3600 }, await getSecret(env));
-  return json({ ok: true, username: user.username, role: user.role }, { headers: { 'set-cookie': setSessionCookie(token, SESSION_HOURS * 3600, req.url.startsWith('https://')) } });
+  return json({ ok: true, username: user.username, role: user.role, avatar: user.avatar || '' }, { headers: { 'set-cookie': setSessionCookie(token, SESSION_HOURS * 3600, req.url.startsWith('https://')) } });
 }
 
 export async function logout(): Promise<Response> {
@@ -130,7 +130,9 @@ export async function logout(): Promise<Response> {
 export async function me(req: Request, env: Env): Promise<Response> {
   const s = await getSession(env, req);
   if (!s) return json({ ok: false, logged_in: false });
-  return json({ ok: true, logged_in: true, username: s.username, role: s.role, exp: s.exp });
+  /* 头像单独查一次：JWT 里只放 sub/username/role，图片塞进 cookie 会超 4KB 上限 */
+  const row = await env.DB.prepare('SELECT avatar FROM users WHERE id = ?').bind(s.sub).first<{ avatar: string }>();
+  return json({ ok: true, logged_in: true, id: s.sub, username: s.username, role: s.role, exp: s.exp, avatar: row?.avatar || '' });
 }
 
 /* ---------------- 用户管理 ---------------- */
@@ -143,6 +145,7 @@ const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
 type UserRow = {
   id: number; username: string; role: Role;
   failed_login: number; lock_until: number; created_at: number;
+  avatar: string;
 };
 
 function userView(u: UserRow, selfId: number) {
@@ -150,6 +153,7 @@ function userView(u: UserRow, selfId: number) {
     id: u.id,
     username: u.username,
     role: u.role,
+    avatar: u.avatar || '',
     failed_login: u.failed_login,
     locked: u.lock_until > nowSec(),
     lock_until: u.lock_until,
@@ -161,7 +165,7 @@ function userView(u: UserRow, selfId: number) {
 export async function listUsers(env: Env, req: Request): Promise<Response> {
   const s = await requireRole(req, env, 'owner');
   const rows = await env.DB
-    .prepare('SELECT id, username, role, failed_login, lock_until, created_at FROM users ORDER BY id')
+    .prepare('SELECT id, username, role, avatar, failed_login, lock_until, created_at FROM users ORDER BY id')
     .all<UserRow>();
   return json({ ok: true, users: rows.results.map((u) => userView(u, s.sub)) });
 }
@@ -219,7 +223,22 @@ export async function patchUser(env: Env, req: Request, id: number): Promise<Res
     if (!pwdChanged) sets.push('failed_login = 0', 'lock_until = 0');
   }
 
-  if (!sets.length) return json({ ok: true, changed: 0, username: cur.username, renamed: false, password_changed: false });
+  /* 头像：空串 = 清除（前台回落到用户名首字母色块）；非空必须是前端裁切后内嵌的 png/jpeg/webp。
+     前端固定输出 256×256 JPEG，正常情况下 10~30KB，这里留 300K 字符上限兜底防止塞进超大图。 */
+  const AVATAR_MAX_CHARS = 300_000;
+  let avatarChanged = false;
+  if (body?.avatar !== undefined) {
+    const av = String(body.avatar || '');
+    if (av) {
+      if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(av)) return bad('头像数据格式不正确');
+      if (av.length > AVATAR_MAX_CHARS) return bad('头像数据过大，请重新裁剪后再试');
+    }
+    sets.push('avatar = ?');
+    binds.push(av);
+    avatarChanged = true;
+  }
+
+  if (!sets.length) return json({ ok: true, changed: 0, username: cur.username, renamed: false, password_changed: false, avatar_changed: false });
 
   await env.DB.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).bind(...binds, id).run();
 
@@ -228,6 +247,7 @@ export async function patchUser(env: Env, req: Request, id: number): Promise<Res
     username: renamed ?? cur.username,
     renamed: !!renamed,
     password_changed: pwdChanged,
+    avatar_changed: avatarChanged,
   };
 
   if (renamed && s.sub === id) {
@@ -274,6 +294,14 @@ export async function getConfig(env: Env, req: Request): Promise<Response> {
     if (r.key.startsWith('_')) continue; // 内部键不回传前端
     try { out[r.key] = JSON.parse(r.value); } catch { /* skip */ }
   }
+  /* 迁移：轮播间隔旧键是秒（background_rotate_sec），统一折算成分钟（background_rotate_min）返回，
+     且只在库里还没有新键时才折算，避免覆盖用户已设置的新值 */
+  if (rows.results.some(r => r.key === 'background_rotate_sec')
+    && !rows.results.some(r => r.key === 'background_rotate_min')) {
+    const m = Math.round((Number(out.background_rotate_sec) || 0) / 60) || 1;
+    out.background_rotate_min = Math.min(60, Math.max(1, m));
+  }
+  delete out.background_rotate_sec; // 旧键不再对外暴露
   return json({ ok: true, config: out });
 }
 
@@ -458,31 +486,31 @@ export async function deleteIcon(env: Env, req: Request, id: number): Promise<Re
 /* ---------------- 图片管理 ---------------- */
 
 /**
- * 全库图片清单：卡片图标 / 分组图标（item_icon.icon_url、item_icon_group.icon_url）
- * + 站点图片（user_config 里的 background_image / favicon）。
+ * 全库图片清单：卡片图标（item_icon.icon_url）+ 站点图片（user_config 里的 background_image / favicon）。
+ * 分组图标不在清单里 —— 分组只支持在线图标名，icon_url 无写入路径。
  * 图片有两种形态：inline（data: 开头的 base64，真实存在 D1 里）和 link（外链 URL，库中只存地址）。
  * 字节数用 LENGTH(CAST(... AS BLOB)) 统计（SQLite 的 LENGTH 对 TEXT 只算字符数，见 stats 同款注释）。
  */
 export async function listImages(env: Env, req: Request): Promise<Response> {
   await requireRole(req, env, 'editor');
 
-  const [cards, groups, cfgRows] = await Promise.all([
+  /* 分组不再纳入图片管理：后台「分组信息」只能选在线图标（Iconify 名，
+     不占库、走 /api/icon 代理），没有上传入口，icon_url 永远是空的。
+     这里少查一张表，能力边界的解释成本也少一块。 */
+  const [cards, cfgRows] = await Promise.all([
     env.DB
       .prepare(`SELECT i.id, i.title, i.icon_url, i.background_color, g.title AS group_title
                 FROM item_icon i LEFT JOIN item_icon_group g ON g.id = i.group_id
                 WHERE i.icon_url <> '' ORDER BY i.group_id, i.sort, i.id`)
       .all<{ id: number; title: string; icon_url: string; background_color: string; group_title: string | null }>(),
     env.DB
-      .prepare(`SELECT id, title, icon_url FROM item_icon_group WHERE icon_url <> '' ORDER BY sort, id`)
-      .all<{ id: number; title: string; icon_url: string }>(),
-    env.DB
       .prepare(`SELECT key, value, LENGTH(CAST(value AS BLOB)) AS bytes FROM user_config
-                WHERE key IN ('background_image', 'favicon')`)
+                WHERE key IN ('background_image', 'favicon', 'backgrounds')`)
       .all<{ key: string; value: string; bytes: number }>(),
   ]);
 
   const images: Array<{
-    source: 'card' | 'group' | 'config';
+    source: 'card' | 'config';
     ref: string;            // card/group = 行 id；config = 配置键
     title: string;          // 展示名（卡片名 / 分组名 / 配置中文名）
     location: string;       // 所在位置说明（所属分组 / 页面配置项）
@@ -507,22 +535,44 @@ export async function listImages(env: Env, req: Request): Promise<Response> {
       bytes: new TextEncoder().encode(r.icon_url).length,
     });
   }
-  for (const r of groups.results) {
+  /* 站点配置图片：壁纸库 backgrounds 逐张列出（旧图也能在图片管理里看到 / 设为当前 / 删除），
+     再补上「当前壁纸不在库中」的兜底与 favicon。ref 用 backgrounds.<下标> 便于 clearImage 定位。 */
+  const cfgMap = new Map<string, string>();
+  for (const r of cfgRows.results) cfgMap.set(r.key, r.value);
+  const parseCfgStr = (raw?: string): string => {
+    if (!raw) return '';
+    try { const v = JSON.parse(raw); return typeof v === 'string' ? v : ''; } catch { return ''; }
+  };
+  const curBg = parseCfgStr(cfgMap.get('background_image'));
+  let lib: string[] = [];
+  try {
+    const arr = JSON.parse(cfgMap.get('backgrounds') || '[]');
+    if (Array.isArray(arr)) lib = arr.filter((u: unknown): u is string => typeof u === 'string' && !!u);
+  } catch { /* 脏值忽略 */ }
+  lib = Array.from(new Set(lib));
+
+  lib.forEach((u, i) => {
     images.push({
-      source: 'group', ref: String(r.id), title: r.title, location: '分组图标',
-      url: r.icon_url, kind: kindOf(r.icon_url), mime: mimeOf(r.icon_url),
-      bytes: new TextEncoder().encode(r.icon_url).length,
+      source: 'config', ref: `backgrounds.${i}`,
+      title: u === curBg ? '背景图片（当前）' : '背景图片',
+      location: '站点配置 · 壁纸库',
+      url: u, kind: kindOf(u), mime: mimeOf(u),
+      bytes: new TextEncoder().encode(u).length,
+    });
+  });
+  if (curBg && !lib.includes(curBg)) {
+    images.push({
+      source: 'config', ref: 'background_image', title: '背景图片', location: '站点配置',
+      url: curBg, kind: kindOf(curBg), mime: mimeOf(curBg),
+      bytes: new TextEncoder().encode(curBg).length,
     });
   }
-  const CFG_LABEL: Record<string, string> = { background_image: '背景图片', favicon: '站点图标 (favicon)' };
-  for (const r of cfgRows.results) {
-    let v = '';
-    try { v = JSON.parse(r.value); } catch { /* 空 / 脏值跳过 */ }
-    if (typeof v !== 'string' || !v) continue;
+  const fav = parseCfgStr(cfgMap.get('favicon'));
+  if (fav) {
     images.push({
-      source: 'config', ref: r.key, title: CFG_LABEL[r.key] || r.key, location: '站点配置',
-      url: v, kind: kindOf(v), mime: mimeOf(v),
-      bytes: Number(r.bytes ?? 0),
+      source: 'config', ref: 'favicon', title: '站点图标 (favicon)', location: '站点配置',
+      url: fav, kind: kindOf(fav), mime: mimeOf(fav),
+      bytes: new TextEncoder().encode(fav).length,
     });
   }
 
@@ -540,10 +590,9 @@ export async function listImages(env: Env, req: Request): Promise<Response> {
 }
 
 /**
- * 清除一张图片（把存图的字段置空，不动卡片/分组/配置本身）。
+ * 清除一张图片（把存图的字段置空，不动卡片/配置本身）。
  *  DELETE /api/admin/images/:source/:ref
  *   source=card   ref=卡片 id   → icon_url='' + icon_type='color'（回落到文字图标）
- *   source=group  ref=分组 id   → icon_url='' + icon_type='iconify'（回落到在线图标名）
  *   source=config ref=配置键    → value='""'（JSON 空串，getConfig 解析后即默认空）
  */
 export async function clearImage(env: Env, req: Request, source: string, ref: string): Promise<Response> {
@@ -556,14 +605,39 @@ export async function clearImage(env: Env, req: Request, source: string, ref: st
     if (!Number(res?.meta?.changes ?? 0)) return bad('卡片不存在', 404);
     return json({ ok: true });
   }
-  if (source === 'group') {
-    const id = Number(ref);
-    if (!id) return bad('参数不正确');
-    const res = await env.DB.prepare(`UPDATE item_icon_group SET icon_url = '', icon_type = 'iconify' WHERE id = ?`).bind(id).run();
-    if (!Number(res?.meta?.changes ?? 0)) return bad('分组不存在', 404);
-    return json({ ok: true });
-  }
   if (source === 'config') {
+    /* 壁纸库单张：backgrounds.<下标> → 从库里移除该张；若删的是当前壁纸，自动回退到库内第一张 */
+    if (ref.startsWith('backgrounds.')) {
+      const idx = Number(ref.slice('backgrounds.'.length));
+      if (!Number.isInteger(idx) || idx < 0) return bad('参数不正确');
+      const rows = await env.DB
+        .prepare(`SELECT key, value FROM user_config WHERE key IN ('background_image', 'backgrounds')`)
+        .all<{ key: string; value: string }>();
+      const m = new Map<string, string>();
+      for (const r of rows.results) m.set(r.key, r.value);
+      const parseStr = (raw?: string): string => {
+        if (!raw) return '';
+        try { const v = JSON.parse(raw); return typeof v === 'string' ? v : ''; } catch { return ''; }
+      };
+      let lib: string[] = [];
+      try {
+        const arr = JSON.parse(m.get('backgrounds') || '[]');
+        if (Array.isArray(arr)) lib = arr.filter((u: unknown): u is string => typeof u === 'string' && !!u);
+      } catch { /* 脏值忽略 */ }
+      if (idx >= lib.length) return bad('壁纸不存在', 404);
+      const [removed] = lib.splice(idx, 1);
+      const cur = parseStr(m.get('background_image'));
+      const nextCur = cur && cur !== removed ? cur : (lib[0] || '');
+      const now = Date.now();
+      const stmt = env.DB.prepare(
+        'INSERT INTO user_config (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at',
+      );
+      await env.DB.batch([
+        stmt.bind('backgrounds', JSON.stringify(lib), now),
+        stmt.bind('background_image', JSON.stringify(nextCur), now),
+      ]);
+      return json({ ok: true });
+    }
     if (!['background_image', 'favicon'].includes(ref)) return bad('不支持的配置项');
     await env.DB
       .prepare('INSERT INTO user_config (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at')

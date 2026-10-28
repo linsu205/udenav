@@ -60,25 +60,43 @@ export interface ConfigRow {
 }
 
 /* 数据模型版本：后台「关于」页会展示实际库里的值，方便核对「代码升级了、库没升」 */
-export const SCHEMA_VERSION = '1.2';
+export const SCHEMA_VERSION = '1.3';
 
 export const DEFAULT_CONFIG = {
   logo_text: 'UDeNav',
   favicon: '',
   background_image: '',
-  background_blur: 10,
+  /* 壁纸库：多张壁纸（base64 或外链）。background_image 仍是「当前生效的那张」，
+     两者保持一致即可；老数据没有此字段时前台自动回退到单张 background_image。 */
+  backgrounds: [] as string[],
+  /* 壁纸轮播：1=前台按 background_rotate_min 间隔（分钟，1~60）自动切换壁纸库图片（至少 2 张才生效）。
+     老数据的 background_rotate_sec（秒）不再写库，前台与后台读取时按 sec/60 折算成分钟。 */
+  background_rotate: 0,
+  background_rotate_min: 5,
+  background_blur: 2,
   background_mask: 0.2,
-  margin_top: 6,
+  margin_top: 14,
   margin_bottom: 6,
   icon_style: 'info',
   search_box_show: 1,
   show_clock: 1,
   content_max_width: 1200,
+  /* 宽度自适应档位：50/60/70/80 = 内容区按浏览器可视宽度的该百分比自适应（忽略 content_max_width）；
+     0 = 关闭自适应，用固定 content_max_width。老数据里的 1 在前台/后台都按 80 折算，不用迁移数据库。
+     后台改档位范围时 ConfigPanel 的 WIDTH_PCTS 要同步。 */
+  content_width_auto: 0,
   /* 分组间距：访客页所有分组（.wrap .group）的 margin-top，后台可调 10~38；
      后台改默认值时 ConfigPanel.resetPersonalDefaults 要同步 */
-  group_margin_top: 22,
+  group_margin_top: 30,
   footer: '',
-  theme: 'dark',
+  theme: 'light',
+  /* 图片上传策略（后台「图片管理 → 设置」可改，上传接口按此校验）：
+     · image_allow_types：允许的 MIME 类型白名单
+     · image_max_kb：单张上限（KB，上限后再乘 4/3 存成 base64）
+     · image_quota_mb：图片总容量上限（MB，0 = 不限）；已用 + 这张超过即拒绝上传 */
+  image_allow_types: ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'] as string[],
+  image_max_kb: 256,
+  image_quota_mb: 20,
   search_engines: [
     { name: '百度', url: 'https://www.baidu.com/s?wd=%s', icon: 'logo:search' },
     { name: 'Bing', url: 'https://www.bing.com/search?q=%s', icon: 'ri:search-line' },
@@ -95,6 +113,9 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT NOT NULL DEFAULT '',
   pass_meta TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'editor',
+  /* 自定义头像：后台裁切成 256×256 的内嵌 base64 图片 URL，空串 = 用用户名首字母色块。
+     注意本段 SQL 按分号切分执行，注释里不能出现分号（否则建表语句会被截断） */
+  avatar TEXT NOT NULL DEFAULT '',
   failed_login INTEGER NOT NULL DEFAULT 0,
   lock_until INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
@@ -195,6 +216,7 @@ export function ensureSchema(db: D1Database): Promise<void> {
     // 1.0 → 1.1：分组新增 public_show（1 = 免登录可见）
     // 1.1 → 1.2：卡片新增 icon_name（在线图标 Iconify 名）。此前只有分组有这一列，
     //             卡片选「在线图标」保存后图标名无处可存 → 表现为「保存不上」
+    // 1.2 → 1.3：账号新增 avatar（自定义头像 data URL）
     // 新库建表时已有该列，ALTER 会报 duplicate column，catch 掉即可
     await db
       .prepare('ALTER TABLE item_icon_group ADD COLUMN public_show INTEGER NOT NULL DEFAULT 0')
@@ -202,6 +224,10 @@ export function ensureSchema(db: D1Database): Promise<void> {
       .catch(() => {});
     await db
       .prepare("ALTER TABLE item_icon ADD COLUMN icon_name TEXT NOT NULL DEFAULT ''")
+      .run()
+      .catch(() => {});
+    await db
+      .prepare("ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''")
       .run()
       .catch(() => {});
 

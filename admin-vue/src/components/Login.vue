@@ -10,14 +10,30 @@ const password = ref('');
 const err = ref('');
 const loading = ref(false);
 
+/**
+ * 登录/注册成功后的去向：不留在后台界面，直接回导航页。
+ *   内嵌在导航页弹窗里 → 关掉弹窗（instant：别让后台面板跟着淡出露一帧）
+ *   独立访问 /admin    → 回站点首页
+ * 想管理的时候再点工具条上的「管理后台」，那时已登录，直接进面板。
+ */
+function leaveToNav() {
+  loading.value = false;
+  const w = window as any;
+  if (typeof w.__udenavClose === 'function') { w.__udenavClose(true); return; }
+  location.replace('/');
+}
+
 async function submit() {
   err.value = '';
   loading.value = true;
   try {
     if (mode.value === 'login') await store.login(username.value, password.value);
     else await store.register(username.value, password.value);
-  } catch (e: any) { err.value = e.message; }
-  loading.value = false;
+    leaveToNav();
+  } catch (e: any) {
+    err.value = e.message;
+    loading.value = false;
+  }
 }
 </script>
 

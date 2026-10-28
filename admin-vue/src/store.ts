@@ -3,10 +3,14 @@ import { ref, computed } from 'vue';
 import { ElMessage } from 'element-plus';
 import { get, post } from './api';
 
-export interface User { username: string; role: string; exp: number; }
+export interface User { id?: number; username: string; role: string; exp: number; avatar?: string; }
 export interface ConfigRow {
   logo_text: string; favicon?: string; background_image: string; background_blur: number; background_mask: number;
   margin_top: number; icon_style: string; search_box_show: number; footer: string; theme: string;
+  /* 壁纸库 / 上传策略：老库可能没有这些键，一律可选，用前兜底 */
+  backgrounds?: string[]; background_rotate?: number; background_rotate_min?: number; background_rotate_sec?: number;
+  content_max_width?: number; content_width_auto?: number; group_margin_top?: number;
+  image_allow_types?: string[]; image_max_kb?: number; image_quota_mb?: number;
   search_engines: Array<{ name: string; url: string; icon?: string }>;
 }
 export interface Group {
@@ -69,6 +73,7 @@ export const useStore = defineStore('udenav', () => {
   async function login(username: string, password: string) {
     const r = await post<any>('/api/admin/login', { username, password });
     user.value = r;
+    ElMessage.success(`欢迎回来，${r?.username || username}`);
     refreshHome();
     return r;
   }

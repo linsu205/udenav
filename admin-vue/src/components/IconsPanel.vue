@@ -394,8 +394,8 @@ async function clearAll() {
     color: var(--sp-accent); background: var(--sp-accent-soft);
     border: 1px solid rgba(var(--sp-accent-rgb), .22);
   }
-  .empty-t { font-size: 14px; font-weight: 600; color: var(--sp-text); }
-  .empty-s { max-width: 560px; font-size: 12.5px; line-height: 1.7; color: var(--sp-dim); }
+  .empty-t { font-size: 14px; font-weight: 600; color: var(--sp-text); text-shadow: none; }
+  .empty-s { max-width: 560px; font-size: 12.5px; line-height: 1.7; color: var(--sp-dim); text-shadow: none; }
   .empty-s b { color: var(--sp-text); font-weight: 600; }
 
   /* 常用图标库：一行内联文字链接（与卡片 / 分组弹窗同一份 ICON_LIBS、同一样式） */

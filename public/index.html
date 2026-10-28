@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -300,6 +300,8 @@
     background:#2a2a2a6b;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;
     transition:background .2s,transform .15s}
   .tb:first-child{border-left:0}
+  /* .tb 是 display:flex，会盖掉 UA 的 [hidden]{display:none}，轮播开关隐藏时要靠这条 */
+  .tb[hidden]{display:none}
   .tb svg{width:20px;height:20px;display:block;pointer-events:none}
   .tb:hover{background:#3a3a3ab3}
   .tb:active{transform:scale(.94)}
@@ -382,7 +384,11 @@
     if (c.margin_top != null) root.style.setProperty('--mt', c.margin_top + 'vh');
     if (c.background_blur != null) root.style.setProperty('--blur', 'blur(' + c.background_blur + 'px)');
     if (c.background_mask != null) root.style.setProperty('--mask', c.background_mask);
-    if (c.content_max_width != null) root.style.setProperty('--cmw', c.content_max_width + 'px');
+    /* 宽度自适应存的是档位百分比（50/60/70/80），0/空 = 关闭走固定宽度；
+       老数据是布尔式的 1，折算成 80，别让老用户升级后看着「开着却没效果」 */
+    var autoW = Number(c.content_width_auto) === 1 ? 80 : (Number(c.content_width_auto) || 0);
+    if (autoW >= 20 && autoW <= 100) root.style.setProperty('--cmw', autoW + 'vw');
+    else if (c.content_max_width != null) root.style.setProperty('--cmw', c.content_max_width + 'px');
     if (c.show_clock === 0) root.classList.add('no-clock');
     if (c.title) document.title = c.title;
   } catch (e) {}
@@ -454,6 +460,7 @@
   <button class="tb" id="themeBtn" data-tip="切换主题" aria-label="切换主题">
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8C13.02 2.96 12.56 3 12 3z"/></svg>
   </button>
+  <button class="tb" id="bgBtn" data-tip="壁纸轮播中，点击暂停" aria-label="壁纸轮播" aria-pressed="true" hidden></button>
   <button class="tb" id="adminBtn" data-tip="管理后台" aria-label="管理后台">
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3.2" y="3.2" width="7.4" height="7.4" rx="2.1"/><rect x="13.4" y="3.2" width="7.4" height="7.4" rx="2.1"/><rect x="3.2" y="13.4" width="7.4" height="7.4" rx="2.1"/><rect x="13.4" y="13.4" width="7.4" height="7.4" rx="2.1"/></svg>
   </button>
@@ -506,6 +513,73 @@ function cacheConfig(c) {
   catch (e) { try { localStorage.setItem('udenav.config', JSON.stringify(slim)); } catch (e2) {} }
 }
 
+/* 背景应用：单张背景（旧）与壁纸库（多张）统一走这里。
+   有 backgrounds 且非空 → 用库；否则回退到单张 background_image（兼容老数据）。
+   background_rotate 为真且库 ≥2 张 → 定时轮播。applyConfig 每次调用先清旧计时器，避免重复叠加。 */
+let bgTimer = null;
+/* 轮播开关：状态只记本机（'0' = 手动暂停），默认播放；刷新后按它决定要不要转起来 */
+const BGPLAY_KEY = 'udenav.bgplay';
+let bgPaused = false;
+try { bgPaused = localStorage.getItem(BGPLAY_KEY) === '0'; } catch (e) {}
+/* 当前轮播安排（列表 / 当前下标 / 遮罩 / 间隔）。暂停时留着不动，点「继续」从当前这张往下接着走 */
+let bgPlan = null;
+function paintBg(url, maskV, isDark) {
+  const u = String(url).replace(/"/g, '');
+  $('#bg').style.backgroundImage = `url("${u}")`;
+  $('#bg').style.display = 'block';
+  const tint = isDark ? `rgba(0,0,0,${maskV})` : `rgba(255,255,255,${maskV})`;
+  document.documentElement.style.background =
+    `linear-gradient(${tint},${tint}), url("${u}") center / cover no-repeat fixed`;
+}
+/* 起停计时器唯一入口：有安排且没暂停才转，切换时先清旧的，不会叠出两个计时器 */
+function syncBgTimer() {
+  if (bgTimer) { clearInterval(bgTimer); bgTimer = null; }
+  if (!bgPlan || bgPaused) return;
+  bgTimer = setInterval(() => {
+    bgPlan.idx = (bgPlan.idx + 1) % bgPlan.list.length;
+    paintBg(bgPlan.list[bgPlan.idx], bgPlan.maskV, bgPlan.isDark);
+  }, bgPlan.ms);
+}
+function applyBackground(c) {
+  if (bgTimer) { clearInterval(bgTimer); bgTimer = null; }
+  const maskV = c.background_mask ?? 0.2;
+  const isDark = (c.theme || 'dark') === 'dark';
+  const list = (Array.isArray(c.backgrounds) && c.backgrounds.length)
+    ? c.backgrounds.filter(Boolean)
+    : (c.background_image ? [c.background_image] : []);
+  if (!list.length) {
+    document.documentElement.style.background = '';
+    $('#bg').style.display = 'none';
+    document.body.style.background = isDark
+      ? 'linear-gradient(155deg,#262c36 0%,#1c2027 42%,#272e38 100%)'
+      : 'linear-gradient(160deg,#f4f7fa 0%,#eaeff3 55%,#f1f5f8 100%)';
+    bgPlan = null;
+    $('#bgBtn').hidden = true;
+    paintBgBtn();
+    return;
+  }
+  const active = (c.background_image && list.includes(c.background_image)) ? c.background_image : list[0];
+  paintBg(active, maskV, isDark);
+  /* 轮播间隔按分钟（1~60）。老数据只有 background_rotate_sec（秒），这里折算成分钟兜底 */
+  let min = Number(c.background_rotate_min);
+  if (!(min > 0)) min = Math.round((Number(c.background_rotate_sec) || 0) / 60) || 5;
+  min = Math.min(60, Math.max(1, min));
+  /* 只有一张壁纸时轮播不会有任何变化，开关也就没意义 —— 一并按「没开轮播」处理 */
+  const canRotate = !!(c.background_rotate && list.length > 1);
+  /* 后台把轮播关掉时顺手清掉本机的暂停记录：下次重新开启应该默认转起来，
+     否则用户会对着一个永远停在原地、还说「已暂停」的按钮发懵 */
+  if (!c.background_rotate && bgPaused) {
+    bgPaused = false;
+    try { localStorage.removeItem(BGPLAY_KEY); } catch (e) {}
+  }
+  bgPlan = canRotate
+    ? { list, idx: Math.max(0, list.indexOf(active)), maskV, isDark, ms: min * 60000 }
+    : null;
+  $('#bgBtn').hidden = !canRotate;
+  syncBgTimer();
+  paintBgBtn();
+}
+
 function applyConfig(c) {
   state.config = c;
   document.title = c.logo_text || 'UDeNav';
@@ -513,32 +587,18 @@ function applyConfig(c) {
   $('#fav').setAttribute('href', String(c.favicon||'').trim() || $('#fav').dataset.def);
   applyThemeAttr(c.theme || 'dark');
   $('#themeBtn').innerHTML = svgOf(ICON[(c.theme || 'dark') === 'dark' ? 'moon' : 'sun']);
-  const bg = c.background_image;
-  const maskV = c.background_mask ?? 0.2;
-  const isDark = (c.theme || 'dark') === 'dark';
-  if (bg) {
-    const url = bg.replace(/"/g, '');
-    $('#bg').style.backgroundImage = `url("${url}")`;
-    $('#bg').style.display = 'block';
-    /* 画布也铺同一张壁纸（带同色遮罩）。原因：视口滚动条占的那十几 px 在布局视口之外，
-       固定定位的 .bg 铺不到，不补的话滚动条轨道会露出一条纯白 —— 深色主题下尤其刺眼。
-       这里少了 .bg 那层 blur，但滚动条只有一条窄缝，加上同色遮罩基本看不出来 */
-    const tint = isDark ? `rgba(0,0,0,${maskV})` : `rgba(255,255,255,${maskV})`;
-    document.documentElement.style.background =
-      `linear-gradient(${tint},${tint}), url("${url}") center / cover no-repeat fixed`;
-  }
-  else {
-    document.documentElement.style.background = '';
-    $('#bg').style.display = 'none';
-    document.body.style.background = (c.theme||'dark')==='dark'
-      ? 'linear-gradient(155deg,#262c36 0%,#1c2027 42%,#272e38 100%)'
-      : 'linear-gradient(160deg,#f4f7fa 0%,#eaeff3 55%,#f1f5f8 100%)';
-  }
-  document.documentElement.style.setProperty('--blur', `blur(${c.background_blur ?? 10}px)`);
+  applyBackground(c);
+  document.documentElement.style.setProperty('--blur', `blur(${c.background_blur ?? 2}px)`);
   document.documentElement.style.setProperty('--mask', c.background_mask ?? 0.2);
-  document.documentElement.style.setProperty('--mt', `${c.margin_top ?? 6}vh`);
-  document.documentElement.style.setProperty('--cmw', `${c.content_max_width ?? 1200}px`);
-  document.documentElement.style.setProperty('--gmt', `${c.group_margin_top ?? 22}px`);
+  document.documentElement.style.setProperty('--mt', `${c.margin_top ?? 14}vh`);
+  /* 宽度自适应：档位百分比（50/60/70/80）→ vw；0/空 = 关闭，用固定 content_max_width。
+     老数据是 1，折算成 80。和上面首帧那段保持同一口径。 */
+  {
+    const autoW = Number(c.content_width_auto) === 1 ? 80 : (Number(c.content_width_auto) || 0);
+    document.documentElement.style.setProperty('--cmw',
+      (autoW >= 20 && autoW <= 100) ? `${autoW}vw` : `${c.content_max_width ?? 1200}px`);
+  }
+  document.documentElement.style.setProperty('--gmt', `${c.group_margin_top ?? 30}px`);
   document.documentElement.classList.toggle('no-clock', !c.show_clock);
   $('#footer').textContent = c.footer || '';
   $('#searchBox').style.display = c.search_box_show ? 'flex' : 'none';
@@ -920,6 +980,9 @@ const ICON = {
   lan: '<path d="M3 20v-3q0-.825.588-1.412T5 15h1v-2q0-.825.588-1.412T8 11h3V9h-1q-.825 0-1.412-.587T8 7V4q0-.825.588-1.412T10 2h4q.825 0 1.413.588T16 4v3q0 .825-.587 1.413T14 9h-1v2h3q.825 0 1.413.588T18 13v2h1q.825 0 1.413.588T21 17v3q0 .825-.587 1.413T19 22h-4q-.825 0-1.412-.587T13 20v-3q0-.825.588-1.412T15 15h1v-2H8v2h1q.825 0 1.413.588T11 17v3q0 .825-.587 1.413T9 22H5q-.825 0-1.412-.587T3 20Zm7-13h4V4h-4v3ZM5 20h4v-3H5v3Zm10 0h4v-3h-4v3Z"/>',
   wan: '<path d="M12 2a8 8 0 0 0-8 8c0 4.03 3 7.42 7 7.93V19h-1a1 1 0 0 0-1 1H2v2h7a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1h7v-2h-7a1 1 0 0 0-1-1h-1v-1.07c4-.5 7-3.9 7-7.93a8 8 0 0 0-8-8m0 2s.74 1.28 1.26 3h-2.52C11.26 5.28 12 4 12 4m-2.23.43c-.27.5-.68 1.41-1.03 2.57H6.81C7.5 5.84 8.5 4.93 9.77 4.43m4.46.01c1.27.5 2.27 1.4 2.96 2.56h-1.93c-.35-1.16-.76-2.07-1.03-2.56M6.09 9h2.23c-.04.33-.07.66-.07 1c0 .34.03.67.07 1H6.09a5.551 5.551 0 0 1 0-2m4.23 0h3.36c.04.33.07.66.07 1c0 .34-.03.67-.07 1h-3.36c-.04-.33-.07-.66-.07-1c0-.34.03-.67.07-1m5.36 0h2.23a5.551 5.551 0 0 1 0 2h-2.23c.04-.33.07-.66.07-1c0-.34-.03-.67-.07-1m-8.87 4h1.93c.35 1.16.76 2.07 1.03 2.56c-1.27-.5-2.27-1.4-2.96-2.56m3.93 0h2.52c-.52 1.72-1.26 3-1.26 3s-.74-1.28-1.26-3m4.52 0h1.93c-.69 1.16-1.69 2.07-2.96 2.57c.27-.5.68-1.41 1.03-2.57Z"/>',
   moon: '<path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8C13.02 2.96 12.56 3 12 3z"/>',
+  /* 轮播开关：图标画的是「当前状态」——播放中给三角，暂停了给双竖条，和主题/内外网按钮同一套逻辑 */
+  play: '<path d="M8 4.8c0-.77.83-1.25 1.5-.87l11 6.2c.67.38.67 1.36 0 1.74l-11 6.2c-.67.38-1.5-.1-1.5-.87V4.8Z"/>',
+  pause: '<rect x="6.4" y="4.4" width="4.2" height="15.2" rx="1.6"/><rect x="13.4" y="4.4" width="4.2" height="15.2" rx="1.6"/>',
   sun:  '<path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10m0-5a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0V3a1 1 0 0 1 1-1m0 18a1 1 0 0 1 1 1v2a1 1 0 0 1-2 0v-2a1 1 0 0 1 1-1M4.22 5.64a1 1 0 0 1 1.41 0l1.42 1.41a1 1 0 1 1-1.42 1.42L4.22 7.05a1 1 0 0 1 0-1.41m11.31 9.9a1 1 0 0 1 1.41 0l1.42 1.41a1 1 0 0 1-1.42 1.42l-1.41-1.42a1 1 0 0 1 0-1.41M3 12a1 1 0 0 1 1-1h2a1 1 0 0 1 0 2H4a1 1 0 0 1-1-1m16 0a1 1 0 0 1 1-1h2a1 1 0 0 1 0 2h-2a1 1 0 0 1-1-1M4.47 17.66a1 1 0 0 1 0 1.41L3.05 20.49a1 1 0 1 1-1.41-1.42l1.41-1.41a1 1 0 0 1 1.42 0m9.9-11.31a1 1 0 0 1 0-1.42l1.42-1.41a1 1 0 0 1 1.41 1.41l-1.41 1.42a1 1 0 0 1-1.42 0z"/>'
 };
 /* 默认「内网」：首次访问图标为 lan，点一下切到 wan 公网 */
@@ -941,14 +1004,39 @@ applyLanMode();
 /* 顶部居中的模式提示：图标+文字，显示 1.6s 后自动收起。
    连点时清掉上一个定时器，只显示最新状态，不会排队叠加 */
 let toastTimer = null;
-function showToast(isLan) {
+function showToastBox(iconKey, text) {
   const t = $('#toast');
-  $('#toastIco').innerHTML = svgOf(ICON[isLan ? 'lan' : 'wan']);
-  $('#toastText').textContent = isLan ? '内网模式' : '公网模式';
+  $('#toastIco').innerHTML = svgOf(ICON[iconKey]);
+  $('#toastText').textContent = text;
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 1600);
 }
+function showToast(isLan) { showToastBox(isLan ? 'lan' : 'wan', isLan ? '内网模式' : '公网模式'); }
+
+/* ---------- 壁纸轮播开关（只在后台开了轮播且壁纸 ≥2 张时出现） ----------
+   暂停/继续只影响本机：状态写 localStorage，刷新后按它决定要不要重新转起来 */
+function paintBgBtn() {
+  const b = $('#bgBtn');
+  const on = !bgPaused && !!bgPlan;
+  b.innerHTML = svgOf(ICON[on ? 'play' : 'pause']);
+  b.dataset.tip = on ? '壁纸轮播中，点击暂停' : '壁纸轮播已暂停，点击继续';
+  b.setAttribute('aria-label', on ? '暂停壁纸轮播' : '继续壁纸轮播');
+  b.setAttribute('aria-pressed', String(on));
+}
+$('#bgBtn').onclick = () => {
+  const b = $('#bgBtn');
+  if (!bgPlan) return;              // 没有轮播安排（没开开关 / 只有一张），点了也没事可做
+  bgPaused = !bgPaused;
+  try { localStorage.setItem(BGPLAY_KEY, bgPaused ? '0' : '1'); } catch (e) {}
+  syncBgTimer();
+  paintBgBtn();
+  /* 鼠标点击会先 pointerdown 把气泡收掉；这里兜住键盘激活 / 程序化触发的点击，
+     免得气泡还挂着「点击暂停」这种过期文案 */
+  if (tipHost === b) tipShow(b);
+  showToastBox(bgPaused ? 'pause' : 'play', bgPaused ? '壁纸轮播已暂停' : '壁纸轮播已继续');
+};
+paintBgBtn();
 
 /* ---------- 主题切换 ---------- */
 $('#themeBtn').onclick = async () => {
@@ -1012,8 +1100,8 @@ async function adminBuildChanged() {
   } catch { return false; }
 }
 
-/* 后台「返回前台」按钮 → 关弹窗 */
-window.__udenavClose = () => closeModal();
+/* 后台「返回前台」按钮 → 关弹窗；登录成功回导航页时传 true，不要淡出 */
+window.__udenavClose = instant => closeModal(instant);
 /* 后台保存后 → 前台原地重渲染；'page' 才整页刷新 */
 window.__udenavHome = t => { t === 'page' ? location.reload() : syncFromAdmin(); };
 
@@ -1054,9 +1142,16 @@ async function openItemEditor(gid, id) {
   }
 }
 
-/* 关闭弹窗：后台组件本身不销毁，只是藏起来 —— 下次打开还是原来那个标签页 */
-function closeModal() {
+/* 关闭弹窗：后台组件本身不销毁，只是藏起来 —— 下次打开还是原来那个标签页。
+   instant=true 时跳过淡出动画：登录成功要「直接回导航页」，而那一刻后台的
+   Vue 已经切到面板了，留 .2s 的淡出会让管理界面在屏幕上露一帧。 */
+function closeModal(instant) {
   const m = $('#modal');
+  if (instant) {
+    m.style.transition = 'none';
+    /* 两帧之后再恢复，等这次隐藏真正生效；下次打开（用户点按钮）才有过渡 */
+    requestAnimationFrame(() => requestAnimationFrame(() => { m.style.transition = ''; }));
+  }
   m.classList.remove('open');
   $('#modalFrame').src = '';
   $('#adminRoot').hidden = true;
@@ -1320,7 +1415,7 @@ window.addEventListener('resize', closeCtx);
 
 /* ---------- 启动：优先读后端，读不到就用内置数据 ---------- */
 const FALLBACK = {
-  config: { logo_text: 'UDeNav', favicon: '', background_blur: 10, background_mask: 0.2, margin_top: 6, icon_style: 'info', search_box_show: 1, show_clock: 1, content_max_width: 1200, group_margin_top: 22, theme: 'dark', search_engines: DEFAULT_ENGINES },
+  config: { logo_text: 'UDeNav', favicon: '', background_blur: 2, background_mask: 0.2, margin_top: 14, icon_style: 'info', search_box_show: 1, show_clock: 1, content_max_width: 1200, content_width_auto: 0, group_margin_top: 30, theme: 'light', search_engines: DEFAULT_ENGINES },
   groups: [
     { id: 1, title: '常用', description: '每天要打开的', cardStyle: 'info', items: [
       { title: '百度', url: 'https://www.baidu.com', description: '中文搜索', color: '#2932e1', openMethod: 2 },

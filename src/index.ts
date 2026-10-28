@@ -9,6 +9,7 @@ import * as admin from './routes/admin';
 import { upload } from './routes/icons';
 import { iconifyProxy } from './routes/iconify';
 import { getBackupCfg, putBackupCfg, runBackupNow, scheduledBackup, listBackups, restoreBackup, testBackupConn } from './routes/webdav';
+import * as s3 from './routes/s3';
 import { linkCheck } from './routes/linkcheck';
 import { aboutInfo, checkLatest } from './routes/about';
 import type { Env } from './lib/schema';
@@ -47,7 +48,8 @@ export default {
   /* Cron Trigger：wrangler.toml 里配了 crons，Cloudflare 到点调用这里。
      放在 waitUntil 里，HTTP 响应（这里是空响应）不用等备份传完。 */
   async scheduled(_event: unknown, env: Env, ctx: Ctx): Promise<void> {
-    ctx.waitUntil(scheduledBackup(env));
+    /* 两个备份目标并行跑：各自判断自己的开关与执行策略，一个失败不影响另一个 */
+    ctx.waitUntil(Promise.allSettled([scheduledBackup(env), s3.scheduledS3Backup(env)]));
   },
 };
 
@@ -139,6 +141,17 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (m === 'GET' && a === 'images') return admin.listImages(env, req);
     if (m === 'DELETE' && a === 'images' && parts[2] && parts[3] !== undefined) return admin.clearImage(env, req, parts[2], parts[3]);
     if (m === 'GET' && a === 'export') return admin.exportAll(env, req);
+    /* 对象存储备份（S3 兼容）：整块走 parts[2] === 's3' 判定，
+       必须排在下面 backup 泛匹配之前，否则 /backup/s3 会被当成「读 WebDAV 配置」 */
+    if (a === 'backup' && parts[2] === 's3') {
+      const sub = parts[3];
+      if (m === 'POST' && sub === 'run') return s3.runS3BackupNow(env, req);
+      if (m === 'POST' && sub === 'test') return s3.testS3Conn(env, req);
+      if (m === 'POST' && sub === 'restore') return s3.restoreS3Backup(env, req);
+      if (m === 'GET' && sub === 'list') return s3.listS3Backups(env, req);
+      if (m === 'GET' && !sub) return s3.getS3Cfg(env, req);
+      if (m === 'PUT' && !sub) return s3.putS3Cfg(env, req);
+    }
     /* 带子路径的要排在 /api/admin/backup 泛匹配前面，否则会被当成读配置 */
     if (m === 'GET' && a === 'backup' && parts[2] === 'list') return listBackups(env, req);
     if (m === 'POST' && a === 'backup' && parts[2] === 'restore') return restoreBackup(env, req);

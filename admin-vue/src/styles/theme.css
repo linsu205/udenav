@@ -153,7 +153,10 @@ html.dark {
   color: var(--sp-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 14px;
-  -webkit-font-smoothing: antialiased;
+  /* 不要用 antialiased：Windows 上会关掉 ClearType 次像素渲染，
+     12~14px 中文（尤其 --sp-dim / --sp-faint 灰字）笔画边缘会糊出一圈灰晕，
+     看起来就像文字带了阴影。留 auto 走系统默认渲染，字才是锐利的。 */
+  -webkit-font-smoothing: auto;
   transition: background .2s, color .2s;
   /* 作为滚动容器（内嵌弹窗里 overflow:auto）时始终预留滚动条槽位：
      内容一多一少滚动条就出现/消失，可用宽度差 8px，贴右的「添加分组」会横向跳一下 */

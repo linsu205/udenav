@@ -71,8 +71,11 @@ function openAccount() {
       </nav>
 
       <div class="side-foot">
-        <button type="button" class="who" title="账号设置：修改用户名 / 密码" @click="openAccount">
-          <span class="who-avatar">{{ (store.user?.username || '?').charAt(0).toUpperCase() }}</span>
+        <button type="button" class="who" title="账号设置：头像 / 用户名 / 密码" @click="openAccount">
+          <span class="who-avatar">
+            <img v-if="store.user?.avatar" :src="store.user.avatar" alt="" />
+            <template v-else>{{ (store.user?.username || '?').charAt(0).toUpperCase() }}</template>
+          </span>
           <span class="who-name">{{ store.user?.username }}</span>
           <span class="who-tail">
             <span class="who-dot"></span>
@@ -159,7 +162,9 @@ function openAccount() {
     font-size: 12.5px; font-weight: 700; color: #fff;
     background: linear-gradient(135deg, #66b1ff, #337ecc);
     box-shadow: 0 2px 8px rgba(var(--sp-accent-rgb), .30);
+    overflow: hidden;   /* 自定义头像要裁成圆形，避免方角露出 */
   }
+  .who-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .who-name {
     flex: 1; min-width: 0;
     font-size: 13px; font-weight: 600; color: var(--sp-text); letter-spacing: .3px;
@@ -195,7 +200,11 @@ function openAccount() {
   .foot-btn.danger:hover { background: rgba(245, 108, 108, .12); border-color: rgba(245, 108, 108, .5); }
 
   /* 右侧 */
-  .main { flex: 1; min-width: 0; padding: 26px 30px 40px; overflow-x: hidden; }
+  /* overflow-x 用 clip 而不是 hidden：hidden 会让 .main 自己变成「滚动容器」，
+     里面的 position:sticky 就只会相对它计算（而它根本不滚动）→ 吸顶彻底失效。
+     clip 只裁剪、不建滚动容器，sticky 才能正确挂到外层 #adminRoot / html 上。
+     先写 hidden 作兜底：老浏览器不认 clip 时退回原行为，只是不吸顶，不会坏布局。 */
+  .main { flex: 1; min-width: 0; padding: 26px 30px 40px; overflow-x: hidden; overflow-x: clip; }
 
   @media (max-width: 768px) {
     .dash { flex-direction: column; }

@@ -48,7 +48,7 @@ async function aesKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
 }
 
-async function encryptSecret(plain: string, secret: string): Promise<string> {
+export async function encryptSecret(plain: string, secret: string): Promise<string> {
   if (!plain) return '';
   const key = await aesKey(secret);
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -61,7 +61,7 @@ async function encryptSecret(plain: string, secret: string): Promise<string> {
   return 'enc:' + btoa(bin);
 }
 
-async function decryptSecret(stored: string, secret: string): Promise<string> {
+export async function decryptSecret(stored: string, secret: string): Promise<string> {
   if (!stored || !stored.startsWith('enc:')) return stored; // 兼容历史明文
   try {
     const bin = atob(stored.slice(4));
@@ -177,7 +177,7 @@ async function pruneOld(dirUrl: string, auth: string, keep: number): Promise<num
 /* ---------------- 快照 ---------------- */
 
 /** 与 /api/admin/export 同口径，但不需要 session（cron 里没有登录态） */
-async function buildSnapshot(env: Env) {
+export async function buildSnapshot(env: Env) {
   const [g, i, c, u] = await Promise.all([
     env.DB.prepare('SELECT * FROM item_icon_group ORDER BY sort, id').all<GroupRow>(),
     env.DB.prepare('SELECT * FROM item_icon ORDER BY group_id, sort, id').all<IconRow>(),
@@ -199,7 +199,7 @@ async function buildSnapshot(env: Env) {
   };
 }
 
-function stamp(d = new Date()): string {
+export function stamp(d = new Date()): string {
   /* 文件名按北京时间，和面板上显示的时间一致，便于人工核对 */
   const t = new Date(d.getTime() + 8 * 3600 * 1000).toISOString();
   return t.slice(0, 10).replace(/-/g, '') + '-' + t.slice(11, 16).replace(':', '');

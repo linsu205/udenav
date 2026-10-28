@@ -29,6 +29,8 @@ export interface IconList {
   remove: (n: string) => string[];
   clear: () => void;
   has: (n: string) => boolean;
+  /** 订阅变更（含跨标签页），返回取消订阅函数 */
+  watch: (fn: () => void) => () => void;
 }
 
 function makeList(key: string, max: number): IconList {
