@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted, watch } from 'vue';
+import { reactive, ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useStore } from '../store';
 import { put, post } from '../api';
 import { applyTheme } from '../lib/theme';
 import { notifyHome } from '../lib/notify';
 import { ElMessage } from 'element-plus';
-import { ArrowUp, ArrowDown, Delete, Plus, InfoFilled } from '@element-plus/icons-vue';
+import { ArrowUp, ArrowDown, Delete, Plus, InfoFilled, Search } from '@element-plus/icons-vue';
 
 const store = useStore();
 const f = reactive({
@@ -106,13 +106,14 @@ function removeBg() {
 /* 换地址就得重置：上一张的尺寸不要留在这一张上，失败态也要重新给一次机会 */
 watch(bgUrl, () => { bgFailed.value = false; bgDims.value = ''; });
 
-/* ---------------- 效果参数实时预览 ----------------
-   模糊/遮罩/留白直接反映在右边预览图上，调参不用保存回前台确认。
-   口径与访客页一致：
+/* ---------------- 预览（右侧） ----------------
+   参数改动直接反映在右边预览图上，不用保存回前台确认。口径与访客页一致：
    · 模糊 = filter blur(px)，再放大一点盖住模糊边缘透出的底色（前台是整页铺满看不出来，预览图有小边）
    · 遮罩 = 压在图上的黑/白半透明层（深色主题黑、浅色主题白，跟 .bg-mask 同款）
-   · 留白 = 内容起始线，margin_top vh ≈ 视口高度的百分比，预览里就是高度的百分比
-   （卡片样式不在预览里体现：前台卡片外观由每个分组自己的 card_style 决定，全局没有这个开关） */
+   · 留白 = 页头起始线，margin_top vh ≈ 视口高度的百分比，预览里就是高度的百分比
+   · 内容宽 = 以 1920 宽屏为基准换算成左右百分比留白，页头/搜索栏/卡片都受它约束
+   · 时钟/搜索栏 = 直接画 mock（压在壁纸上的文字两个主题都固定白），开关一关连分隔线一起消失
+   （卡片外观由每个分组自己的 card_style 决定，预览里骨架卡只示意位置） */
 const pvImgStyle = computed(() => {
   const b = Math.min(Math.max(Number(f.background_blur) || 0, 0), 30);
   return {
@@ -126,6 +127,26 @@ const pvMaskStyle = computed(() => ({
     : `rgba(0,0,0,${Math.min(Math.max(Number(f.background_mask) || 0, 0), 1)})`,
 }));
 const pvMt = computed(() => `${Math.min(Math.max(Number(f.margin_top) || 0, 0), 30)}%`);
+
+/* 预览里的时钟：跟访客页同款走秒，关掉开关时连同分隔线一起消失 */
+const now = ref(new Date());
+let clockTimer: ReturnType<typeof setInterval> | undefined;
+onMounted(() => { clockTimer = setInterval(() => { now.value = new Date(); }, 1000); });
+onUnmounted(() => { if (clockTimer) clearInterval(clockTimer); });
+const clockText = computed(() => {
+  const d = now.value;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return {
+    t: `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`,
+    d: `${d.getMonth() + 1}月${d.getDate()}日 星期${'日一二三四五六'[d.getDay()]}`,
+  };
+});
+
+/* 内容最大宽度 → 预览里的左右留白：以 1920 宽屏为基准，1200 时两侧各收 18.75% */
+const pvInset = computed(() => {
+  const mw = Math.min(Math.max(Number(f.content_max_width) || 1200, 600), 1920);
+  return `${((1 - mw / 1920) * 50).toFixed(2)}%`;
+});
 
 function fmtBytes(n: number): string {
   if (!n) return '';
@@ -226,7 +247,7 @@ const favMeta = computed(() => {
     </div>
 
     <div class="sp-card">
-      <div class="sp-card-title">壁纸</div>
+      <div class="sp-card-title">个性化</div>
       <el-form label-position="top" @submit.prevent>
         <el-row :gutter="18" class="bg-top">
           <el-col :span="6"><el-form-item label="主题"><el-select v-model="f.theme" style="width:100%"><el-option value="dark" label="深色" /><el-option value="light" label="浅色" /></el-select></el-form-item></el-col>
@@ -246,67 +267,59 @@ const favMeta = computed(() => {
              两列各带一行小标题，标题同一基线，下面板/预览等高 -->
         <div class="bg-split">
           <div class="bg-left">
-            <div class="sec-head"><span class="sec-t">效果参数</span></div>
+            <div class="sec-head"><span class="sec-t">参数</span></div>
             <div class="bg-ctl">
               <div class="ctl-row"><el-form-item label="壁纸模糊"><el-input-number v-model="f.background_blur" :min="0" :max="30" style="width:100%" /></el-form-item></div>
               <div class="ctl-row"><el-form-item label="遮罩不透明度"><el-input-number v-model="f.background_mask" :min="0" :max="1" :step="0.05" style="width:100%" /></el-form-item></div>
+              <div class="ctl-row"><el-form-item label="页头留白 (vh)"><el-input-number v-model="f.margin_top" :min="0" :max="30" style="width:100%" /></el-form-item></div>
+              <div class="ctl-row"><el-form-item label="内容最大宽度 (px)"><el-input-number v-model="f.content_max_width" :min="600" :max="1920" :step="10" style="width:100%" /></el-form-item></div>
+              <div class="ctl-row sw-row">
+                <div class="sw-col"><span class="sw-label">时钟 / 日期</span><el-switch v-model="f.show_clock" :active-value="1" :inactive-value="0" /></div>
+                <div class="sw-col"><span class="sw-label">搜索栏</span><el-switch v-model="f.search_box_show" :active-value="1" :inactive-value="0" /></div>
+              </div>
             </div>
           </div>
 
           <div class="bg-right">
             <div class="sec-head">
-              <span class="sec-t">壁纸预览</span>
+              <span class="sec-t">预览</span>
               <span v-if="bgMeta" class="bg-pv-meta">{{ bgMeta }}</span>
               <span class="bg-pv-gap"></span>
               <button v-if="bgUrl" type="button" class="bg-pv-clear" title="清空壁纸地址，前台回到纯色背景" @click="removeBg">移除图片</button>
             </div>
-            <div v-if="bgUrl" class="bg-pv-stage" :class="{ bad: bgFailed }">
-              <template v-if="!bgFailed">
-                <img :src="bgUrl" alt="壁纸预览" :style="pvImgStyle" @load="onBgLoad" @error="bgFailed = true" />
+            <div class="bg-pv-stage" :class="{ bad: bgFailed }">
+              <template v-if="bgUrl && !bgFailed">
+                <img :src="bgUrl" alt="预览" :style="pvImgStyle" @load="onBgLoad" @error="bgFailed = true" />
                 <div class="bg-pv-mask" :style="pvMaskStyle"></div>
-                <div class="bg-pv-content" :class="f.theme">
-                  <div class="bg-pv-spacer" :style="{ height: pvMt }"></div>
-                  <div class="bg-pv-line">
-                    <span class="bg-pv-mt-tag">内容 {{ f.margin_top }}vh</span>
+              </template>
+              <div v-if="bgUrl && bgFailed" class="bg-pv-err">图片加载失败，请检查地址是否可访问</div>
+              <!-- 叠加层常驻：没选壁纸也能预览页头/搜索栏/卡片的布局效果 -->
+              <div class="bg-pv-content" :class="f.theme" :style="{ '--pv-inset': pvInset }">
+                <div class="bg-pv-spacer" :style="{ height: pvMt }"></div>
+                <div class="bg-pv-line">
+                  <span class="bg-pv-w-tag">宽 {{ f.content_max_width }}px</span>
+                  <span class="bg-pv-mt-tag">留白 {{ f.margin_top }}vh</span>
+                </div>
+                <div class="bg-pv-main">
+                  <div class="bg-pv-header">
+                    <span class="h-logo">{{ f.logo_text || 'UDeNav' }}</span>
+                    <template v-if="f.show_clock">
+                      <span class="h-sep"></span>
+                      <span class="h-clock"><span class="t">{{ clockText.t }}</span><span class="d">{{ clockText.d }}</span></span>
+                    </template>
+                  </div>
+                  <div v-if="f.search_box_show" class="bg-pv-search">
+                    <el-icon><Search /></el-icon>
+                    <span>搜索</span>
                   </div>
                   <div class="bg-pv-cards">
                     <div class="pc" v-for="n in 5" :key="n"></div>
                   </div>
                 </div>
-              </template>
-              <div v-else class="bg-pv-err">图片加载失败，请检查地址是否可访问</div>
+              </div>
             </div>
-            <div v-else class="bg-empty">填写或上传图片后，在这里预览效果</div>
           </div>
         </div>
-      </el-form>
-    </div>
-
-    <div class="sp-card">
-      <div class="sp-card-title">个性化</div>
-      <el-form label-position="top" @submit.prevent>
-        <el-row :gutter="18">
-          <el-col :span="8">
-            <el-form-item label="页头留白 (vh)">
-              <el-input-number v-model="f.margin_top" :min="0" :max="30" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="内容最大宽度 (px)">
-              <el-input-number v-model="f.content_max_width" :min="600" :max="1920" :step="10" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="4">
-            <el-form-item label="时钟 / 日期">
-              <el-switch v-model="f.show_clock" :active-value="1" :inactive-value="0" class="pl-switch" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="4">
-            <el-form-item label="搜索栏">
-              <el-switch v-model="f.search_box_show" :active-value="1" :inactive-value="0" class="pl-switch" />
-            </el-form-item>
-          </el-col>
-        </el-row>
       </el-form>
     </div>
 
@@ -486,8 +499,8 @@ const favMeta = computed(() => {
     pointer-events: none;
   }
   .bg-pv-spacer { flex: none; }
-  /* 内容起始线：margin_top 变化时这条线跟着走，留白调多大一目了然 */
-  .bg-pv-line { position: relative; margin: 0 7%; border-top: 1px dashed rgba(255, 255, 255, .6); }
+  /* 内容起始线：留白变化时这条线跟着走；宽度变化时两侧留白（--pv-inset）也跟着走 */
+  .bg-pv-line { position: relative; margin: 0 var(--pv-inset, 7%); border-top: 1px dashed rgba(255, 255, 255, .6); }
   .bg-pv-content.light .bg-pv-line { border-top-color: rgba(50, 50, 50, .4); }
   .bg-pv-mt-tag {
     position: absolute; right: 0; top: 3px;
@@ -495,8 +508,42 @@ const favMeta = computed(() => {
     color: rgba(255, 255, 255, .85); background: rgba(0, 0, 0, .3);
   }
   .bg-pv-content.light .bg-pv-mt-tag { color: rgba(40, 40, 40, .75); background: rgba(255, 255, 255, .55); }
-  /* 骨架卡：横排信息卡 = 长条，网格 = 方块；白色玻璃感与前台卡片一致 */
-  .bg-pv-cards { display: flex; gap: 8px; padding: 12px 7% 0; }
+  .bg-pv-w-tag {
+    position: absolute; left: 0; top: 3px;
+    font-size: 10px; line-height: 1; padding: 2px 6px; border-radius: 20px;
+    color: rgba(255, 255, 255, .85); background: rgba(0, 0, 0, .3);
+  }
+  .bg-pv-content.light .bg-pv-w-tag { color: rgba(40, 40, 40, .75); background: rgba(255, 255, 255, .55); }
+
+  /* 内容区：宽度受「内容最大宽度」约束（预览以 1920 宽屏为基准换算成百分比） */
+  .bg-pv-main { flex: 1; min-height: 0; margin: 0 var(--pv-inset, 7%); display: flex; flex-direction: column; }
+
+  /* 页头 mock：logo + 分隔线 + 时钟，压在壁纸上的文字两个主题都固定白（与前台 --on-bg 同口径） */
+  .bg-pv-header {
+    flex: none; display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding-top: 4.5%;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+  }
+  .h-logo { font-size: 24px; font-weight: 800; letter-spacing: .5px; color: #fff; line-height: 1.1; }
+  .h-sep { width: 1px; height: 26px; background: rgba(255, 255, 255, .5); }
+  .h-clock { display: flex; flex-direction: column; align-items: center; line-height: 1.2; color: #fff; }
+  .h-clock .t { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .h-clock .d { font-size: 8.5px; opacity: .92; }
+
+  /* 搜索栏 mock：居中半透明胶囊，只示意位置与有无 */
+  .bg-pv-search {
+    flex: none; margin: 4px auto 0; width: 46%;
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 20px;
+    font-size: 10.5px; color: rgba(255, 255, 255, .8);
+    background: rgba(255, 255, 255, .22);
+    border: 1px solid rgba(255, 255, 255, .3);
+    backdrop-filter: blur(2px);
+  }
+  .bg-pv-content.light .bg-pv-search { color: rgba(50, 50, 50, .7); background: rgba(255, 255, 255, .55); border-color: rgba(255, 255, 255, .7); }
+
+  /* 骨架卡：白色玻璃感与前台卡片一致；横向内边距由 .bg-pv-main 统一收 */
+  .bg-pv-cards { display: flex; gap: 8px; padding: 10px 0 0; }
   .bg-pv-cards .pc { width: 13%; aspect-ratio: 1; }
   .bg-pv-cards .pc {
     border-radius: 9px;
@@ -504,17 +551,11 @@ const favMeta = computed(() => {
     border: 1px solid rgba(255, 255, 255, .35);
   }
   .bg-pv-content.light .bg-pv-cards .pc { background: rgba(255, 255, 255, .55); border-color: rgba(255, 255, 255, .65); }
-  /* 没图时也占住同样的位置，免得选图瞬间整块布局跳一下 */
-  .bg-empty {
-    width: 100%; aspect-ratio: 16 / 9;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 12px; border: 1px dashed var(--sp-border);
-    background: var(--sp-card-in); color: var(--sp-faint); font-size: 12.5px;
-  }
 
-  /* ---- 个性化 ---- */
-  /* 开关与左侧数值输入同行同基线：输入框 32px 高，开关本体 20px，往下垫 6px 视觉居中 */
-  .pl-switch { margin-top: 6px; }
+  /* ---- 左栏「布局」区的开关行：两个开关并排，标签在上（与数字输入同款式） ---- */
+  .sw-row { gap: 18px; }
+  .sw-col { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+  .sw-label { font-size: 12.5px; line-height: 1.3; color: var(--sp-dim); white-space: nowrap; }
 
   /* ---- 搜索引擎 ---- */
   .engine-list { display: flex; flex-direction: column; gap: 8px; }
