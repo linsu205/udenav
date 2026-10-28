@@ -13,6 +13,11 @@ export default defineConfig({
   base: '/admin-assets/',
   // 关闭 publicDir 复制（输出目录就在 public/ 里面，避免自引用）
   publicDir: false,
+  define: {
+    /* 构建时间写进产物：「关于」页用它判断这份包比上游最新提交新还是旧。
+       注意这个值每次构建都会变，所以重新构建必然产生新哈希 —— 这是预期行为。 */
+    __ADMIN_BUILD__: JSON.stringify(new Date().toISOString()),
+  },
   build: {
     outDir: resolve(__dirname, 'public/admin-assets'),
     // 只清空 admin-assets 这一个子目录，public/index.html 访客页不受影响

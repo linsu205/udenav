@@ -82,6 +82,7 @@ export async function publicPanel(env: Env, req: Request): Promise<Response> {
         iconType: r.icon_type,
         iconText: r.icon_text,
         iconUrl: (r.icon_type === 'r2' || r.icon_type === 'data') ? r.icon_url : '',
+        iconName: r.icon_type === 'iconify' ? r.icon_name : '',
         color: r.background_color,
         openMethod: r.open_method,
         sort: r.sort,

@@ -7,6 +7,10 @@ import { allow, ipOf } from './lib/ratelimit';
 import { publicPanel, publicConfig } from './routes/public';
 import * as admin from './routes/admin';
 import { upload } from './routes/icons';
+import { iconifyProxy } from './routes/iconify';
+import { getBackupCfg, putBackupCfg, runBackupNow, scheduledBackup, listBackups, restoreBackup } from './routes/webdav';
+import { linkCheck } from './routes/linkcheck';
+import { aboutInfo, checkLatest } from './routes/about';
 import type { Env } from './lib/schema';
 
 const API = '/api/';
@@ -38,6 +42,12 @@ export default {
 
     // 3) 其它 → 静态资源（index.html / admin.html / css / js ...）
     return env.ASSETS.fetch(req);
+  },
+
+  /* Cron Trigger：wrangler.toml 里配了 crons，Cloudflare 到点调用这里。
+     放在 waitUntil 里，HTTP 响应（这里是空响应）不用等备份传完。 */
+  async scheduled(_event: unknown, env: Env, ctx: Ctx): Promise<void> {
+    ctx.waitUntil(scheduledBackup(env));
   },
 };
 
@@ -107,7 +117,23 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (m === 'GET' && a === 'groups') return admin.listGroups(env, req);
     if (m === 'GET' && a === 'icons') return admin.listIcons(env, req, new URL(req.url).searchParams);
     if (m === 'GET' && a === 'favicon') return admin.favicon(env, req);
+    if (m === 'GET' && a === 'images') return admin.listImages(env, req);
+    if (m === 'DELETE' && a === 'images' && parts[2] && parts[3] !== undefined) return admin.clearImage(env, req, parts[2], parts[3]);
     if (m === 'GET' && a === 'export') return admin.exportAll(env, req);
+    /* 带子路径的要排在 /api/admin/backup 泛匹配前面，否则会被当成读配置 */
+    if (m === 'GET' && a === 'backup' && parts[2] === 'list') return listBackups(env, req);
+    if (m === 'POST' && a === 'backup' && parts[2] === 'restore') return restoreBackup(env, req);
+    if (m === 'GET' && a === 'backup') return getBackupCfg(env, req);
+    if (m === 'PUT' && a === 'backup') return putBackupCfg(env, req);
+    if (m === 'POST' && a === 'backup') return runBackupNow(env, req);
+    if (m === 'POST' && a === 'linkcheck') return linkCheck(env, req);
+    /* 「关于」页：check 会打外网（GitHub），单独再限一层，别让按钮被连点成限流 */
+    if (m === 'GET' && a === 'about') {
+      const rl = await lim('about', 20);
+      if (rl) return rl;
+      if (parts[2] === 'check') return checkLatest(env, req);
+      if (!parts[2]) return aboutInfo(env, req);
+    }
     if (m === 'GET' && a === 'stats') return stats(env, req);
     if (m === 'GET' && a === 'users') return admin.listUsers(env, req);
     if (m === 'PATCH' && a === 'users' && id) return admin.patchUser(env, req, id);
@@ -123,10 +149,15 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (m === 'DELETE' && a === 'logs') return admin.purgeLogs(env, req);
   }
 
+  // ---------- 公开：在线图标代理（无鉴权，按 IP 限速即可）----------
+  if (req.method === 'GET' && seg === 'icon') {
+    const r = await lim('icon', 120);
+    if (r) return r;
+    return iconifyProxy(req);
+  }
+
   return null;
 }
-
-// ============================================================
 // 统计接口（原来在 routes/backup.ts 里，随 R2 备份一起移除，独立保留在这里）
 // ============================================================
 

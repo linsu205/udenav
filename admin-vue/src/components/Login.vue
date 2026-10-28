@@ -34,7 +34,7 @@ async function submit() {
           <el-input v-model="password" type="password" placeholder="至少 8 位" autocomplete="current-password" @keyup.enter="submit" />
         </el-form-item>
         <div v-if="err" class="err">{{ err }}</div>
-        <el-button type="success" native-type="submit" :loading="loading" style="width:100%;margin-top:4px">
+        <el-button type="primary" native-type="submit" :loading="loading" style="width:100%;margin-top:4px">
           {{ mode === 'login' ? '登录' : '注册' }}
         </el-button>
       </el-form>

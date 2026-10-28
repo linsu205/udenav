@@ -2,37 +2,44 @@
 import { ref, computed } from 'vue';
 import { useStore } from '../store';
 import { ElMessage } from 'element-plus';
-import { closeHome } from '../lib/notify';
-import { Setting, FolderOpened, Files, TrendCharts, User, Back, SwitchButton, ArrowRight } from '@element-plus/icons-vue';
+import { Setting, FolderOpened, Files, TrendCharts, User, SwitchButton, ArrowRight, Picture, InfoFilled, Grid } from '@element-plus/icons-vue';
+import { logoSrc } from '../lib/brand';
 import ConfigPanel from './ConfigPanel.vue';
 import GroupsPanel from './GroupsPanel.vue';
+import ImagesPanel from './ImagesPanel.vue';
+import IconsPanel from './IconsPanel.vue';
 import BackupPanel from './BackupPanel.vue';
 import StatsPanel from './StatsPanel.vue';
 import UsersPanel from './UsersPanel.vue';
+import AboutPanel from './AboutPanel.vue';
 
 const store = useStore();
 const active = ref(store.tab || 'config');
 
+/* 侧栏图标不再一菜单一色（绿/橙/红/紫…散得很）；未选中走中性灰，
+   选中统一品牌蓝 —— 颜色只在「当前在哪一页」这一件事上有含义 */
 const menus = [
-  { key: 'config', label: '页面配置', icon: Setting, color: '#2fbf6b' },
-  { key: 'groups', label: '分组与卡片', icon: FolderOpened, color: '#e6a23c' },
-  { key: 'backup', label: '备份与导入', icon: Files, color: '#409eff' },
-  { key: 'stats', label: '访问统计', icon: TrendCharts, color: '#a78bfa' },
-  { key: 'users', label: '用户管理', icon: User, color: '#f0a020' },
+  { key: 'config', label: '页面配置', icon: Setting },
+  { key: 'groups', label: '分组与卡片', icon: FolderOpened },
+  { key: 'images', label: '图片管理', icon: Picture },
+  { key: 'icons', label: '图标管理', icon: Grid },
+  { key: 'backup', label: '备份与导入', icon: Files },
+  { key: 'stats', label: '访问统计', icon: TrendCharts },
+  { key: 'users', label: '用户管理', icon: User },
+  { key: 'about', label: '关于', icon: InfoFilled },
 ];
 
+/* 侧栏左上角：有自定义站点图标就用它，没有就用项目 logo（和关于页同一份） */
+const sideLogo = computed(() => logoSrc(store.config?.favicon));
+
 const current = computed(() => ({
-  config: ConfigPanel, groups: GroupsPanel, backup: BackupPanel, stats: StatsPanel, users: UsersPanel,
+  config: ConfigPanel, groups: GroupsPanel, images: ImagesPanel, icons: IconsPanel, backup: BackupPanel,
+  stats: StatsPanel, users: UsersPanel, about: AboutPanel,
 }[active.value] || ConfigPanel));
 
 async function logout() {
   await store.logout();
   ElMessage.success('已退出');
-}
-
-/* 返回前台：内嵌时由访客页关掉弹窗，独立访问时回首页 */
-function goHome() {
-  closeHome();
 }
 
 /* 点账号卡 = 去「用户管理」改自己的用户名 / 密码 */
@@ -49,14 +56,14 @@ function openAccount() {
     <!-- 左侧菜单面板（sun-panel 风格） -->
     <aside class="side">
       <div class="side-logo">
-        <span class="logo-dot"></span>
-        <span>导航后台</span>
+        <img class="logo-img" :src="sideLogo" alt="" />
+        <span>UDeNav</span>
       </div>
 
       <nav class="menu">
         <button v-for="m in menus" :key="m.key" class="menu-item" :class="{ active: active === m.key }"
                 @click="active = m.key; store.tab = m.key">
-          <el-icon :size="17" :color="active === m.key ? m.color : 'var(--sp-dim)'">
+          <el-icon :size="17" :color="active === m.key ? 'var(--sp-accent)' : 'var(--sp-dim)'">
             <component :is="m.icon" />
           </el-icon>
           <span>{{ m.label }}</span>
@@ -71,9 +78,6 @@ function openAccount() {
             <span class="who-dot"></span>
             <el-icon class="who-go" :size="13"><ArrowRight /></el-icon>
           </span>
-        </button>
-        <button class="foot-btn" @click="goHome">
-          <el-icon :size="14"><Back /></el-icon> 返回前台
         </button>
         <button class="foot-btn danger" @click="logout">
           <el-icon :size="14"><SwitchButton /></el-icon> 退出登录
@@ -102,16 +106,18 @@ function openAccount() {
   }
   .side-logo {
     display: flex; align-items: center; gap: 9px;
-    font-size: 16px; font-weight: 700; letter-spacing: 1px;
+    font-size: 16px; font-weight: 700; letter-spacing: .2px;
     padding: 2px 8px 18px;
   }
-  .logo-dot {
-    width: 22px; height: 22px; border-radius: 7px; flex: 0 0 22px;
-    background: linear-gradient(135deg, #2fbf6b, #1d8f4e);
-    box-shadow: 0 2px 8px rgba(47, 191, 107, .35);
+  /* 左上角用项目真实 logo（蓝底 U+箭头），不再是绿色占位方块 */
+  .logo-img {
+    width: 24px; height: 24px; border-radius: 7px; flex: 0 0 24px;
+    object-fit: cover; display: block;
+    box-shadow: 0 2px 8px rgba(var(--sp-accent-rgb), .28);
   }
   .menu { display: flex; flex-direction: column; gap: 5px; flex: 1; }
   .menu-item {
+    position: relative;
     display: flex; align-items: center; gap: 10px;
     padding: 10px 13px; border: none; border-radius: 9px;
     background: transparent; color: var(--sp-dim);
@@ -120,7 +126,16 @@ function openAccount() {
     text-align: left;
   }
   .menu-item:hover { background: var(--sp-card-in); color: var(--sp-text); }
-  .menu-item.active { background: var(--sp-card-in); color: var(--sp-accent); font-weight: 600; }
+  .menu-item.active {
+    background: var(--sp-accent-soft);
+    color: var(--sp-accent); font-weight: 600;
+  }
+  /* 左侧 3px 竖条：选中项在长列表里一眼可定位，比只换底色更清楚 */
+  .menu-item.active::before {
+    content: ''; position: absolute; left: 3px; top: 50%;
+    width: 3px; height: 16px; margin-top: -8px; border-radius: 2px;
+    background: var(--sp-accent);
+  }
 
   .side-foot { display: flex; flex-direction: column; gap: 7px; padding-top: 14px; }
 
@@ -135,15 +150,15 @@ function openAccount() {
     font-family: inherit; text-align: left; cursor: pointer;
     transition: background .15s, border-color .15s;
   }
-  .who:hover { background: var(--sp-hover); border-color: rgba(47, 191, 107, .45); }
+  .who:hover { background: var(--sp-hover); border-color: rgba(var(--sp-accent-rgb), .45); }
   .who:focus-visible { outline: 2px solid var(--sp-accent); outline-offset: 2px; }
   .who:active { transform: translateY(.5px); }
   .who-avatar {
     flex: 0 0 26px; width: 26px; height: 26px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     font-size: 12.5px; font-weight: 700; color: #fff;
-    background: linear-gradient(135deg, #2fbf6b, #1d8f4e);
-    box-shadow: 0 2px 8px rgba(47, 191, 107, .28);
+    background: linear-gradient(135deg, #66b1ff, #337ecc);
+    box-shadow: 0 2px 8px rgba(var(--sp-accent-rgb), .30);
   }
   .who-name {
     flex: 1; min-width: 0;
@@ -155,10 +170,11 @@ function openAccount() {
     position: relative; flex: 0 0 14px; width: 14px; height: 14px;
     display: flex; align-items: center; justify-content: center;
   }
+  /* 在线状态点保留绿色：这是「在线/成功」语义，不是品牌色 */
   .who-dot {
     position: absolute; width: 6px; height: 6px; border-radius: 50%;
-    background: var(--sp-accent);
-    box-shadow: 0 0 0 3px rgba(47, 191, 107, .14);
+    background: var(--sp-ok);
+    box-shadow: 0 0 0 3px rgba(var(--sp-ok-rgb), .14);
     transition: opacity .15s, transform .15s;
   }
   .who-go {

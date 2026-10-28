@@ -71,7 +71,8 @@ let editHost: HTMLElement | null = null;
  * 它和 mountAdmin 是两个互不相干的 app：容器不同、组件树不同，
  * 打开它不会创建后台面板的任何东西，所以后台不会闪。
  */
-export function openItemEditor(el: HTMLElement, gid: number, id: number): void {
+/* id 传 0 / 省略 = 新增（弹窗标题变「添加卡片」，保存走 POST） */
+export function openItemEditor(el: HTMLElement, gid: number, id: number = 0): void {
   closeItemEditor();
   el.hidden = false;
   editHost = el;

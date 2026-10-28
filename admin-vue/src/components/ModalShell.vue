@@ -16,7 +16,9 @@ const props = withDefaults(defineProps<{
   title: string;
   /* 卡片宽度，窄屏自动收成 100% */
   width?: string;
-}>(), { width: '560px' });
+  /* 卡片高度上限。默认沿用 780px 的口径；表单特别长的弹窗可以放宽，避免出现内部滚动条 */
+  maxHeight?: string;
+}>(), { width: '560px', maxHeight: 'min(calc(90vh - 40px), 780px)' });
 
 const emit = defineEmits<{ (e: 'close'): void }>();
 
@@ -35,7 +37,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
   <teleport to="body">
     <el-overlay :z-index="zIndex" class="ce-layer" @wheel="stopPageWheel">
       <div class="ce-card" role="dialog" aria-modal="true" :aria-label="props.title"
-           :style="{ '--ce-w': props.width }" @wheel.stop>
+           :style="{ '--ce-w': props.width, maxHeight: props.maxHeight }" @wheel.stop>
         <div class="ce-head">
           <span class="ce-title">{{ props.title }}</span>
           <button type="button" class="ce-x" aria-label="关闭" @click="emit('close')">

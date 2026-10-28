@@ -10,3 +10,7 @@ Thumbs.db
 .shots/
 # 本地临时工作目录（含 D1 备份等，不推）
 .workbuddy/
+
+# 本地打包备份 / 临时工作目录（不推 GitHub）
+unav.rar
+workspace/

@@ -12,5 +12,5 @@
     "forceConsistentCasingInFileNames": true,
     "noUnusedLocals": false
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "package.json"]
 }

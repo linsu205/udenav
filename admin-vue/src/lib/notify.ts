@@ -20,11 +20,17 @@ declare global {
   }
 }
 
-export function notifyHome(target: HomeTarget = 'panel'): void {
+/**
+ * @param soft 独立访问 /admin、且当前不在配置页时传 true：
+ *   没有前台可同步，也不需要刷新自己 —— 原来这里会 location.reload()，
+ *   在「图片管理」里改壁纸会因此跳回「页面配置」页签，用户会以为点错了。
+ */
+export function notifyHome(target: HomeTarget = 'panel', soft = false): void {
   if (typeof window.__udenavHome === 'function') {
     window.__udenavHome(target);
     return;
   }
+  if (soft) return;
   location.reload();
 }
 

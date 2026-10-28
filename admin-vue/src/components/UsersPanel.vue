@@ -215,7 +215,7 @@ async function remove(u: U) {
 
       <template #footer>
         <el-button @click="open = false">取消</el-button>
-        <el-button type="success" :loading="saving" :disabled="!canSave" @click="save">保存</el-button>
+        <el-button type="primary" :loading="saving" :disabled="!canSave" @click="save">保存</el-button>
       </template>
     </ModalShell>
   </div>
@@ -232,21 +232,21 @@ async function remove(u: U) {
   .u-row:hover { background: var(--sp-hover); border-color: var(--sp-card-border); }
   /* 从侧栏账号卡进来时，自己那一行短暂描边，提示改动入口 */
   .u-row.flash {
-    border-color: rgba(47, 191, 107, .55);
-    background: rgba(47, 191, 107, .07);
-    box-shadow: 0 0 0 3px rgba(47, 191, 107, .12);
+    border-color: rgba(var(--sp-accent-rgb), .55);
+    background: rgba(var(--sp-accent-rgb), .07);
+    box-shadow: 0 0 0 3px rgba(var(--sp-accent-rgb), .12);
     animation: rowFlash 1.8s ease-out;
   }
   @keyframes rowFlash {
-    0% { box-shadow: 0 0 0 6px rgba(47, 191, 107, .22); }
-    100% { box-shadow: 0 0 0 3px rgba(47, 191, 107, .12); }
+    0% { box-shadow: 0 0 0 6px rgba(var(--sp-accent-rgb), .22); }
+    100% { box-shadow: 0 0 0 3px rgba(var(--sp-accent-rgb), .12); }
   }
 
   .u-avatar {
     flex: 0 0 36px; width: 36px; height: 36px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     font-size: 15px; font-weight: 700; color: #fff;
-    background: linear-gradient(135deg, #2fbf6b, #1d8f4e);
+    background: linear-gradient(135deg, #66b1ff, #337ecc);
   }
   .u-info { flex: 1; min-width: 0; }
   .u-name {
@@ -260,7 +260,7 @@ async function remove(u: U) {
     display: inline-flex; align-items: center; gap: 3px;
     font-size: 11px; font-weight: 500; padding: 1px 7px; border-radius: 20px; flex: none;
   }
-  .u-badge.me { color: var(--sp-accent); background: rgba(47, 191, 107, .12); border: 1px solid rgba(47, 191, 107, .28); }
+  .u-badge.me { color: var(--sp-accent); background: rgba(var(--sp-accent-rgb), .12); border: 1px solid rgba(var(--sp-accent-rgb), .28); }
   .u-badge.lock { color: #e6a23c; background: rgba(230, 162, 60, .12); border: 1px solid rgba(230, 162, 60, .3); }
 
   .u-ops { display: flex; gap: 2px; flex: none; }

@@ -38,6 +38,7 @@ export interface IconRow {
   lan_url: string;
   icon_type: IconType;
   icon_text: string;
+  icon_name: string;
   icon_url: string;
   description: string;
   open_method: number;
@@ -55,10 +56,11 @@ export interface ConfigRow {
   updated_at: number;
 }
 
-const SCHEMA_VERSION = '1.1';
+/* 数据模型版本：后台「关于」页会展示实际库里的值，方便核对「代码升级了、库没升」 */
+export const SCHEMA_VERSION = '1.2';
 
 export const DEFAULT_CONFIG = {
-  logo_text: 'udenav',
+  logo_text: 'UDeNav',
   favicon: '',
   background_image: '',
   background_blur: 10,
@@ -113,6 +115,7 @@ CREATE TABLE IF NOT EXISTS item_icon (
   lan_url TEXT NOT NULL DEFAULT '',
   icon_type TEXT NOT NULL DEFAULT 'color',
   icon_text TEXT NOT NULL DEFAULT '',
+  icon_name TEXT NOT NULL DEFAULT '',
   icon_url TEXT NOT NULL DEFAULT '',
   description TEXT NOT NULL DEFAULT '',
   open_method INTEGER NOT NULL DEFAULT 2,
@@ -138,6 +141,14 @@ CREATE TABLE IF NOT EXISTS panel (
   updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
 
+/* 系统级设置（键值）。和 user_config 的区别：这里放的是「不该随备份导出」的东西，
+   例如 WebDAV 备份的账号密码——导出 JSON 若带上它，备份文件一旦外泄就等于泄露凭据。 */
+CREATE TABLE IF NOT EXISTS app_setting (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+
 CREATE TABLE IF NOT EXISTS visit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts INTEGER NOT NULL DEFAULT (strftime('%s','now')),
@@ -158,10 +169,12 @@ export function ensureSchema(db: D1Database): Promise<void> {
   if (ready) return ready;
   ready = (async () => {
     // 1) 幂等建表（IF NOT EXISTS，冷启动开销可忽略）
-    //    注意：SQL 里表定义跨多行，必须按分号切分，不能按换行切分
+    //    注意：SQL 里表定义跨多行，必须按分号切分，不能按换行切分。
+    //    语句前若写了 /* 注释 */，必须先剥掉再判断开头，否则这条建表会被静默丢掉
+    //    （app_setting 就踩过这个坑：表一直没建出来，接口 500）
     const stmts = SCHEMA_SQL
       .split(';')
-      .map((s) => s.trim())
+      .map((s) => s.replace(/^\s*\/\*[\s\S]*?\*\//g, '').trim())
       .filter((s) => s.startsWith('CREATE TABLE') || s.startsWith('CREATE INDEX'))
       .map((s) => db.prepare(s));
     await db.batch(stmts);
@@ -172,9 +185,15 @@ export function ensureSchema(db: D1Database): Promise<void> {
 
     // 版本迁移（只在新版本首次冷启动时跑一次）
     // 1.0 → 1.1：分组新增 public_show（1 = 免登录可见）
+    // 1.1 → 1.2：卡片新增 icon_name（在线图标 Iconify 名）。此前只有分组有这一列，
+    //             卡片选「在线图标」保存后图标名无处可存 → 表现为「保存不上」
     // 新库建表时已有该列，ALTER 会报 duplicate column，catch 掉即可
     await db
       .prepare('ALTER TABLE item_icon_group ADD COLUMN public_show INTEGER NOT NULL DEFAULT 0')
+      .run()
+      .catch(() => {});
+    await db
+      .prepare("ALTER TABLE item_icon ADD COLUMN icon_name TEXT NOT NULL DEFAULT ''")
       .run()
       .catch(() => {});
 

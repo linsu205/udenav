@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>udenav</title>
+<title>UDeNav</title>
 <link id="fav" rel="icon" type="image/svg+xml" data-def="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%23409EFF'/><path d='M22 22 V36 Q22 46 32 46 Q42 46 42 36 V14' fill='none' stroke='%23FFFFFF' stroke-width='7' stroke-linecap='round'/><path d='M34 22 L42 12 L50 22' fill='none' stroke='%23FFFFFF' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/></svg>" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%23409EFF'/><path d='M22 22 V36 Q22 46 32 46 Q42 46 42 36 V14' fill='none' stroke='%23FFFFFF' stroke-width='7' stroke-linecap='round'/><path d='M34 22 L42 12 L50 22' fill='none' stroke='%23FFFFFF' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <style>
   :root{
@@ -12,10 +12,14 @@
     --blur:blur(10px);
     /* 直接压在背景图上的文字（logo / 分隔线 / 时钟 / 分组标题 / 图标名）：
        两个主题都固定用白色，不跟随 --text。浅色主题里深灰字扣在背景图上经常看不清，
-       而这些元素本身没有底色可依托，所以统一按深色主题那套走 */
+       而这些元素本身没有底色可依托，所以统一按深色主题那套走。
+       （分组标题颜色同样是锁白的，只是投影半径单独收窄，见 .group-head h2） */
     --on-bg:#fff; --on-bg-dim:rgba(255,255,255,.92);
-    /* 给这类白字配的暗色投影：浅色壁纸下也能压出层次，不会糊成一片 */
-    --on-bg-shadow:0 1px 8px rgba(0,0,0,.42),0 2px 20px rgba(0,0,0,.28);
+    /* 压在壁纸上的白字统一用这一条字影（分组标题 / 图标名 / 日期 / 页脚 / 空态）：
+       1px 下偏移的柔影负责托出对比，2px 小半径只会擦着笔画外缘，
+       不像 8px/20px 大柔影那样把字距填平糊成灰色长方块 —— 既压得住浅色壁纸，也不留灰底。
+       （试过的 4 向 1px 实边轮廓会让笔画发毛，已弃用） */
+    --on-bg-ts:0 1px 2px rgba(0,0,0,.55),0 0 1px rgba(0,0,0,.34);
     /* 滚动条：轨道宽 12px，滑块只占中间 4px（靠 4px 透明边框内缩），
        所以是「一根悬在页面边缘内侧的细圆条」，而不是贴着边的一条粗灰杠。
        默认很淡，鼠标进到页面里才变明显 —— 静止时几乎不抢背景的戏 */
@@ -78,7 +82,7 @@
   .clock{text-align:center;line-height:1.25}
   .clock .t{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--on-bg);
     text-shadow:0 2px 18px rgba(0,0,0,.45),0 0 40px rgba(0,0,0,.22)}
-  .clock .d{font-size:13px;color:var(--on-bg-dim);text-shadow:0 1px 4px rgba(0,0,0,.55),0 2px 14px rgba(0,0,0,.45)}
+  .clock .d{font-size:13px;color:var(--on-bg-dim);text-shadow:var(--on-bg-ts)}
   @media(max-width:620px){.sep{display:none}}
 
   /* position+z-index 必须加：rise 动画末帧保留 transform，使 .search 成为独立层叠上下文，
@@ -102,9 +106,48 @@
      后台是同一个文档里的 Vue 组件（#adminRoot 在 .modal 里），
      它的分组卡片也用了 .group 类，不限定作用域会被这里的 opacity:0 直接隐掉。 */
   .wrap .group{margin-top:38px}
-  .group-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:0 4px}
-  /* 分组标题也压在背景图上：两个主题都用白字 + 轻微暗投影（浅色壁纸下也能看清） */
-  .group-head h2{margin:0;font-size:19px;font-weight:700;color:var(--on-bg);text-shadow:var(--on-bg-shadow)}
+  /* 标题行按底对齐：＋ 要贴住标题的右下角，用 center 会让它浮在标题中线附近 */
+  .group-head{display:flex;align-items:flex-end;gap:10px;margin-bottom:14px;padding:0 4px}
+  /* max-width + ellipsis：标题再长也不会撑到「＋」底下（之前文字压在按钮上是这个原因） */
+  /* 分组标题：两个主题恒定白字（--on-bg 锁白，不跟主题反转）。
+     字影用全局的 --on-bg-ts（1px 下偏移柔影 + 2px 小半径），字缘干净、不发毛、不成灰块 */
+  .group-head h2{margin:0;font-size:19px;line-height:1.3;font-weight:700;color:var(--on-bg);
+    text-shadow:var(--on-bg-ts);
+    flex:0 1 auto;min-width:0;max-width:calc(100% - 24px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* 分组标题前的图标：inline 排在一行里（不用 flex，否则标题的 ellipsis 会失效），
+     尺寸对齐 19px 字高；投影跟标题同一版（图片不认 text-shadow，只能用 filter） */
+  .group-head h2 .g-ico{width:19px;height:19px;margin-right:8px;vertical-align:-3px;object-fit:contain;
+    filter:drop-shadow(0 0 1px rgba(0,0,0,.5)) drop-shadow(0 1px 1px rgba(0,0,0,.42))}
+  /* 分组标题右下角的「＋」：16×16 玻璃小方钮，align-self:flex-end 让它的底边和标题行底部齐平，
+     视觉上就是叼在标题最后一个字右下角。材质与卡片一致（半透明 + 描边 + 模糊）。
+     参照 sun-panel：平时完全隐藏，鼠标移到这一组（标题行或它的卡片）才浮现，
+     不悬浮时标题区保持干净。选择器统一带 .group 前缀，保证「浮现 → 按钮自身 hover」
+     的优先级是递增的，不会被浮现规则按下去 */
+  .group .group-head .g-add{flex:none;align-self:flex-end;width:16px;height:16px;margin-left:-5px;margin-bottom:1px;padding:0;
+    border-radius:5px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;color:var(--on-bg);
+    background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.22);
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+    opacity:0;transform:scale(.86);pointer-events:none;
+    transition:opacity .16s,transform .16s,background .16s,border-color .16s}
+  .group .group-head .g-add svg{width:10px;height:10px;fill:currentColor;display:block}
+  /* 悬浮整组（标题行或卡片都算）时浮现 */
+  .group:hover .group-head .g-add{opacity:.72;transform:none;pointer-events:auto}
+  /* 键盘 Tab 到它时也要能看见（始终留在可聚焦序列里，所以不用 visibility:hidden） */
+  .group .group-head .g-add:focus-visible{opacity:1;transform:none;pointer-events:auto;
+    outline:2px solid rgba(255,255,255,.75);outline-offset:2px}
+  /* 鼠标压到按钮上：完全不透明 + 提亮 + 放大 */
+  .group:hover .group-head .g-add:hover{opacity:1;background:rgba(255,255,255,.26);
+    border-color:rgba(255,255,255,.46);transform:scale(1.07)}
+  .group:hover .group-head .g-add:active{transform:scale(.93)}
+  /* 触屏没有 hover：一直显示，否则手机/平板上永远加不了卡片 */
+  @media (hover:none){
+    .group .group-head .g-add{opacity:.72;transform:none;pointer-events:auto}
+  }
+  /* 浅色主题不能让白底白边糊掉：改成白玻璃 + 深色加号 */
+  html[data-theme="light"] .group .group-head .g-add{color:#3d444c;background:rgba(255,255,255,.62);
+    border-color:rgba(31,35,40,.16);box-shadow:0 1px 4px rgba(31,35,40,.10)}
+  html[data-theme="light"] .group:hover .group-head .g-add:hover{background:#fff;border-color:rgba(31,35,40,.3)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px}
   .card{position:relative;display:flex;align-items:center;gap:12px;background:var(--card-bg);border:1px solid rgba(255,255,255,.08);
     border-radius:var(--radius);height:70px;padding:11px 14px;cursor:pointer;transition:transform .18s,box-shadow .18s,background .18s;
@@ -118,16 +161,20 @@
      line-height:1 后字面仍偏低。translateY 的具体值按实测墨迹中心闭环校准：
      canvas 字体度量显示 -4.5px 会把字面抬到图标框中心上方约 3px（偏上），
      改 -1.5px 后拉丁字母与 CJK 的墨迹中心都落在 ±0.5px 内。 */
-  .card .ic span{transform:translateY(-1.5px)}
+  /* white-space:nowrap：3 字以上的图标文字缩字号后仍可能贴边，禁止折行兜底 */
+  .card .ic span{transform:translateY(-1.5px);white-space:nowrap}
   .card .ic img{width:100%;height:100%;object-fit:cover}
+  /* 未设置背景色 = 真的没有底色：图标直接浮在卡片上（不画玻璃方块）。
+     卡片本身就是玻璃材质，底板上再铺一层同色玻璃只会多出一圈描边，看着像「没清干净」。
+     小图标模式（.mic.plain）不同——它的底板落在壁纸上，所以那边保留玻璃底 */
+  .card .ic.plain{background:transparent}
+  /* 透明底板上白字会看不见（浅色主题的卡片接近白色），改深色字 */
+  html[data-theme="light"] .card .ic.plain{color:var(--text)}
   .card .body{min-width:0}
   .card .title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card .dsc{font-size:12px;color:var(--text-dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  /* 内网角标：后台给这张卡配了内网地址时，前台一眼看出「内网地址已配置」 */
-  .card .lan-tag,.mini .lan-tag{position:absolute;top:7px;right:8px;font-size:10px;font-weight:700;line-height:1;
-    padding:3px 5px;border-radius:6px;background:rgba(24,160,88,.92);color:#fff;letter-spacing:.5px;
-    box-shadow:0 2px 8px rgba(0,0,0,.28);z-index:2}
-  .empty{color:var(--on-bg-dim);font-size:14px;padding:24px 4px;text-shadow:var(--on-bg-shadow)}
+  /* 「内」角标已按用户要求取消：内外网切换由右上开关控制，卡片上不再挂角标 */
+  .empty{color:var(--on-bg-dim);font-size:14px;padding:24px 4px;text-shadow:var(--on-bg-ts)}
   /* ---------- 小图标模式（card_style=icon，参照 sun-panel「图标」） ---------- */
   .grid.icons{grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:14px}
   /* 图标模式：容器永远透明 —— 鼠标移上去也不能给它加背景或阴影。
@@ -161,11 +208,13 @@
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,.25)}
   /* 玻璃底板上，浅色主题改用深色字，避免白字看不见 */
   html[data-theme="light"] .mini .mic.plain .mtext{color:var(--text);text-shadow:none}
-  /* 底板下方的名称：固定字号，超长只省略不缩放 */
+  /* 底板下方的名称：固定字号，超长只省略不缩放。
+     字影回到分组标题同一版（--on-bg-ts）—— 既不是会让笔画发毛的 4 向轮廓，
+     也不是 0 1px 8px / 0 2px 20px 的大柔影（那版会在 14px 字后糊出灰色长方块） */
   .mini .mname{max-width:92px;font-size:14px;color:var(--on-bg);text-align:center;
-    text-shadow:var(--on-bg-shadow);
+    text-shadow:var(--on-bg-ts);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .wrap>footer{margin-top:46px;text-align:center;font-size:12px;color:var(--on-bg-dim);text-shadow:var(--on-bg-shadow)}
+  .wrap>footer{margin-top:46px;text-align:center;font-size:12px;color:var(--on-bg-dim);text-shadow:var(--on-bg-ts)}
 
   /* ---------- 悬停提示（替代浏览器原生 title） ----------
      深色主题：黑底白字；浅色主题：白底黑字。圆角 + 小箭头 + 淡入位移 */
@@ -192,22 +241,29 @@
   html[data-theme="light"] .tip::after{border-color:rgba(31,35,40,.12)}
 
   /* ---------- 卡片右键菜单（sun-panel 同款） ---------- */
-  .ctx-menu{position:fixed;z-index:2100;min-width:118px;background:#2b2f36;border:1px solid rgba(255,255,255,.09);
-    border-radius:10px;padding:6px;color:var(--text);box-shadow:0 18px 44px rgba(0,0,0,.5);font-size:12px;user-select:none}
+  /* display:none -> 显示时动画会重新起跑，所以用 animation 而不是 transition */
+  @keyframes ctxIn{from{opacity:0;transform:translateY(-5px) scale(.965)}to{opacity:1;transform:none}}
+  .ctx-menu{position:fixed;z-index:2100;min-width:196px;background:#2b2f36;border:1px solid rgba(255,255,255,.09);
+    border-radius:12px;padding:6px;color:var(--text);box-shadow:0 18px 44px rgba(0,0,0,.5);font-size:12.5px;user-select:none;
+    transform-origin:var(--ox,0) var(--oy,0);animation:ctxIn .14s cubic-bezier(.22,.61,.36,1) both}
   html[data-theme="light"] .ctx-menu{background:#fff;border-color:rgba(31,35,40,.12);box-shadow:0 18px 44px rgba(31,35,40,.22)}
-  .ctx-menu .mi{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;cursor:pointer;white-space:nowrap}
+  .ctx-menu .mi{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:8px;cursor:pointer;white-space:nowrap;
+    transition:background .13s}
   .ctx-menu .mi:hover{background:rgba(255,255,255,.09)}
   html[data-theme="light"] .ctx-menu .mi:hover{background:rgba(31,35,40,.06)}
-  .ctx-menu .mi svg{width:14px;height:14px;fill:currentColor;flex:none}
+  .ctx-menu .mi svg{width:15px;height:15px;fill:currentColor;flex:none;opacity:.9}
   .ctx-menu .mi.danger{color:#ff7875}
-  .ctx-menu .row3,.ctx-menu .row2{display:flex;gap:6px;margin:7px 2px}
-  .ctx-menu .row3 button,.ctx-menu .row2 button{flex:1;height:28px;border:1px solid rgba(255,255,255,.12);border-radius:7px;background:transparent;
-    color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
-  .ctx-menu .row3 button svg,.ctx-menu .row2 button svg{width:15px;height:15px;fill:currentColor}
-  .ctx-menu .row3 button:hover,.ctx-menu .row2 button:hover{background:rgba(255,255,255,.09)}
-  .ctx-menu .row3 button:disabled,.ctx-menu .row2 button:disabled{opacity:.3;cursor:not-allowed}
-  html[data-theme="light"] .ctx-menu .row3 button,html[data-theme="light"] .ctx-menu .row2 button{border-color:rgba(31,35,40,.16)}
-  .ctx-menu .sep{height:1px;background:rgba(255,255,255,.09);margin:5px 2px}
+  /* 快捷操作：5 个等宽方形按钮排一行（原来 3+2 两行、宽度不一，看着乱） */
+  .ctx-menu .acts{display:flex;gap:6px;margin:6px 2px 4px}
+  .ctx-menu .acts button{flex:1;height:32px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:transparent;
+    color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;
+    transition:background .13s,border-color .13s,opacity .13s}
+  .ctx-menu .acts button svg{width:16px;height:16px;fill:currentColor;opacity:.9}
+  .ctx-menu .acts button:hover:not(:disabled){background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.22)}
+  .ctx-menu .acts button:disabled{opacity:.28;cursor:not-allowed}
+  html[data-theme="light"] .ctx-menu .acts button{border-color:rgba(31,35,40,.14)}
+  html[data-theme="light"] .ctx-menu .acts button:hover:not(:disabled){background:rgba(31,35,40,.05);border-color:rgba(31,35,40,.24)}
+  .ctx-menu .sep{height:1px;background:rgba(255,255,255,.09);margin:5px 4px}
   html[data-theme="light"] .ctx-menu .sep{background:rgba(31,35,40,.1)}
 
   /* ---------- 入场与滚动动画 ---------- */
@@ -244,6 +300,24 @@
   .tb svg{width:20px;height:20px;display:block;pointer-events:none}
   .tb:hover{background:#3a3a3ab3}
   .tb:active{transform:scale(.94)}
+  /* 返回顶部：滚过一屏后出现在右下角，和右上角工具条同一套视觉（半透明深灰 + 白色图标）。
+     固定定位、不占文档流，所以滚动时不会跟着内容抖动；隐藏时用 visibility 一并挡掉点击 */
+  .to-top{position:fixed;right:18px;bottom:22px;z-index:30;
+    width:40px;height:40px;padding:0;border:0;border-radius:12px;
+    background:#2a2a2a6b;color:#fff;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 0 10px 2px rgba(0,0,0,.20);
+    opacity:0;visibility:hidden;transform:translateY(10px) scale(.94);
+    transition:opacity .22s,transform .22s cubic-bezier(.34,1.24,.5,1),visibility .22s,background .2s}
+  .to-top.on{opacity:1;visibility:visible;transform:none}
+  .to-top:hover{background:#3a3a3ab3}
+  .to-top:active{transform:scale(.94)}
+  /* 隐藏态带 visibility:hidden，本身就不在 Tab 序列里；显示后补一圈键盘焦点环 */
+  .to-top:focus-visible{outline:2px solid rgba(255,255,255,.75);outline-offset:2px}
+  .to-top svg{width:20px;height:20px;display:block;pointer-events:none}
+  @media (max-width:640px){
+    .to-top{right:14px;bottom:16px;width:38px;height:38px}
+  }
   /* 顶部居中提示：切换内外网时短暂显示「当前处于哪个模式」，深灰胶囊 + 白色图标文字，深浅主题都清晰 */
   .toast{position:fixed;top:16px;left:50%;z-index:40;transform:translate(-50%,-18px);
     display:flex;align-items:center;gap:8px;padding:9px 16px;border-radius:12px;
@@ -274,7 +348,10 @@
   /* 后台组件的挂载点：和 iframe 二选一显示（iframe 仍留给「在弹窗里打开卡片链接」）。
      --sp-bg 由后台自己的 CSS 提供，没加载完时退回卡片底色。 */
   .modal #adminRoot{flex:1;min-height:0;overflow:auto;background:var(--sp-bg,var(--card-bg));
-    -webkit-overflow-scrolling:touch}
+    -webkit-overflow-scrolling:touch;
+    /* 始终预留滚动条槽位：分组从长变短、切换面板时滚动条会突然出现/消失，
+       内容宽度跟着变 8px，「添加分组」这类贴右的按钮就会横向抖一下 */
+    scrollbar-gutter:stable}
   .modal #adminRoot[hidden]{display:none}
   /* 后台包里带 1.3 MB 资源，首次打开要等一下，先给个占位 */
   .modal #adminRoot .adm-boot{display:flex;align-items:center;justify-content:center;gap:10px;height:100%;
@@ -341,7 +418,7 @@
 <div class="scroller" id="scroller">
 <div class="wrap">
   <header>
-    <div class="logo" id="logo">udenav</div>
+    <div class="logo" id="logo">UDeNav</div>
     <div class="sep"></div>
     <div class="clock"><div class="t" id="time">--:--:--</div><div class="d" id="date"></div></div>
   </header>
@@ -376,6 +453,11 @@
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3.2" y="3.2" width="7.4" height="7.4" rx="2.1"/><rect x="13.4" y="3.2" width="7.4" height="7.4" rx="2.1"/><rect x="3.2" y="13.4" width="7.4" height="7.4" rx="2.1"/><rect x="13.4" y="13.4" width="7.4" height="7.4" rx="2.1"/></svg>
   </button>
 </div>
+
+<!-- 返回顶部：只在访客页向下滚动后出现（首屏右下角不放多余按钮） -->
+<button class="to-top" id="toTop" data-tip="返回顶部" aria-label="返回顶部">
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 11h3v10h2V11h3l-4-4-4 4zM4 3v2h16V3H4z"/></svg>
+</button>
 
 <div class="modal" id="modal">
   <div class="box">
@@ -420,8 +502,8 @@ function cacheConfig(c) {
 
 function applyConfig(c) {
   state.config = c;
-  document.title = c.logo_text || 'udenav';
-  $('#logo').textContent = c.logo_text || 'udenav';
+  document.title = c.logo_text || 'UDeNav';
+  $('#logo').textContent = c.logo_text || 'UDeNav';
   $('#fav').setAttribute('href', String(c.favicon||'').trim() || $('#fav').dataset.def);
   applyThemeAttr(c.theme || 'dark');
   $('#themeBtn').innerHTML = svgOf(ICON[(c.theme || 'dark') === 'dark' ? 'moon' : 'sun']);
@@ -475,7 +557,7 @@ function renderEngines() {
 }
 
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
-function letter(t) { return (String(t || '?').trim()[0] || '?').toUpperCase(); }
+function letter(t) { return (String(t || '').trim()[0] || '').toUpperCase(); }
 
 /* ---------- 名称显示规则 ----------
    1) 字宽按中文/全角 1、英文数字 0.5 计（「哔哩哔哩」=4，「GitHub」=2.5）
@@ -627,12 +709,62 @@ function fitNames(root) {
   });
 }
 
+/* 在线图标该用什么颜色画：iconify 是 <img>，颜色必须在 URL 上带过去（服务端写进 SVG）。
+   规则与底板上的文字色一致：
+   - 设了背景色 → 深底配白、浅底配深（按亮度判断，不然浅黄底上白图标等于没有）
+   - 没设背景色 → 暗色主题白、浅色主题 var(--text) 的 #606266 */
+function readableOn(c) {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(c || '').trim());
+  if (!m) return '#ffffff';                       // rgba / 带 alpha 的串判断不了，按深底处理
+  let h = m[1];
+  if (h.length === 3) h = h.split('').map(x => x + x).join('');
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 0.62 ? '#1f2328' : '#ffffff';
+}
+function iconColor(item) {
+  const c = String(item.color || '').trim();
+  if (c) return readableOn(c);
+  return document.documentElement.dataset.theme === 'light' ? '#606266' : '#ffffff';
+}
+
+/* 图片类图标 → <img>，不是图片就返回空串，交给调用方自己出文字。
+   这是唯一按 iconType 分流的地方：
+   data/r2 + 有图 → 直接图片；iconify + 有图标名 → 走 /api/icon 代理取 SVG。 */
+function iconImg(item) {
+  const t = item.iconType;
+  if ((t === 'data' || t === 'r2') && item.iconUrl)
+    return `<img src="${esc(item.iconUrl)}" alt="" loading="lazy">`;
+  if (t === 'iconify' && item.iconName)
+    return `<img src="/api/icon?name=${encodeURIComponent(item.iconName)}&color=${iconColor(item).slice(1)}" alt="" loading="lazy">`;
+  /* 兼容极旧数据：有 iconUrl 但没带 iconType 的，仍当图片处理 */
+  if (item.iconUrl)
+    return `<img src="${esc(item.iconUrl)}" alt="" loading="lazy">`;
+  return '';
+}
+
+/* 卡片模式（46px 底板）：图片优先，否则文字（自定义图标文字，留空取标题首字） */
 function iconHtml(item) {
-  if (item.iconUrl) return `<img src="${esc(item.iconUrl)}" alt="" loading="lazy">`;
-  /* 自定义图标文字优先（后台「图标文字」填了就用它），否则列表卡图标块用标题首字 */
+  const im = iconImg(item);
+  if (im) return im;
   const custom = String(item.iconText || '').trim();
-  if (custom) { const t = clipPlate(custom); return `<span style="font-size:${fsOf(t)}px">${esc(t)}</span>`; }
+  if (custom) {
+    const tx = clipPlate(custom);
+    /* 46px 底板：fsOf 的分档字号对 3 字（16px×3=48px）会溢出换行，
+       按「字宽单位 × 字号 ≤ 40px」压字号——左右各留 3px，不贴边、不换行 */
+    const fs = Math.min(fsOf(tx), 40 / Math.max(1, nameUnits(tx)));
+    return `<span style="font-size:${fs.toFixed(1)}px">${esc(tx)}</span>`;
+  }
   return `<span>${esc(letter(item.title))}</span>`;
+}
+
+/* 小图标模式（70px 底板）：文字必须保留 class="mtext"。
+   .mtext 承载加粗、颜色、76% 限宽、fitNames 的自动缩字——丢了 class 文字就不粗也不缩 */
+function iconMiniInner(item, plateTxt) {
+  const im = iconImg(item);
+  if (im) return im;
+  return `<span class="mtext" style="--fs:${fsOf(plateTxt)}px">${esc(plateTxt)}</span>`;
 }
 
 function renderGroups(instant) {
@@ -651,7 +783,22 @@ function renderGroups(instant) {
   filtered.forEach(g => {
     const sec = document.createElement('section');
     sec.className = 'group';
-    sec.innerHTML = `<div class="group-head"><h2${g.description ? ` data-tip="${esc(g.description)}" data-tip-pos="right"` : ''}>${esc(g.title)}</h2></div>`;
+    /* 登录后在分组标题后面挂一个「＋」：直接往该分组加一条导航，
+       不用先进后台、再找分组、再点添加卡片 */
+    const addBtn = state.admin
+      ? `<button type="button" class="g-add" data-add="${g.id}"` +
+        ` data-tip="向「${esc(g.title)}」添加卡片" aria-label="添加卡片">${svgOf(ICON.plus)}</button>`
+      : '';
+    /* 分组图标（可选）：在线图标走 /api/icon 代理，颜色固定白色 ——
+       标题用的是 --on-bg，两个主题都刻意锁白（压在壁纸上），图标必须跟着标题走，
+       所以这里不能像卡片图标那样按主题取色。加 drop-shadow 代替 text-shadow，
+       浅色壁纸上才不会糊成一片。上传型图标（iconUrl）优先，兼容历史数据 */
+    const gIcon = g.icon
+      ? `<img class="g-ico" src="/api/icon?name=${encodeURIComponent(g.icon)}&color=ffffff" alt="" loading="lazy" onerror="this.remove()">`
+      : g.iconUrl
+        ? `<img class="g-ico" src="${esc(g.iconUrl)}" alt="" loading="lazy" onerror="this.remove()">`
+        : '';
+    sec.innerHTML = `<div class="group-head"><h2${g.description ? ` data-tip="${esc(g.description)}" data-tip-pos="right"` : ''}>${gIcon}${esc(g.title)}</h2>${addBtn}</div>`;
     const grid = document.createElement('div');
     grid.className = g.cardStyle === 'icon' ? 'grid icons' : 'grid';
     g.items.forEach(it => {
@@ -662,16 +809,14 @@ function renderGroups(instant) {
         const short = clipName(it.title);
         /* 底板文字：自定义图标文字优先，留空取标题；同样 4 字宽封顶 */
         const plateTxt = clipPlate(String(it.iconText || '').trim() || it.title);
-        const inner = it.iconUrl
-          ? `<img src="${esc(it.iconUrl)}" alt="" loading="lazy">`
-          : `<span class="mtext" style="--fs:${fsOf(plateTxt)}px">${esc(plateTxt)}</span>`;
+        const inner = iconMiniInner(it, plateTxt);
         const c = document.createElement('div');
         c.className = 'mini';
         c.dataset.id = String(it.id ?? '');
         c.dataset.gid = String(g.id);
         /* 底板下方的名称：所有小图标卡片都渲染（图片图标、文字图标都要有名字） */
         const label = `<span class="mname">${esc(short)}</span>`;
-        c.innerHTML = `${it.lanUrl ? '<span class="lan-tag">内</span>' : ''}<span class="${micCls}"${plate}>${inner}</span>${label}`;
+        c.innerHTML = `<span class="${micCls}"${plate}>${inner}</span>${label}`;
         c.onclick = () => openUrl(it);
         grid.appendChild(c);
         return;
@@ -681,7 +826,10 @@ function renderGroups(instant) {
       const short = clipName(it.title);
       c.dataset.id = String(it.id ?? '');
       c.dataset.gid = String(g.id);
-      c.innerHTML = `${it.lanUrl ? '<span class="lan-tag">内</span>' : ''}<div class="ic" style="background:${esc(it.color || '#2a2a2a')}">${iconHtml(it)}</div>`
+      /* 未设背景色时给 plain：走玻璃底板，而不是内联一块纯黑。
+         之前这里恒写 `it.color || '#2a2a2a'`，用户把背景色清空后底板上
+         还压着一块 #2a2a2a 实色，看起来像「清不掉」 */
+      c.innerHTML = `<div class="ic${it.color ? '' : ' plain'}"${it.color ? ` style="background:${esc(it.color)}"` : ''}>${iconHtml(it)}</div>`
         + `<div class="body"><div class="title">${esc(short)}</div>${it.description ? `<div class="dsc">${esc(it.description)}</div>` : ''}</div>`;
       c.onclick = () => openUrl(it);
       grid.appendChild(c);
@@ -746,6 +894,7 @@ function tick() {
 const LAN_KEY = 'udenav_intranet';
 const svgOf = p => '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' + p + '</svg>';
 const ICON = {
+  plus: '<path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2Z"/>',
   lan: '<path d="M3 20v-3q0-.825.588-1.412T5 15h1v-2q0-.825.588-1.412T8 11h3V9h-1q-.825 0-1.412-.587T8 7V4q0-.825.588-1.412T10 2h4q.825 0 1.413.588T16 4v3q0 .825-.587 1.413T14 9h-1v2h3q.825 0 1.413.588T18 13v2h1q.825 0 1.413.588T21 17v3q0 .825-.587 1.413T19 22h-4q-.825 0-1.412-.587T13 20v-3q0-.825.588-1.412T15 15h1v-2H8v2h1q.825 0 1.413.588T11 17v3q0 .825-.587 1.413T9 22H5q-.825 0-1.412-.587T3 20Zm7-13h4V4h-4v3ZM5 20h4v-3H5v3Zm10 0h4v-3h-4v3Z"/>',
   wan: '<path d="M12 2a8 8 0 0 0-8 8c0 4.03 3 7.42 7 7.93V19h-1a1 1 0 0 0-1 1H2v2h7a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1h7v-2h-7a1 1 0 0 0-1-1h-1v-1.07c4-.5 7-3.9 7-7.93a8 8 0 0 0-8-8m0 2s.74 1.28 1.26 3h-2.52C11.26 5.28 12 4 12 4m-2.23.43c-.27.5-.68 1.41-1.03 2.57H6.81C7.5 5.84 8.5 4.93 9.77 4.43m4.46.01c1.27.5 2.27 1.4 2.96 2.56h-1.93c-.35-1.16-.76-2.07-1.03-2.56M6.09 9h2.23c-.04.33-.07.66-.07 1c0 .34.03.67.07 1H6.09a5.551 5.551 0 0 1 0-2m4.23 0h3.36c.04.33.07.66.07 1c0 .34-.03.67-.07 1h-3.36c-.04-.33-.07-.66-.07-1c0-.34.03-.67.07-1m5.36 0h2.23a5.551 5.551 0 0 1 0 2h-2.23c.04-.33.07-.66.07-1c0-.34-.03-.67-.07-1m-8.87 4h1.93c.35 1.16.76 2.07 1.03 2.56c-1.27-.5-2.27-1.4-2.96-2.56m3.93 0h2.52c-.52 1.72-1.26 3-1.26 3s-.74-1.28-1.26-3m4.52 0h1.93c-.69 1.16-1.69 2.07-2.96 2.57c.27-.5.68-1.41 1.03-2.57Z"/>',
   moon: '<path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8C13.02 2.96 12.56 3 12 3z"/>',
@@ -865,19 +1014,20 @@ async function openAdmin() {
     window.__udenavAdmin?.mountAdmin?.($('#adminRoot'));
   } catch (e) {
     $('#modalTitle').textContent = '后台加载失败';
-    console.warn('[udenav] 后台加载失败', e);
+    console.warn('[UDeNav] 后台加载失败', e);
   }
 }
 
-/* 前台右键「编辑」：只挂一个卡片编辑弹窗组件，完全不碰后台面板。
+/* 前台右键「编辑」/ 分组「＋」新增：只挂一个卡片编辑弹窗组件，完全不碰后台面板。
    它有自己的挂载点 #editRoot，与 #adminRoot 是两个独立 Vue 实例，
-   所以从点下去的第一帧起就只有编辑弹窗，不会有后台面板闪一下 */
+   所以从点下去的第一帧起就只有编辑弹窗，不会有后台面板闪一下。
+   id 传 0（或省略）即新增模式 */
 async function openItemEditor(gid, id) {
   try {
     await loadAdmin();                       // 只取 JS/CSS，不挂后台面板
-    window.__udenavAdmin.openItemEditor($('#editRoot'), Number(gid), Number(id));
+    window.__udenavAdmin.openItemEditor($('#editRoot'), Number(gid), Number(id) || 0);
   } catch (e) {
-    console.warn('[udenav] 编辑弹窗加载失败', e);
+    console.warn('[UDeNav] 编辑弹窗加载失败', e);
     ctxToast('加载失败，请重试');
   }
 }
@@ -981,22 +1131,23 @@ function buildCtxMenu(it) {
   const idx = items.findIndex(x => x.id === it.id);
   const canPrev = idx > 0;
   const canNext = idx >= 0 && idx < items.length - 1;
-  const moveRow = managed ? `<div class="row2">
-      <button data-act="prev" data-tip="向前移动一位" ${canPrev ? '' : 'disabled'}>${svgOf(CTX_ICONS.prev)}</button>
-      <button data-act="next" data-tip="向后移动一位" ${canNext ? '' : 'disabled'}>${svgOf(CTX_ICONS.next)}</button>
-    </div>` : '';
+  /* 快捷操作统一排成一行 5 格：公网 / 内网 / 复制 / 前移 / 后移 */
+  const moveBtns = managed
+    ? `<button data-act="prev" data-tip="向前移动一位" ${canPrev ? '' : 'disabled'}>${svgOf(CTX_ICONS.prev)}</button>`
+      + `<button data-act="next" data-tip="向后移动一位" ${canNext ? '' : 'disabled'}>${svgOf(CTX_ICONS.next)}</button>`
+    : '';
   ctxMenu.innerHTML =
-    `<div class="mi" data-act="open">打开默认地址</div>`
-    + `<div class="row3">
+    `<div class="mi" data-act="open">${svgOf(CTX_ICONS.open)}<span>打开默认地址</span></div>`
+    + `<div class="acts">
          <button data-act="wan" data-tip="打开公网地址" ${dis(wan)}>${svgOf(CTX_ICONS.open)}</button>
          <button data-act="lan" data-tip="打开内网地址" ${dis(lan)}>${svgOf(ICON.lan)}</button>
          <button data-act="copy" data-tip="复制链接" ${dis(pickUrl(it))}>${svgOf(CTX_ICONS.link)}</button>
+         ${moveBtns}
        </div>`
-    + moveRow
     + (managed
       ? `<div class="sep"></div>
-         <div class="mi" data-act="edit">${svgOf(CTX_ICONS.edit)}编辑</div>
-         <div class="mi danger" data-act="del">${svgOf(CTX_ICONS.trash)}删除</div>`
+         <div class="mi" data-act="edit">${svgOf(CTX_ICONS.edit)}<span>编辑</span></div>
+         <div class="mi danger" data-act="del">${svgOf(CTX_ICONS.trash)}<span>删除</span></div>`
       : '');
 }
 
@@ -1104,6 +1255,16 @@ ctxMenu.addEventListener('click', e => {
   ctxAction(btn.dataset.act);
 });
 
+/* 分组标题旁的「＋」：往该分组加一张卡片。
+   复用右键编辑那套弹窗（EditApp 传 id=0 即新增模式，标题自动变「添加卡片」），
+   不打开后台面板 */
+$('#groups').addEventListener('click', e => {
+  const b = e.target.closest('.g-add');
+  if (!b) return;
+  e.preventDefault();
+  openItemEditor(Number(b.dataset.add), 0);
+});
+
 /* 事件委托：#groups 里任何 .card / .mini 上右键都弹菜单。
    未登录的访客不提供这套管理菜单（编辑/删除都要求登录），走浏览器默认右键 */
 $('#groups').addEventListener('contextmenu', e => {
@@ -1123,6 +1284,9 @@ $('#groups').addEventListener('contextmenu', e => {
   const y = Math.max(8, Math.min(e.clientY, innerHeight - r.height - 8));
   ctxMenu.style.left = x + 'px';
   ctxMenu.style.top = y + 'px';
+  /* 缩放原点对准鼠标落点：贴右侧/下侧被夹回来时，也还是从光标处展开 */
+  ctxMenu.style.setProperty('--ox', (e.clientX - x) + 'px');
+  ctxMenu.style.setProperty('--oy', (e.clientY - y) + 'px');
 });
 
 /* 点别处 / 右键别处 / Esc / 滚动 / 改窗口大小 → 关菜单 */
@@ -1133,7 +1297,7 @@ window.addEventListener('resize', closeCtx);
 
 /* ---------- 启动：优先读后端，读不到就用内置数据 ---------- */
 const FALLBACK = {
-  config: { logo_text: 'udenav', favicon: '', background_blur: 10, background_mask: 0.2, margin_top: 6, icon_style: 'info', search_box_show: 1, theme: 'dark', search_engines: DEFAULT_ENGINES },
+  config: { logo_text: 'UDeNav', favicon: '', background_blur: 10, background_mask: 0.2, margin_top: 6, icon_style: 'info', search_box_show: 1, theme: 'dark', search_engines: DEFAULT_ENGINES },
   groups: [
     { id: 1, title: '常用', description: '每天要打开的', cardStyle: 'info', items: [
       { title: '百度', url: 'https://www.baidu.com', description: '中文搜索', color: '#2932e1', openMethod: 2 },
@@ -1212,6 +1376,31 @@ function initMotion() {
   }, { rootMargin: '0px 0px -8% 0px', threshold: 0.06 });
   els().filter(el => !inViewport(el)).forEach(el => io.observe(el));
 }
+
+/* ---------- 返回顶部 ----------
+   页面滚动交给 #scroller（body 是 overflow:hidden），所以阈值要读容器自身的 scrollTop，
+   监听 window 的 scroll 在这里永远不触发。滚不足一屏时按钮保持隐藏，
+   回到顶部附近自动收起，避免「到底了按钮还杵在那」。 */
+(function initBackTop(){
+  const btn = document.getElementById('toTop');
+  const sc = document.getElementById('scroller');
+  if (!btn || !sc) return;
+  const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let raf = 0;
+  const sync = () => {
+    raf = 0;
+    btn.classList.toggle('on', sc.scrollTop > 240);
+  };
+  sc.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(sync); }, { passive: true });
+  addEventListener('resize', sync);
+  sync();
+  btn.addEventListener('click', () => {
+    tipHide();
+    if (RM || !sc.scrollTo) sc.scrollTop = 0;
+    else sc.scrollTo({ top: 0, behavior: 'smooth' });
+    btn.blur();   // 免得点了之后空格/回车又把页面弹下去
+  });
+})();
 </script>
 </body>
 </html>

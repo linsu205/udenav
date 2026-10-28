@@ -1,4 +1,4 @@
-# udenav
+# UDeNav
 
 Cloudflare Workers 导航页（GitHub 自动部署，**无需 R2**）
 

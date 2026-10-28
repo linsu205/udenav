@@ -1,8 +1,9 @@
 /* ============================================================
-   UDENAV 后台主题 —— 参考 sun-panel，双主题跟随访客页
+   UDeNav 后台主题 —— 参考 sun-panel，双主题跟随访客页
    深色分层：底 #17191c → 侧栏/卡片 #1f2327 → 内嵌 #2b3036 → 控件 #2e343a
    浅色分层：底 #eef1f5 → 卡片 #ffffff → 内嵌 #f6f8fa → 控件 #f7f8fa
-   强调色：薄荷绿 #2fbf6b
+   品牌色：项目 logo 蓝 #409eff（主按钮、选中态、强调文字、图标）
+   语义色：成功/在线/检查通过 才用绿 --sp-ok，别拿它当品牌色用
    所有颜色一律走 --sp-* 变量，禁止在组件里写死色值
    ============================================================ */
 
@@ -21,8 +22,12 @@
   --sp-text: #1f2328;
   --sp-dim: #6b7480;
   --sp-faint: #99a2ac;
-  --sp-accent: #2fbf6b;
-  --sp-accent-hover: #2bb25f;
+  --sp-accent: #409eff;        /* 品牌主色 = 项目 logo 蓝 */
+  --sp-accent-hover: #337ecc;
+  --sp-accent-rgb: 64, 158, 255;               /* 半透明底/描边：rgba(var(--sp-accent-rgb), .12) */
+  --sp-accent-soft: rgba(64, 158, 255, .10);   /* 选中项底色 */
+  --sp-ok: #22a95c;            /* 成功 / 在线 / 检查通过，只表状态 */
+  --sp-ok-rgb: 34, 169, 92;
   --sp-danger: #f56c6c;
   --sp-danger-text: #d65251;
   --sp-btn-text: #4a525c;      /* 普通按钮文字 */
@@ -34,23 +39,30 @@
   --sp-preview-border: #e0e5eb;
   --sp-scrollbar: #ccd2d9;
   --sp-scrollbar-hover: #b4bcc6;
+  /* 外网 / 内网 线路色标：公网走蓝、内网走琥珀，比纯灰字更容易扫读 */
+  --sp-tag-wan-fg: #2c6da8;
+  --sp-tag-wan-bg: rgba(64, 158, 255, .10);
+  --sp-tag-wan-bd: rgba(64, 158, 255, .24);
+  --sp-tag-lan-fg: #a9741f;
+  --sp-tag-lan-bg: rgba(230, 162, 60, .14);
+  --sp-tag-lan-bd: rgba(230, 162, 60, .34);
   --sp-radius: 12px;
 
-  /* 品牌主色两种主题一致 */
+  /* 品牌主色两种主题一致：蓝走 Element 默认蓝阶梯，绿只留给 success */
   --el-color-primary: var(--sp-accent);
-  --el-color-primary-dark-2: #28a75d;
-  --el-color-primary-light-3: #52c987;
-  --el-color-primary-light-5: #7ad6a3;
-  --el-color-primary-light-7: #a3e4bf;
-  --el-color-primary-light-8: #bfebd3;
-  --el-color-primary-light-9: #eef8f2;
-  --el-color-success: var(--sp-accent);
-  --el-color-success-dark-2: #28a75d;
-  --el-color-success-light-3: #52c987;
-  --el-color-success-light-5: #7ad6a3;
-  --el-color-success-light-7: #a3e4bf;
-  --el-color-success-light-8: #bfebd3;
-  --el-color-success-light-9: #eef8f2;
+  --el-color-primary-dark-2: #337ecc;
+  --el-color-primary-light-3: #79bbff;
+  --el-color-primary-light-5: #a0cfff;
+  --el-color-primary-light-7: #c6e2ff;
+  --el-color-primary-light-8: #d9ecff;
+  --el-color-primary-light-9: #ecf5ff;
+  --el-color-success: var(--sp-ok);
+  --el-color-success-dark-2: #1c8a4a;
+  --el-color-success-light-3: #62c58e;
+  --el-color-success-light-5: #91d7b1;
+  --el-color-success-light-7: #c0e9d2;
+  --el-color-success-light-8: #d8f2e3;
+  --el-color-success-light-9: #f0faf5;
 
   /* Element Plus 基础变量（浅色）：与深色块一一对应，保证控件不串色 */
   --el-bg-color: var(--sp-panel);
@@ -90,6 +102,10 @@ html.dark {
   --sp-dim: #9aa3ab;
   --sp-faint: #6b7480;
   --sp-danger-text: #e8908f;
+  /* 深底上的绿色要提亮一档，否则状态勾发黑 */
+  --sp-ok: #3ecf7e;
+  --sp-ok-rgb: 62, 207, 126;
+  --sp-accent-soft: rgba(64, 158, 255, .18);   /* 深底上 10% 太淡，选中项几乎看不出 */
   --sp-btn-text: #d3d8dd;
   --sp-btn-fg: #ffffff;
   --sp-alert-bg: rgba(64, 158, 255, .08);
@@ -99,6 +115,13 @@ html.dark {
   --sp-preview-border: #3a4048;
   --sp-scrollbar: #31373d;
   --sp-scrollbar-hover: #3d444c;
+  /* 暗色下把色标文字提亮，否则蓝/琥珀在深底上发糊 */
+  --sp-tag-wan-fg: #8fb6d8;
+  --sp-tag-wan-bg: rgba(64, 158, 255, .13);
+  --sp-tag-wan-bd: rgba(64, 158, 255, .26);
+  --sp-tag-lan-fg: #d8a45c;
+  --sp-tag-lan-bg: rgba(230, 162, 60, .14);
+  --sp-tag-lan-bd: rgba(230, 162, 60, .30);
   --el-bg-color: var(--sp-panel);
   --el-bg-color-page: var(--sp-bg);
   --el-bg-color-overlay: var(--sp-card);
@@ -132,6 +155,9 @@ html.dark {
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   transition: background .2s, color .2s;
+  /* 作为滚动容器（内嵌弹窗里 overflow:auto）时始终预留滚动条槽位：
+     内容一多一少滚动条就出现/消失，可用宽度差 8px，贴右的「添加分组」会横向跳一下 */
+  scrollbar-gutter: stable;
 }
 #adminRoot, #adminRoot *, #adminRoot *::before, #adminRoot *::after { box-sizing: border-box; }
 
@@ -216,14 +242,24 @@ html.dark {
   --el-button-text-color: var(--sp-btn-text);
   --el-button-hover-text-color: var(--sp-btn-fg);
 }
-.el-button--primary, .el-button--success {
+/* 主按钮 = 品牌蓝；success 只在「完成 / 通过」这类语义上才用，别拿它当主色 */
+.el-button--primary {
   background: var(--sp-accent); border-color: var(--sp-accent); color: #fff;
 }
-.el-button--primary:hover, .el-button--success:hover {
+.el-button--primary:hover {
   background: var(--sp-accent-hover); border-color: var(--sp-accent-hover); color: #fff;
 }
-.el-button--primary.is-plain, .el-button--success.is-plain {
-  background: rgba(47, 191, 107, .12); border-color: rgba(47, 191, 107, .45); color: var(--sp-accent);
+.el-button--primary.is-plain {
+  background: rgba(var(--sp-accent-rgb), .10); border-color: rgba(var(--sp-accent-rgb), .45); color: var(--sp-accent);
+}
+.el-button--success {
+  background: var(--sp-ok); border-color: var(--sp-ok); color: #fff;
+}
+.el-button--success:hover {
+  background: #1f9a54; border-color: #1f9a54; color: #fff;
+}
+.el-button--success.is-plain {
+  background: rgba(var(--sp-ok-rgb), .12); border-color: rgba(var(--sp-ok-rgb), .45); color: var(--sp-ok);
 }
 .el-button--danger { background: var(--sp-danger); border-color: var(--sp-danger); color: #fff; }
 .el-button--danger:hover { background: #f78989; border-color: #f78989; }
@@ -302,8 +338,8 @@ html.dark {
   /* --adm-h 由 mount.ts 按挂载容器实测高度写入；独立成页时退回 100vh */
   min-height: var(--adm-h, 100vh); display: flex; align-items: center; justify-content: center; padding: 20px;
   background:
-    radial-gradient(ellipse 60% 45% at 18% 8%, rgba(47, 191, 107, .07), transparent),
-    radial-gradient(ellipse 50% 40% at 85% 90%, rgba(64, 158, 255, .06), transparent),
+    radial-gradient(ellipse 60% 45% at 18% 8%, rgba(var(--sp-accent-rgb), .08), transparent),
+    radial-gradient(ellipse 50% 40% at 85% 90%, rgba(var(--sp-accent-rgb), .06), transparent),
     var(--sp-bg);
 }
 .sp-login .sp-card { width: min(400px, 94vw); padding: 30px 30px 26px; }

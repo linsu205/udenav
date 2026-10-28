@@ -155,25 +155,33 @@ async function doPurge() {
         <div class="kpi-label">累计访问</div>
         <div class="kpi-num">{{ st.total_visits || 0 }}</div>
         <div class="kpi-sub">上线以来全部请求</div>
-        <el-icon class="kpi-ic" :size="30"><VideoPlay /></el-icon>
+        <el-icon class="kpi-ic" :size="30">
+          <VideoPlay />
+        </el-icon>
       </div>
       <div class="kpi" style="--kc:#409eff">
         <div class="kpi-label">今天访问</div>
         <div class="kpi-num">{{ st.visits_today || 0 }}</div>
         <div class="kpi-sub">东八区当日 0 点起</div>
-        <el-icon class="kpi-ic" :size="30"><Odometer /></el-icon>
+        <el-icon class="kpi-ic" :size="30">
+          <Odometer />
+        </el-icon>
       </div>
       <div class="kpi" style="--kc:#e6a23c">
         <div class="kpi-label">最近 24 小时</div>
         <div class="kpi-num">{{ st.visits_24h || 0 }}</div>
         <div class="kpi-sub">滚动 24 小时窗口</div>
-        <el-icon class="kpi-ic" :size="30"><Clock /></el-icon>
+        <el-icon class="kpi-ic" :size="30">
+          <Clock />
+        </el-icon>
       </div>
       <div class="kpi" style="--kc:#a78bfa">
         <div class="kpi-label">独立访客</div>
         <div class="kpi-num">{{ st.log?.ips || 0 }}</div>
         <div class="kpi-sub">去重 IP 哈希</div>
-        <el-icon class="kpi-ic" :size="30"><User /></el-icon>
+        <el-icon class="kpi-ic" :size="30">
+          <User />
+        </el-icon>
       </div>
     </div>
 
@@ -185,7 +193,9 @@ async function doPurge() {
       </div>
       <div class="trend">
         <div class="tbar" v-for="t in st.trend || []" :key="t.day" :title="t.day + '  ·  ' + (t.n || 0) + ' 次'">
-          <div class="zone"><div class="col" :style="{ height: ((t.n || 0) / maxT * 100) + '%' }"></div></div>
+          <div class="zone">
+            <div class="col" :style="{ height: ((t.n || 0) / maxT * 100) + '%' }"></div>
+          </div>
           <div class="lb">{{ t.day.slice(5) }}</div>
         </div>
       </div>
@@ -210,7 +220,8 @@ async function doPurge() {
       </div>
 
       <div class="stack">
-        <i v-for="t in stackList" :key="t.key" :style="{ width: t.pct + '%', background: t.color }" :title="t.label + '  ' + fmt(t.bytes)"></i>
+        <i v-for="t in stackList" :key="t.key" :style="{ width: t.pct + '%', background: t.color }"
+          :title="t.label + '  ' + fmt(t.bytes)"></i>
       </div>
 
       <div class="srow" v-for="t in st.db?.list || []" :key="t.key">
@@ -248,7 +259,9 @@ async function doPurge() {
         </div>
 
         <div v-if="st.log?.warn" class="warn">
-          <el-icon :size="14"><WarningFilled /></el-icon>
+          <el-icon :size="14">
+            <WarningFilled />
+          </el-icon>
           <span>
             日志已有 <b>{{ st.log?.rows || 0 }}</b> 行 / <b>{{ fmt(st.log?.bytes || 0) }}</b>，
             超过建议上限 {{ st.log?.warn_rows }} 行 / {{ fmt(st.log?.warn_bytes || 0) }}
@@ -287,13 +300,16 @@ async function doPurge() {
           <span class="res-total-l">本次加载总量</span>
         </div>
         <div v-if="resTotal > 0" class="res-bar">
-          <i v-for="s in resSegs" :key="s.key" :style="{ width: s.pct + '%', background: s.color }" :title="s.label + '  ' + fmt(s.v)"></i>
+          <i v-for="s in resSegs" :key="s.key" :style="{ width: s.pct + '%', background: s.color }"
+            :title="s.label + '  ' + fmt(s.v)"></i>
         </div>
         <div class="res">
           <div class="res-i" v-for="s in resSegs" :key="s.key">
-            <div class="res-hd"><i class="res-dot" :style="{ background: s.color }"></i><span class="res-l">{{ s.label }}</span></div>
+            <div class="res-hd"><i class="res-dot" :style="{ background: s.color }"></i><span class="res-l">{{ s.label
+                }}</span></div>
             <div class="res-n">{{ fmt(s.v) }}</div>
-            <div class="res-s">{{ s.key === 'js' ? res.jsN + ' 个文件' : s.key === 'css' ? 'Element Plus + 主题' : s.key === 'img' ? '内联 SVG / favicon' : '字体 / 请求' }}</div>
+            <div class="res-s">{{ s.key === 'js' ? res.jsN + ' 个文件' : s.key === 'css' ? 'Element Plus + 主题' : s.key ===
+              'img' ? '内联 SVG / favicon' : '字体 / 请求' }}</div>
           </div>
         </div>
         <div v-if="!resOk" class="note">资源体积为 0，说明全部命中浏览器缓存；点「刷新」前按 Ctrl+F5 强制重载可测到实际大小。</div>
@@ -302,7 +318,9 @@ async function doPurge() {
       <div class="sp-card">
         <div class="sp-card-title">当前运行环境</div>
         <div class="env-hero">
-          <el-icon :size="20"><Monitor /></el-icon>
+          <el-icon :size="20">
+            <Monitor />
+          </el-icon>
           <div>
             <div class="env-hero-t">{{ uaBrief }}</div>
             <div class="env-hero-s">{{ envInfo.lang || '—' }} · {{ envInfo.tz }}</div>
@@ -317,7 +335,6 @@ async function doPurge() {
         <div class="kv"><span>登录身份</span><b>{{ store.user?.username }}</b></div>
         <div class="kv"><span>浏览器 UA</span><b class="ell" :title="envInfo.ua">{{ envInfo.ua || '—' }}</b></div>
         <div class="kv"><span>部署环境</span><b>Cloudflare Workers</b></div>
-        <div class="note">站点跑在 Cloudflare Workers 上，是 Serverless 环境，没有本地磁盘，所以这里无法给出项目源码和文件系统的占用；能实测的就是数据库写入量和页面加载体积。</div>
       </div>
     </div>
 
@@ -326,7 +343,8 @@ async function doPurge() {
       <div class="sp-card-title">统计口径说明</div>
       <ul class="notes">
         <li><b>访问计数</b>来自访客打开首页时的 /api/public/panel 请求，按 IP 哈希去重，只存哈希不存明文。</li>
-        <li><b>数据占用</b>是把每张表的文本列转成 UTF-8 字节累加、数字列每行按 8 字节计得出的估算值，不是 Cloudflare 控制台上显示的 D1 磁盘用量（那个含页填充和索引开销，实际会更大一些）。</li>
+        <li><b>数据占用</b>是把每张表的文本列转成 UTF-8 字节累加、数字列每行按 8 字节计得出的估算值，不是 Cloudflare 控制台上显示的 D1 磁盘用量（那个含页填充和索引开销，实际会更大一些）。
+        </li>
         <li><b>页面体积</b>只统计后台这一个页面本次加载的资源，不含访客首页和后台数据库。</li>
         <li>想清理占用，主要看<b>「卡片图标占用」</b>：把大图片改成外链地址，或减小上传尺寸，数据库会立刻变小。</li>
         <li><b>访问日志</b>可以直接清：点「清理日志」，可选只保留最近 7 / 30 天或全部清空。清理后「累计访问」「今天」「24 小时」和趋势图会按剩余日志重新计算，历史数字会随之下降。</li>
@@ -362,149 +380,578 @@ async function doPurge() {
 </template>
 
 <style scoped>
-  .head-right { display: flex; align-items: center; gap: 10px; }
-  .upd { font-size: 12px; color: var(--sp-faint); }
+.head-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
-  /* KPI */
-  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
-  .kpi {
-    position: relative; overflow: hidden;
-    background: var(--sp-card); border: 1px solid var(--sp-card-border); border-radius: 12px;
-    padding: 15px 18px 15px 22px;
+.upd {
+  font-size: 12px;
+  color: var(--sp-faint);
+}
+
+/* KPI */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.kpi {
+  position: relative;
+  overflow: hidden;
+  background: var(--sp-card);
+  border: 1px solid var(--sp-card-border);
+  border-radius: 12px;
+  padding: 15px 18px 15px 22px;
+}
+
+.kpi::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 11px;
+  bottom: 11px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--kc, var(--sp-accent));
+}
+
+.kpi-label {
+  font-size: 12.5px;
+  color: var(--sp-dim);
+}
+
+.kpi-num {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--sp-text);
+  letter-spacing: .5px;
+  margin-top: 6px;
+  line-height: 1.1;
+}
+
+.kpi-sub {
+  font-size: 11.5px;
+  color: var(--sp-faint);
+  margin-top: 6px;
+}
+
+.kpi-ic {
+  position: absolute;
+  right: 11px;
+  top: 11px;
+  color: var(--kc);
+  opacity: .22;
+}
+
+.tt-note {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--sp-faint);
+}
+
+.tt-btn {
+  margin-left: auto;
+  font-weight: 400;
+}
+
+/* 日志超限提示 */
+.warn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  margin-bottom: 14px;
+  border-radius: 9px;
+  background: rgba(230, 162, 60, .12);
+  border: 1px solid rgba(230, 162, 60, .32);
+  color: #e6a23c;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.warn b {
+  color: #e6a23c;
+}
+
+/* 清理日志弹窗 */
+.pg-now {
+  font-size: 13px;
+  color: var(--sp-dim);
+  margin-bottom: 14px;
+}
+
+.pg-now b {
+  color: var(--sp-text);
+}
+
+.pg-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.pg-tip {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--sp-card-in);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--sp-dim);
+}
+
+/* 趋势柱状图 */
+.trend {
+  display: flex;
+  gap: 5px;
+  height: 116px;
+  align-items: stretch;
+}
+
+.tbar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 7px;
+  min-width: 0;
+}
+
+.tbar .zone {
+  height: 92px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.tbar .col {
+  width: 100%;
+  max-width: 30px;
+  margin: 0 auto;
+  min-height: 2px;
+  border-radius: 5px 5px 2px 2px;
+  background: linear-gradient(180deg, var(--sp-accent), rgba(var(--sp-accent-rgb), .38));
+  transition: height .35s ease;
+}
+
+.tbar:hover .col {
+  background: linear-gradient(180deg, #79bbff, rgba(var(--sp-accent-rgb), .45));
+}
+
+.tbar .lb {
+  font-size: 10.5px;
+  color: var(--sp-faint);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* 数据占用 */
+.ov {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.ov-num {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--sp-accent);
+  letter-spacing: .5px;
+  line-height: 1.1;
+}
+
+.ov-sub {
+  font-size: 12.5px;
+  color: var(--sp-dim);
+  margin-top: 6px;
+}
+
+.ov-right {
+  display: flex;
+  gap: 26px;
+}
+
+.ov-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ov-item span {
+  font-size: 11.5px;
+  color: var(--sp-faint);
+}
+
+.ov-item b {
+  font-size: 14px;
+  color: var(--sp-text);
+  font-weight: 600;
+}
+
+.stack {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 14px;
+  background: var(--sp-card-in);
+}
+
+.stack i {
+  display: block;
+  height: 100%;
+  border-radius: 0;
+}
+
+.srow {
+  display: grid;
+  grid-template-columns: 10px 84px 1fr 76px 62px;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px solid var(--sp-card-border);
+}
+
+.srow .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.srow .lbl {
+  font-size: 13px;
+  color: var(--sp-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sbar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--sp-card-in);
+  overflow: hidden;
+}
+
+.sbar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width .35s ease;
+}
+
+.srow .bytes {
+  font-size: 12.5px;
+  color: var(--sp-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.srow .rows {
+  font-size: 11.5px;
+  color: var(--sp-faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 两列并排 */
+.row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.row2>.sp-card {
+  margin-bottom: 0;
+}
+
+.big2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.b2 {
+  background: var(--sp-card-in);
+  border-radius: 10px;
+  padding: 13px 14px;
+  text-align: center;
+}
+
+.b2-n {
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--sp-text);
+  line-height: 1.15;
+}
+
+.b2-l {
+  font-size: 11.5px;
+  color: var(--sp-dim);
+  margin-top: 5px;
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--sp-card-border);
+  font-size: 13px;
+}
+
+.kv span {
+  color: var(--sp-dim);
+  flex: none;
+}
+
+.kv b {
+  color: var(--sp-text);
+  font-weight: 600;
+  text-align: right;
+}
+
+.kv b.ell {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.res {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.res-i {
+  background: var(--sp-card-in);
+  border-radius: 10px;
+  padding: 12px 14px;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+
+.res-i:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .07);
+}
+
+.res-hd {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.res-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.res-n {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--sp-text);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.res-l {
+  font-size: 12.5px;
+  color: var(--sp-dim);
+}
+
+.res-s {
+  font-size: 11px;
+  color: var(--sp-faint);
+  margin-top: 2px;
+}
+
+/* 页面体积：汇总 + 占比条 */
+.res-total {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.res-total-n {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--sp-accent);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.res-total-l {
+  font-size: 12px;
+  color: var(--sp-faint);
+}
+
+.res-bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--sp-card-in);
+  margin-bottom: 12px;
+}
+
+.res-bar i {
+  display: block;
+  height: 100%;
+  transition: width .35s ease;
+}
+
+/* 运行环境：英雄区 + 信息 chips */
+.env-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--sp-card-in);
+  border-radius: 10px;
+  padding: 13px 14px;
+  margin-bottom: 12px;
+  color: var(--sp-accent);
+}
+
+.env-hero-t {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--sp-text);
+  line-height: 1.3;
+}
+
+.env-hero-s {
+  font-size: 11.5px;
+  color: var(--sp-faint);
+  margin-top: 3px;
+}
+
+.env-chips {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.chip {
+  background: var(--sp-card-in);
+  border-radius: 9px;
+  padding: 9px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  min-width: 0;
+}
+
+.chip span {
+  font-size: 10.5px;
+  color: var(--sp-faint);
+}
+
+.chip b {
+  font-size: 12.5px;
+  color: var(--sp-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 说明列表 */
+.notes {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notes li {
+  position: relative;
+  padding: 7px 0 7px 18px;
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--sp-dim);
+  border-top: 1px dashed var(--sp-card-border);
+}
+
+.notes li:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+
+.notes li::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 15px;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--sp-accent);
+  opacity: .55;
+}
+
+.notes li:first-child::before {
+  top: 10px;
+}
+
+.notes li b {
+  color: var(--sp-text);
+  font-weight: 600;
+}
+
+.note {
+  color: var(--sp-faint);
+  font-size: 12.5px;
+  line-height: 1.9;
+}
+
+@media (max-width: 768px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
-  .kpi::before {
-    content: ''; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px;
-    border-radius: 0 2px 2px 0; background: var(--kc, var(--sp-accent));
-  }
-  .kpi-label { font-size: 12.5px; color: var(--sp-dim); }
-  .kpi-num { font-size: 30px; font-weight: 700; color: var(--sp-text); letter-spacing: .5px; margin-top: 6px; line-height: 1.1; }
-  .kpi-sub { font-size: 11.5px; color: var(--sp-faint); margin-top: 6px; }
-  .kpi-ic { position: absolute; right: 11px; top: 11px; color: var(--kc); opacity: .22; }
 
-  .tt-note { margin-left: auto; font-size: 11.5px; font-weight: 400; color: var(--sp-faint); }
-  .tt-btn { margin-left: auto; font-weight: 400; }
-
-  /* 日志超限提示 */
-  .warn {
-    display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
-    padding: 9px 12px; margin-bottom: 14px; border-radius: 9px;
-    background: rgba(230, 162, 60, .12);
-    border: 1px solid rgba(230, 162, 60, .32);
-    color: #e6a23c; font-size: 12.5px; line-height: 1.5;
-  }
-  .warn b { color: #e6a23c; }
-
-  /* 清理日志弹窗 */
-  .pg-now { font-size: 13px; color: var(--sp-dim); margin-bottom: 14px; }
-  .pg-now b { color: var(--sp-text); }
-  .pg-mode { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
-  .pg-tip {
-    margin-top: 16px; padding: 10px 12px; border-radius: 9px;
-    background: var(--sp-card-in); font-size: 12px; line-height: 1.6; color: var(--sp-dim);
+  .row2 {
+    grid-template-columns: 1fr;
   }
 
-  /* 趋势柱状图 */
-  .trend { display: flex; gap: 5px; height: 116px; align-items: stretch; }
-  .tbar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 7px; min-width: 0; }
-  .tbar .zone { height: 92px; display: flex; align-items: flex-end; }
-  .tbar .col {
-    width: 100%; max-width: 30px; margin: 0 auto; min-height: 2px;
-    border-radius: 5px 5px 2px 2px;
-    background: linear-gradient(180deg, var(--sp-accent), rgba(47, 191, 107, .38));
-    transition: height .35s ease;
+  .srow {
+    grid-template-columns: 10px 74px 1fr 66px 54px;
+    gap: 8px;
   }
-  .tbar:hover .col { background: linear-gradient(180deg, #52c987, rgba(82, 201, 135, .45)); }
-  .tbar .lb { font-size: 10.5px; color: var(--sp-faint); text-align: center; white-space: nowrap; overflow: hidden; }
 
-  /* 数据占用 */
-  .ov { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; flex-wrap: wrap; }
-  .ov-num { font-size: 32px; font-weight: 700; color: var(--sp-accent); letter-spacing: .5px; line-height: 1.1; }
-  .ov-sub { font-size: 12.5px; color: var(--sp-dim); margin-top: 6px; }
-  .ov-right { display: flex; gap: 26px; }
-  .ov-item { display: flex; flex-direction: column; gap: 4px; }
-  .ov-item span { font-size: 11.5px; color: var(--sp-faint); }
-  .ov-item b { font-size: 14px; color: var(--sp-text); font-weight: 600; }
-
-  .stack { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 14px; background: var(--sp-card-in); }
-  .stack i { display: block; height: 100%; border-radius: 0; }
-
-  .srow { display: grid; grid-template-columns: 10px 84px 1fr 76px 62px; align-items: center; gap: 12px; padding: 7px 0; border-top: 1px solid var(--sp-card-border); }
-  .srow .dot { width: 9px; height: 9px; border-radius: 3px; }
-  .srow .lbl { font-size: 13px; color: var(--sp-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sbar { height: 6px; border-radius: 3px; background: var(--sp-card-in); overflow: hidden; }
-  .sbar i { display: block; height: 100%; border-radius: 3px; transition: width .35s ease; }
-  .srow .bytes { font-size: 12.5px; color: var(--sp-dim); text-align: right; font-variant-numeric: tabular-nums; }
-  .srow .rows { font-size: 11.5px; color: var(--sp-faint); text-align: right; font-variant-numeric: tabular-nums; }
-
-  /* 两列并排 */
-  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-  .row2 > .sp-card { margin-bottom: 0; }
-
-  .big2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-  .b2 { background: var(--sp-card-in); border-radius: 10px; padding: 13px 14px; text-align: center; }
-  .b2-n { font-size: 21px; font-weight: 700; color: var(--sp-text); line-height: 1.15; }
-  .b2-l { font-size: 11.5px; color: var(--sp-dim); margin-top: 5px; }
-
-  .kv { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-top: 1px solid var(--sp-card-border); font-size: 13px; }
-  .kv span { color: var(--sp-dim); flex: none; }
-  .kv b { color: var(--sp-text); font-weight: 600; text-align: right; }
-  .kv b.ell { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-  .res { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
-  .res-i { background: var(--sp-card-in); border-radius: 10px; padding: 12px 14px; transition: transform .18s ease, box-shadow .18s ease; }
-  .res-i:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, .07); }
-  .res-hd { display: flex; align-items: center; gap: 7px; }
-  .res-dot { width: 8px; height: 8px; border-radius: 3px; flex: none; }
-  .res-n { font-size: 20px; font-weight: 700; color: var(--sp-text); margin-top: 4px; font-variant-numeric: tabular-nums; }
-  .res-l { font-size: 12.5px; color: var(--sp-dim); }
-  .res-s { font-size: 11px; color: var(--sp-faint); margin-top: 2px; }
-
-  /* 页面体积：汇总 + 占比条 */
-  .res-total { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
-  .res-total-n { font-size: 26px; font-weight: 700; color: var(--sp-accent); line-height: 1.1; font-variant-numeric: tabular-nums; }
-  .res-total-l { font-size: 12px; color: var(--sp-faint); }
-  .res-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--sp-card-in); margin-bottom: 12px; }
-  .res-bar i { display: block; height: 100%; transition: width .35s ease; }
-
-  /* 运行环境：英雄区 + 信息 chips */
-  .env-hero {
-    display: flex; align-items: center; gap: 12px;
-    background: var(--sp-card-in); border-radius: 10px; padding: 13px 14px; margin-bottom: 12px;
-    color: var(--sp-accent);
+  .tbar .lb {
+    font-size: 9.5px;
   }
-  .env-hero-t { font-size: 15px; font-weight: 700; color: var(--sp-text); line-height: 1.3; }
-  .env-hero-s { font-size: 11.5px; color: var(--sp-faint); margin-top: 3px; }
-  .env-chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
-  .chip {
-    background: var(--sp-card-in); border-radius: 9px; padding: 9px 6px;
-    display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0;
-  }
-  .chip span { font-size: 10.5px; color: var(--sp-faint); }
-  .chip b { font-size: 12.5px; color: var(--sp-text); font-weight: 600; font-variant-numeric: tabular-nums; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  /* 说明列表 */
-  .notes { margin: 2px 0 0; padding: 0; list-style: none; }
-  .notes li {
-    position: relative; padding: 7px 0 7px 18px;
-    font-size: 12.5px; line-height: 1.8; color: var(--sp-dim);
-    border-top: 1px dashed var(--sp-card-border);
+  .kv b.ell {
+    max-width: 210px;
   }
-  .notes li:first-child { border-top: 0; padding-top: 2px; }
-  .notes li::before {
-    content: ''; position: absolute; left: 3px; top: 15px;
-    width: 6px; height: 6px; border-radius: 2px; background: var(--sp-accent); opacity: .55;
-  }
-  .notes li:first-child::before { top: 10px; }
-  .notes li b { color: var(--sp-text); font-weight: 600; }
 
-  .note { color: var(--sp-faint); font-size: 12.5px; line-height: 1.9; }
-
-  @media (max-width: 768px) {
-    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
-    .row2 { grid-template-columns: 1fr; }
-    .srow { grid-template-columns: 10px 74px 1fr 66px 54px; gap: 8px; }
-    .tbar .lb { font-size: 9.5px; }
-    .kv b.ell { max-width: 210px; }
-    .env-chips { grid-template-columns: repeat(2, 1fr); }
+  .env-chips {
+    grid-template-columns: repeat(2, 1fr);
   }
+}
 </style>

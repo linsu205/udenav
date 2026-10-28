@@ -365,8 +365,8 @@ export async function createIcon(env: Env, req: Request): Promise<Response> {
   const next = await env.DB.prepare('SELECT COALESCE(MAX(sort), -10) AS n FROM item_icon WHERE group_id = ?').bind(gid).first<{ n: number }>();
   const icon_type: IconType = normIconType(body.icon_type);
   const res = await env.DB
-    .prepare('INSERT INTO item_icon (group_id, title, url, lan_url, icon_type, icon_text, icon_url, description, open_method, background_color, sort, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(gid, title, String(body.url || ''), String(body.lan_url || ''), icon_type, String(body.icon_text || ''), String(body.icon_url || ''), String(body.description || ''), Number(body.open_method ?? 2), String(body.background_color ?? ''), Number(next?.n ?? -10) + 10, s.sub)
+    .prepare('INSERT INTO item_icon (group_id, title, url, lan_url, icon_type, icon_text, icon_name, icon_url, description, open_method, background_color, sort, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(gid, title, String(body.url || ''), String(body.lan_url || ''), icon_type, String(body.icon_text || ''), String(body.icon_name || ''), String(body.icon_url || ''), String(body.description || ''), Number(body.open_method ?? 2), String(body.background_color ?? ''), Number(next?.n ?? -10) + 10, s.sub)
     .run();
   return json({ ok: true, id: Number(res.meta.last_row_id) });
 }
@@ -378,16 +378,43 @@ export async function patchIcon(env: Env, req: Request, id: number): Promise<Res
   const body = await readJson(req);
   const title = body.title !== undefined ? String(body.title).trim() : ic.title;
   if (!title) return bad('名称不能为空');
-  const icon_type: IconType = normIconType(body.icon_type);
+  /* icon_type 未传时必须保留原值 —— normIconType(undefined) 会归一成 'color'，
+     而拖拽排序只 PATCH { sort }，不改这里每次拖一下就把在线/图片图标打回纯色，
+     前台随之显示成另一套图标（后台列表和导航对不上的根源之一） */
+  const icon_type: IconType = body.icon_type !== undefined ? normIconType(body.icon_type) : ic.icon_type;
   // 背景色：必须区分「没传这个字段」与「传了但为 null（用户点清除颜色）」。
   // el-color-picker 清除后 v-model 为 null，用 ?? 兜底会把 null 当成未传而回退旧色，导致清不掉。
   const hasBg = Object.prototype.hasOwnProperty.call(body, 'background_color');
   const bgColor = hasBg ? String(body.background_color ?? '') : ic.background_color;
+
+  /* 换组：body.group_id 有效且与当前不同才动。
+     换组时不沿用原来的 sort —— 那张卡的 sort 属于旧组的编号序列，
+     直接搬过去可能落在新组中间（ORDER BY sort,id），看起来像「插队」；
+     而且新旧组 sort 相同的情况很常见，顺序会完全不可控。
+     所以统一追加到目标组末尾（MAX(sort)+10），与新建卡片的规则保持一致。 */
+  let groupId = ic.group_id;
+  let sortVal = Number(body.sort ?? ic.sort);
+  let movedGroup = false;
+  if (body.group_id !== undefined && body.group_id !== null && body.group_id !== '') {
+    const want = Number(body.group_id);
+    if (!Number.isFinite(want) || want <= 0) return bad('目标分组无效');
+    if (want !== ic.group_id) {
+      const g = await env.DB.prepare('SELECT id FROM item_icon_group WHERE id = ?').bind(want).first();
+      if (!g) return bad('目标分组不存在', 404);
+      const mx = await env.DB
+        .prepare('SELECT COALESCE(MAX(sort), 0) AS m FROM item_icon WHERE group_id = ?')
+        .bind(want).first<{ m: number }>();
+      groupId = want;
+      sortVal = Number(mx?.m ?? 0) + 10;
+      movedGroup = true;
+    }
+  }
+
   await env.DB
-    .prepare('UPDATE item_icon SET title=?, url=?, lan_url=?, icon_type=?, icon_text=?, icon_url=?, description=?, open_method=?, background_color=?, sort=?, updated_at=? WHERE id=?')
-    .bind(title, String(body.url ?? ic.url), String(body.lan_url ?? ic.lan_url), icon_type, String(body.icon_text ?? ic.icon_text), String(body.icon_url ?? ic.icon_url), String(body.description ?? ic.description), Number(body.open_method ?? ic.open_method), bgColor, Number(body.sort ?? ic.sort), Date.now(), id)
+    .prepare('UPDATE item_icon SET title=?, url=?, lan_url=?, icon_type=?, icon_text=?, icon_name=?, icon_url=?, description=?, open_method=?, background_color=?, sort=?, group_id=?, updated_at=? WHERE id=?')
+    .bind(title, String(body.url ?? ic.url), String(body.lan_url ?? ic.lan_url), icon_type, String(body.icon_text ?? ic.icon_text), String(body.icon_name ?? ic.icon_name), String(body.icon_url ?? ic.icon_url), String(body.description ?? ic.description), Number(body.open_method ?? ic.open_method), bgColor, sortVal, groupId, Date.now(), id)
     .run();
-  return json({ ok: true });
+  return json({ ok: true, group_id: groupId, moved: movedGroup });
 }
 
 /**
@@ -422,6 +449,125 @@ export async function deleteIcon(env: Env, req: Request, id: number): Promise<Re
   await requireRole(req, env, 'editor');
   const res = await env.DB.prepare('DELETE FROM item_icon WHERE id = ?').bind(id).run();
   return json({ ok: true, changed: Number(res?.meta?.changes ?? 0) });
+}
+
+/* ---------------- 图片管理 ---------------- */
+
+/**
+ * 全库图片清单：卡片图标 / 分组图标（item_icon.icon_url、item_icon_group.icon_url）
+ * + 站点图片（user_config 里的 background_image / favicon）。
+ * 图片有两种形态：inline（data: 开头的 base64，真实存在 D1 里）和 link（外链 URL，库中只存地址）。
+ * 字节数用 LENGTH(CAST(... AS BLOB)) 统计（SQLite 的 LENGTH 对 TEXT 只算字符数，见 stats 同款注释）。
+ */
+export async function listImages(env: Env, req: Request): Promise<Response> {
+  await requireRole(req, env, 'editor');
+
+  const [cards, groups, cfgRows] = await Promise.all([
+    env.DB
+      .prepare(`SELECT i.id, i.title, i.icon_url, i.background_color, g.title AS group_title
+                FROM item_icon i LEFT JOIN item_icon_group g ON g.id = i.group_id
+                WHERE i.icon_url <> '' ORDER BY i.group_id, i.sort, i.id`)
+      .all<{ id: number; title: string; icon_url: string; background_color: string; group_title: string | null }>(),
+    env.DB
+      .prepare(`SELECT id, title, icon_url FROM item_icon_group WHERE icon_url <> '' ORDER BY sort, id`)
+      .all<{ id: number; title: string; icon_url: string }>(),
+    env.DB
+      .prepare(`SELECT key, value, LENGTH(CAST(value AS BLOB)) AS bytes FROM user_config
+                WHERE key IN ('background_image', 'favicon')`)
+      .all<{ key: string; value: string; bytes: number }>(),
+  ]);
+
+  const images: Array<{
+    source: 'card' | 'group' | 'config';
+    ref: string;            // card/group = 行 id；config = 配置键
+    title: string;          // 展示名（卡片名 / 分组名 / 配置中文名）
+    location: string;       // 所在位置说明（所属分组 / 页面配置项）
+    url: string;            // 图片地址（data URL 或外链）
+    kind: 'inline' | 'link';
+    mime: string;
+    bytes: number;          // 库中该值占用字节（外链只算地址本身）
+  }> = [];
+
+  const kindOf = (u: string): 'inline' | 'link' => (u.startsWith('data:') ? 'inline' : 'link');
+  const mimeOf = (u: string): string => {
+    const m = /^data:([^;,]+)/.exec(u);
+    if (m) return m[1];
+    try { const p = new URL(u).pathname; const e = p.slice(p.lastIndexOf('.') + 1).toLowerCase(); return e ? 'image/' + e : 'image'; } catch { return 'image'; }
+  };
+
+  for (const r of cards.results) {
+    images.push({
+      source: 'card', ref: String(r.id), title: r.title,
+      location: r.group_title ? `卡片 · ${r.group_title}` : '卡片',
+      url: r.icon_url, kind: kindOf(r.icon_url), mime: mimeOf(r.icon_url),
+      bytes: new TextEncoder().encode(r.icon_url).length,
+    });
+  }
+  for (const r of groups.results) {
+    images.push({
+      source: 'group', ref: String(r.id), title: r.title, location: '分组图标',
+      url: r.icon_url, kind: kindOf(r.icon_url), mime: mimeOf(r.icon_url),
+      bytes: new TextEncoder().encode(r.icon_url).length,
+    });
+  }
+  const CFG_LABEL: Record<string, string> = { background_image: '背景图片', favicon: '站点图标 (favicon)' };
+  for (const r of cfgRows.results) {
+    let v = '';
+    try { v = JSON.parse(r.value); } catch { /* 空 / 脏值跳过 */ }
+    if (typeof v !== 'string' || !v) continue;
+    images.push({
+      source: 'config', ref: r.key, title: CFG_LABEL[r.key] || r.key, location: '站点配置',
+      url: v, kind: kindOf(v), mime: mimeOf(v),
+      bytes: Number(r.bytes ?? 0),
+    });
+  }
+
+  const inline = images.filter((i) => i.kind === 'inline');
+  return json({
+    ok: true,
+    images,
+    summary: {
+      total: images.length,
+      inline: inline.length,
+      link: images.length - inline.length,
+      inline_bytes: inline.reduce((a, i) => a + i.bytes, 0),
+    },
+  });
+}
+
+/**
+ * 清除一张图片（把存图的字段置空，不动卡片/分组/配置本身）。
+ *  DELETE /api/admin/images/:source/:ref
+ *   source=card   ref=卡片 id   → icon_url='' + icon_type='color'（回落到文字图标）
+ *   source=group  ref=分组 id   → icon_url='' + icon_type='iconify'（回落到在线图标名）
+ *   source=config ref=配置键    → value='""'（JSON 空串，getConfig 解析后即默认空）
+ */
+export async function clearImage(env: Env, req: Request, source: string, ref: string): Promise<Response> {
+  await requireRole(req, env, 'editor');
+
+  if (source === 'card') {
+    const id = Number(ref);
+    if (!id) return bad('参数不正确');
+    const res = await env.DB.prepare(`UPDATE item_icon SET icon_url = '', icon_type = 'color' WHERE id = ?`).bind(id).run();
+    if (!Number(res?.meta?.changes ?? 0)) return bad('卡片不存在', 404);
+    return json({ ok: true });
+  }
+  if (source === 'group') {
+    const id = Number(ref);
+    if (!id) return bad('参数不正确');
+    const res = await env.DB.prepare(`UPDATE item_icon_group SET icon_url = '', icon_type = 'iconify' WHERE id = ?`).bind(id).run();
+    if (!Number(res?.meta?.changes ?? 0)) return bad('分组不存在', 404);
+    return json({ ok: true });
+  }
+  if (source === 'config') {
+    if (!['background_image', 'favicon'].includes(ref)) return bad('不支持的配置项');
+    await env.DB
+      .prepare('INSERT INTO user_config (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at')
+      .bind(ref, JSON.stringify(''), Date.now())
+      .run();
+    return json({ ok: true });
+  }
+  return bad('参数不正确');
 }
 
 /* ---------------- 访问日志清理 ---------------- */
@@ -478,11 +624,12 @@ function safeParse(v: string): unknown {
   try { return JSON.parse(v); } catch { return v; }
 }
 
-export async function importAll(env: Env, req: Request): Promise<Response> {
-  const s = await requireRole(req, env, 'owner');
-  const body = await readJson(req) as any;
-  if (!body || !Array.isArray(body.groups)) return bad('导入内容缺少 groups 数组');
-  const confirm = String(body.confirm || '') === 'restore';
+export interface SnapshotCounts { groups: number; icons: number; configs: number }
+
+/** 把一份快照写进库。导入 JSON 和「从 WebDAV 恢复」共用这一份逻辑，
+    免得两边各写一遍 DELETE/INSERT，改表结构时漏掉一边。 */
+export async function applySnapshot(env: Env, body: any, sub: number): Promise<SnapshotCounts> {
+  if (!body || !Array.isArray(body.groups)) throw new Error('导入内容缺少 groups 数组');
 
   const cfg = body.config || [];
   const groups = body.groups || [];
@@ -492,11 +639,11 @@ export async function importAll(env: Env, req: Request): Promise<Response> {
   for (const c of cfg) stmts.push(env.DB.prepare('INSERT INTO user_config (key, value) VALUES (?, ?)').bind(String(c.key), JSON.stringify(c.value ?? '')));
   for (const g of groups) {
     stmts.push(env.DB.prepare('INSERT INTO item_icon_group (id, title, description, icon_type, icon_name, icon_url, sort, public_hide, public_show, card_style, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(Number(g.id), String(g.title), String(g.description ?? ''), g.icon_type || 'iconify', String(g.icon_name ?? ''), String(g.icon_url ?? ''), Number(g.sort ?? 0), g.public_hide ? 1 : 0, g.public_show ? 1 : 0, g.card_style || 'info', s.sub));
+      .bind(Number(g.id), String(g.title), String(g.description ?? ''), g.icon_type || 'iconify', String(g.icon_name ?? ''), String(g.icon_url ?? ''), Number(g.sort ?? 0), g.public_hide ? 1 : 0, g.public_show ? 1 : 0, g.card_style || 'info', sub));
   }
   for (const ic of icons) {
-    stmts.push(env.DB.prepare('INSERT INTO item_icon (id, group_id, title, url, lan_url, icon_type, icon_text, icon_url, description, open_method, background_color, sort, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(Number(ic.id), Number(ic.group_id), String(ic.title), String(ic.url ?? ''), String(ic.lan_url ?? ''), ic.icon_type || 'color', String(ic.icon_text ?? ''), String(ic.icon_url ?? ''), String(ic.description ?? ''), Number(ic.open_method ?? 2), String(ic.background_color ?? '#2a2a2a6b'), Number(ic.sort ?? 0), s.sub));
+    stmts.push(env.DB.prepare('INSERT INTO item_icon (id, group_id, title, url, lan_url, icon_type, icon_text, icon_name, icon_url, description, open_method, background_color, sort, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(Number(ic.id), Number(ic.group_id), String(ic.title), String(ic.url ?? ''), String(ic.lan_url ?? ''), ic.icon_type || 'color', String(ic.icon_text ?? ''), String(ic.icon_name ?? ''), String(ic.icon_url ?? ''), String(ic.description ?? ''), Number(ic.open_method ?? 2), String(ic.background_color ?? '#2a2a2a6b'), Number(ic.sort ?? 0), sub));
   }
 
   /* D1 的 batch 是单个事务：全部成功或全部回滚。
@@ -521,7 +668,23 @@ export async function importAll(env: Env, req: Request): Promise<Response> {
     }
   }
 
-  return json({ ok: true, confirm_used: confirm, groups: groups.length, icons: icons.length, configs: cfg.length });
+  return { groups: groups.length, icons: icons.length, configs: cfg.length };
+}
+
+export async function importAll(env: Env, req: Request): Promise<Response> {
+  const s = await requireRole(req, env, 'owner');
+  const body = await readJson(req) as any;
+  if (!body || !Array.isArray(body.groups)) return bad('导入内容缺少 groups 数组');
+  const confirm = String(body.confirm || '') === 'restore';
+
+  let counts: SnapshotCounts;
+  try {
+    counts = await applySnapshot(env, body, s.sub);
+  } catch (e: any) {
+    return bad(e?.message || '导入失败');
+  }
+
+  return json({ ok: true, confirm_used: confirm, ...counts });
 }
 
 /* ---------------- 根据网址抓取站点图标（参照 sun-panel「获取图标」） ---------------- */

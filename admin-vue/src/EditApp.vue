@@ -9,15 +9,19 @@
  * 挂载点由访客页提供（public/index.html 的 #editRoot），与后台面板的
  * #adminRoot 是两个互不相干的 Vue 实例。
  */
-import { ref, onMounted } from 'vue';
-import { get, patch } from './api';
+import { ref, onMounted, computed } from 'vue';
+import { get, post, patch } from './api';
 import { ElMessage } from 'element-plus';
 import IconEditModal from './components/IconEditModal.vue';
 import { notifyHome } from './lib/notify';
 import type { Group, IconItem } from './store';
 
+/* id = 0 表示「新增」：同一个弹窗换个标题直接加卡片，
+   省得为加一条导航先去后台面板里翻分组 */
 const props = defineProps<{ gid: number; id: number }>();
 const emit = defineEmits<{ (e: 'done'): void }>();
+
+const isAdd = computed(() => !props.id);
 
 const ready = ref(false);
 const item = ref<IconItem | null>(null);
@@ -33,14 +37,16 @@ onMounted(async () => {
       get<any>('/api/admin/icons?group_id=' + props.gid),
       get<any>('/api/admin/groups'),
     ]);
-    const found = (ic.icons || []).find((x: any) => x.id === props.id);
-    if (!found) {
-      ElMessage.warning('这张卡片不存在了，可能已被删除');
-      done();
-      return;
-    }
-    item.value = found;
     groups.value = gr.groups || [];
+    if (!isAdd.value) {
+      const found = (ic.icons || []).find((x: any) => x.id === props.id);
+      if (!found) {
+        ElMessage.warning('这张卡片不存在了，可能已被删除');
+        done();
+        return;
+      }
+      item.value = found;
+    }
     ready.value = true;
   } catch (e: any) {
     if (e?.status === 401 || e?.status === 403) {
@@ -55,7 +61,8 @@ onMounted(async () => {
 
 async function save(it: any) {
   try {
-    await patch('/api/admin/icons/' + props.id, it);
+    if (isAdd.value) await post('/api/admin/icons', { ...it, group_id: props.gid });
+    else await patch('/api/admin/icons/' + props.id, it);
   } catch (e: any) {
     if (e?.status === 401 || e?.status === 403) {
       window.dispatchEvent(new CustomEvent('udenav:login-required'));
@@ -67,7 +74,7 @@ async function save(it: any) {
   }
   done();
   notifyHome();
-  ElMessage.success('已保存，前台已同步');
+  ElMessage.success(isAdd.value ? '已添加，前台已同步' : '已保存，前台已同步');
 }
 </script>
 
