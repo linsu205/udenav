@@ -435,9 +435,9 @@ function linkTitle(s?: LinkState): string {
     background: #343a41; border-color: rgba(255, 255, 255, .08);
     box-shadow: 0 2px 8px rgba(0, 0, 0, .30);
   }
-  /* 小图标分组：图片恒内缩 68% 居中（前台 .mini .mic img 不区分有无背景色，都内缩）；
-     信息卡分组仍是铺满 */
-  .item-ico.mini img { width: 68%; height: 68%; object-fit: contain; border-radius: 9px; }
+  /* 小图标分组：图片撑满底板（100% + contain 保持比例），信息卡分组同样是铺满。
+     注意 contain 不限 .glass —— 设了背景色的 mini 卡片也要撑满。 */
+  .item-ico.mini img { width: 100%; height: 100%; object-fit: contain; border-radius: 9px; }
   .item-info { flex: 1; min-width: 0; }
   /* 标题 + 描述同一行：标题固定宽度上限，描述吃掉剩余空间并省略 */
   .item-name-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
