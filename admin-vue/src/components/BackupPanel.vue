@@ -234,7 +234,9 @@ async function doRestore() {
         <el-switch v-model="wd.enabled" style="margin-left:10px" />
       </div>
 
-      <el-form label-position="top" class="wd-form">
+      <!-- 关闭 WebDAV 时整块收起：连接信息、执行计划、操作按钮都不该占版面，
+           开关本身就是唯一入口，打开才展开配置 -->
+      <el-form v-if="wd.enabled" label-position="top" class="wd-form">
         <div class="wd-sec-label">连接信息</div>
 
         <el-row :gutter="14">
@@ -321,6 +323,7 @@ async function doRestore() {
       </el-form>
 
       <el-alert
+        v-if="wd.enabled"
         style="margin-top:16px"
         :type="wd.last_ok === false ? 'error' : wd.last_ok ? 'success' : 'info'"
         :closable="false" show-icon

@@ -36,10 +36,10 @@ function listPlateText(it: IconItem): string {
   return (it.title || '?').charAt(0).toUpperCase();
 }
 
-/* 列表图标块 38px：字宽单位 × 字号超过可用宽（32px，左右各留 3px）就缩字号，不换行 */function listPlateFs(it: IconItem): string {
+/* 列表图标块 46px：字宽单位 × 字号超过可用宽（40px，左右各留 3px）就缩字号，不换行 */function listPlateFs(it: IconItem): string {
   const t = listPlateText(it);
   let u = 0; for (const ch of t) u += WIDE_CHAR.test(ch) ? 1 : 0.5;
-  return Math.min(16, 32 / Math.max(1, u)).toFixed(1) + 'px';
+  return Math.min(16, 40 / Math.max(1, u)).toFixed(1) + 'px';
 }
 
 /* 分组默认收起：只记录被点开的组，没点过的都是收着的，可同时开几个 */
@@ -415,19 +415,29 @@ function linkTitle(s?: LinkState): string {
   .item-row:active { cursor: grabbing; }
   .item-row:hover { background: var(--sp-hover); border-color: var(--sp-card-border); }
   .item-grip { color: var(--sp-faint); flex: none; display: flex; }
+  /* 46px 与前台信息卡图标（.card .ic）同尺寸，尺寸也跟导航对得上，不只是「大概像」 */
   .item-ico {
-    flex: 0 0 38px; width: 38px; height: 38px; border-radius: 10px;
+    flex: 0 0 46px; width: 46px; height: 46px; border-radius: 12px;
     display: flex; align-items: center; justify-content: center;
     color: #fff; font-weight: 700; font-size: 16px; overflow: hidden;
   }
   .item-ico img { width: 100%; height: 100%; object-fit: cover; }
-  /* 未设背景色镜像前台：玻璃底板 + 深色字（前台 .card .ic.plain / .mic.plain 同一套） */
-  .item-ico.glass {
-    background: var(--sp-card-in); border: 1px solid var(--sp-border);
-    color: var(--sp-text);
+  /* 未设背景色时严格镜像前台两种形态：
+     - 信息卡分组：前台 .card .ic.plain 是「透明底」（图标直接浮在卡片上），列表同样透明。
+       之前这里铺 --sp-card-in，与行背景同色，只剩一圈描边，图标像闷在灰块里。
+     - 小图标分组：前台 .mic.plain 有白色底板 + 细边 + 轻阴影，见下面 .mini 规则。 */
+  .item-ico.glass { background: transparent; border: 0; color: var(--sp-text); }
+  .item-ico.glass.mini {
+    background: #fff; border: 1px solid rgba(31, 35, 40, .08);
+    box-shadow: 0 2px 8px rgba(31, 35, 40, .12);
   }
-  /* 小图标分组：图标内缩 68% 居中；信息卡分组图标仍是铺满 */
-  .item-ico.glass.mini img { width: 68%; height: 68%; object-fit: contain; border-radius: 6px; }
+  html.dark .item-ico.glass.mini {
+    background: #343a41; border-color: rgba(255, 255, 255, .08);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .30);
+  }
+  /* 小图标分组：图片恒内缩 68% 居中（前台 .mini .mic img 不区分有无背景色，都内缩）；
+     信息卡分组仍是铺满 */
+  .item-ico.mini img { width: 68%; height: 68%; object-fit: contain; border-radius: 9px; }
   .item-info { flex: 1; min-width: 0; }
   /* 标题 + 描述同一行：标题固定宽度上限，描述吃掉剩余空间并省略 */
   .item-name-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
