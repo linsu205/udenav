@@ -8,6 +8,8 @@ import { DEFAULT_CONFIG, type Env, type GroupRow, type IconRow, type ConfigRow }
 function parseConfig(rows: ConfigRow[]): Record<string, unknown> {
   const map: Record<string, unknown> = { ...DEFAULT_CONFIG };
   for (const r of rows) {
+    /* 内部键（以 _ 开头，如 app_setting 之外的系统键）绝不回传给前端，防止误泄露 */
+    if (r.key.startsWith('_')) continue;
     try {
       map[r.key] = JSON.parse(r.value);
     } catch {

@@ -120,14 +120,28 @@ export async function verifyToken(token: string, secret: string): Promise<Sessio
 /* ---------------- Cookie ---------------- */
 
 const COOKIE_NAME = 'sp_session';
+const HOST_COOKIE = '__Host-sp_session';
 
-export function setSessionCookie(token: string, maxAgeSec: number, secure: boolean): string {
-  const s = `${COOKIE_NAME}=${token}; Path=/; Max-Age=${maxAgeSec}; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
-  return s;
+/**
+ * 生产环境（https）用 __Host- 前缀：要求 Secure + Path=/ + 无 Domain，
+ * 把会话 Cookie 绑死到主机名，杜绝同站子域注入 Cookie 的攻击面。
+ * 本地 http 开发无法设置 Secure，__Host- 会被浏览器拒收，故回退为无前缀名字。
+ */
+function cookieName(secure: boolean): string {
+  return secure ? HOST_COOKIE : COOKIE_NAME;
 }
 
-export function clearSessionCookie(): string {
-  return `${COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`;
+export function setSessionCookie(token: string, maxAgeSec: number, secure: boolean): string {
+  const name = cookieName(secure);
+  return `${name}=${token}; Path=/; Max-Age=${maxAgeSec}; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+}
+
+/** 登出：同时清掉两个名字，兼容历史会话（旧部署写的是 sp_session） */
+export function clearSessionCookie(): string[] {
+  return [
+    `${COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`,
+    `${HOST_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure`,
+  ];
 }
 
 export function readSessionCookie(req: Request): string | null {
@@ -136,7 +150,8 @@ export function readSessionCookie(req: Request): string | null {
   for (const part of raw.split(';')) {
     const idx = part.indexOf('=');
     if (idx < 0) continue;
-    if (part.slice(0, idx).trim() === COOKIE_NAME) return part.slice(idx + 1).trim();
+    const key = part.slice(0, idx).trim();
+    if (key === COOKIE_NAME || key === HOST_COOKIE) return part.slice(idx + 1).trim();
   }
   return null;
 }
@@ -144,29 +159,83 @@ export function readSessionCookie(req: Request): string | null {
 /* ---------------- Cloudflare Access 校验 ---------------- */
 
 /**
- * Access 已在边缘完成认证；这里只读取它传下来的身份头，用于审计与二次校验。
- * 启用方式：Dashboard 给 Worker 的 workers.dev / 自定义域绑定 Access 策略，
- * 然后把 Access 应用的 AUD 填进 wrangler.toml 的 ACCESS_AUD。
+ * Access 已在边缘完成认证；这里对边缘传下来的 JWT 做真正的签名校验（RS256），
+ * 仅在配置了 ACCESS_AUD 时启用。
+ * 启用方式：Dashboard 给 Worker 绑定 Access 策略，把应用 AUD 填进 wrangler.toml 的
+ * ACCESS_AUD；再把团队域名（如 yourteam.cloudflareaccess.com）填进 ACCESS_TEAM_DOMAIN，
+ * 用于拉取验签公钥。只配 AUD 不配团队域时退化为仅校验 aud/exp（边缘已拦未授权请求）。
  */
-export function readAccessIdentity(req: Request, aud?: string): string | null {
-  const header = req.headers.get('Cf-Access-Jwt-Assertion');
-  const cookieRaw = req.headers.get('cookie') || '';
-  const token = header || (cookieRaw.split(';').find((p) => p.trim().startsWith('CF_Authorization=')) || '').split('=')[1] || null;
-  if (!token) return null;
+let jwksCache: { domain: string; keys: any[]; at: number } | null = null;
+
+async function getAccessJwks(teamDomain: string): Promise<any[]> {
+  const now = Date.now();
+  if (jwksCache && jwksCache.domain === teamDomain && now - jwksCache.at < 3600_000) return jwksCache.keys;
+  const r = await fetch(`https://${teamDomain}/cdn-cgi/access/certs`);
+  if (!r.ok) throw new Error('无法获取 Access 公钥');
+  const j = (await r.json()) as { keys?: any[] };
+  const keys = j.keys || [];
+  jwksCache = { domain: teamDomain, keys, at: now };
+  return keys;
+}
+
+function b64urlToBytes(s: string): Uint8Array {
+  const pad = s.length % 4 ? '='.repeat(4 - (s.length % 4)) : '';
+  const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/') + pad);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/**
+ * 校验 Cf-Access-Jwt-Assertion 的 RS256 签名。
+ * 配了团队域名就拉 JWKS 验签；没配则只校验 aud/exp（边缘已鉴权，这里做二次结构校验）。
+ */
+async function verifyAccessJwt(token: string, aud: string, teamDomain?: string): Promise<string | null> {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
+  const [h, p, sig] = parts;
+  let header: { kid?: string; alg?: string };
+  let payload: { aud?: string | string[]; exp?: number; email?: string };
   try {
-    const payload = JSON.parse(unb64url(parts[1])) as { aud?: string | string[]; exp?: number; email?: string };
-    if (typeof payload.exp === 'number' && payload.exp <= nowSec()) return null;
-    if (aud && Array.isArray(payload.aud) && !payload.aud.includes(aud)) return null;
-    return payload.email || null;
+    header = JSON.parse(unb64url(h));
+    payload = JSON.parse(unb64url(p));
   } catch {
     return null;
   }
+  if (typeof payload.exp === 'number' && payload.exp <= nowSec()) return null;
+  const audOk = Array.isArray(payload.aud) ? payload.aud.includes(aud) : payload.aud === aud;
+  if (!audOk) return null;
+
+  if (!teamDomain) return payload.email || null; // 未配团队域：跳过签名校验
+
+  try {
+    const keys = await getAccessJwks(teamDomain);
+    const jwk = keys.find((k) => k.kid === header.kid) || keys[0];
+    if (!jwk) return null;
+    const key = await crypto.subtle.importKey('jwk', jwk as any, { name: 'RSASSA-PKCS1-v1_5' }, false, ['verify']);
+    const sigBytes = b64urlToBytes(sig);
+    const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, sigBytes, new TextEncoder().encode(`${h}.${p}`));
+    if (!ok) return null;
+  } catch {
+    return null;
+  }
+  return payload.email || null;
 }
 
-/** Access 开启时，/api/admin/* 必须由 Access 放行后带进来的身份才能访问。 */
-export function requireAccess(req: Request, aud?: string): boolean {
+export async function readAccessIdentity(req: Request, aud?: string, teamDomain?: string): Promise<string | null> {
+  if (!aud) return null;
+  const header = req.headers.get('Cf-Access-Jwt-Assertion');
+  const cookieRaw = req.headers.get('cookie') || '';
+  const token =
+    header ||
+    (cookieRaw.split(';').find((p) => p.trim().startsWith('CF_Authorization=')) || '').split('=')[1] ||
+    null;
+  if (!token) return null;
+  return verifyAccessJwt(token, aud, teamDomain);
+}
+
+/** Access 开启时（配了 ACCESS_AUD），/api/admin/* 必须由 Access 放行后带进来的身份才能访问。 */
+export async function requireAccess(req: Request, aud?: string, teamDomain?: string): Promise<boolean> {
   if (!aud) return true;
-  return readAccessIdentity(req, aud) != null;
+  return (await readAccessIdentity(req, aud, teamDomain)) != null;
 }

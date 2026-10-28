@@ -1,12 +1,16 @@
 // 后端 API 封装
 export async function api<T = any>(method: string, path: string, body?: any): Promise<T> {
   const opts: RequestInit = { method };
+  /* X-Requested-With: unav 是 CSRF 防护头：同源请求都带，跨站伪造请求带它会触发 CORS
+     预检（预检只放行 content-type），自定义头被浏览器拦掉，伪造请求到不了后端。 */
+  const headers: Record<string, string> = { 'x-requested-with': 'unav' };
   if (body && !(body instanceof FormData)) {
-    opts.headers = { 'content-type': 'application/json' };
+    headers['content-type'] = 'application/json';
     opts.body = JSON.stringify(body);
   } else if (body) {
     opts.body = body;
   }
+  opts.headers = headers;
   const r = await fetch(path, opts);
   let j: any = null;
   try { j = await r.json(); } catch {}

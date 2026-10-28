@@ -71,7 +71,7 @@
     background:linear-gradient(155deg,#262c36 0%,#1c2027 42%,#272e38 100%)}
   html[data-theme="light"] .bg-grad{background:linear-gradient(160deg,#f4f7fa 0%,#eaeff3 55%,#f1f5f8 100%)}
 
-  .wrap{max-width:1200px;margin:0 auto;padding:0 18px 90px}
+  .wrap{max-width:var(--cmw,1200px);margin:0 auto;padding:0 18px 90px}
   /* 一律加 .wrap 前缀：后台的 Element Plus 弹窗会被 teleport 到 <body>，
      裸标签选择器会把访客页的 header/footer 样式打到 .el-dialog__header / __footer 上
      （表现为弹窗顶部多出一大块空白、标题被居中）。class 自己带前缀的规则没有这个问题。 */
@@ -84,6 +84,8 @@
     text-shadow:0 2px 18px rgba(0,0,0,.45),0 0 40px rgba(0,0,0,.22)}
   .clock .d{font-size:13px;color:var(--on-bg-dim);text-shadow:var(--on-bg-ts)}
   @media(max-width:620px){.sep{display:none}}
+  /* 不显示时钟/日期时，把后面的分隔符也一起藏掉（否则会留下一个孤零零的竖线） */
+  html.no-clock #clock, html.no-clock #sep{display:none!important}
 
   /* position+z-index 必须加：rise 动画末帧保留 transform，使 .search 成为独立层叠上下文，
      下拉列表的 z-index 被困在里面，#groups 的分组标题（普通流内容）会画在下拉之上，
@@ -379,6 +381,8 @@
     if (c.margin_top != null) root.style.setProperty('--mt', c.margin_top + 'vh');
     if (c.background_blur != null) root.style.setProperty('--blur', 'blur(' + c.background_blur + 'px)');
     if (c.background_mask != null) root.style.setProperty('--mask', c.background_mask);
+    if (c.content_max_width != null) root.style.setProperty('--cmw', c.content_max_width + 'px');
+    if (c.show_clock === 0) root.classList.add('no-clock');
     if (c.title) document.title = c.title;
   } catch (e) {}
 })();
@@ -419,8 +423,8 @@
 <div class="wrap">
   <header>
     <div class="logo" id="logo">UDeNav</div>
-    <div class="sep"></div>
-    <div class="clock"><div class="t" id="time">--:--:--</div><div class="d" id="date"></div></div>
+    <div class="sep" id="sep"></div>
+    <div class="clock" id="clock"><div class="t" id="time">--:--:--</div><div class="d" id="date"></div></div>
   </header>
 
   <div class="search" id="searchBox">
@@ -494,6 +498,7 @@ function cacheConfig(c) {
   const slim = {
     title: document.title, theme: c.theme, margin_top: c.margin_top,
     background_blur: c.background_blur, background_mask: c.background_mask,
+    content_max_width: c.content_max_width, show_clock: c.show_clock,
   };
   const full = Object.assign({ background_image: c.background_image }, slim);
   try { localStorage.setItem('udenav.config', JSON.stringify(full)); }
@@ -531,6 +536,8 @@ function applyConfig(c) {
   document.documentElement.style.setProperty('--blur', `blur(${c.background_blur ?? 10}px)`);
   document.documentElement.style.setProperty('--mask', c.background_mask ?? 0.2);
   document.documentElement.style.setProperty('--mt', `${c.margin_top ?? 6}vh`);
+  document.documentElement.style.setProperty('--cmw', `${c.content_max_width ?? 1200}px`);
+  document.documentElement.classList.toggle('no-clock', !c.show_clock);
   $('#footer').textContent = c.footer || '';
   $('#searchBox').style.display = c.search_box_show ? 'flex' : 'none';
   state.engines = Array.isArray(c.search_engines) && c.search_engines.length ? c.search_engines : DEFAULT_ENGINES;
@@ -862,9 +869,22 @@ function pickUrl(it) {
   return state.intranet ? (lan || wan) : (wan || lan);
 }
 
+/* 只允许 http/https 跳转：卡片 URL 来自数据库（管理员/导入可写入），
+   若被写入 javascript: 等伪协议，location.href / window.open 会执行脚本（存储型 XSS）。
+   统一在这里拦掉非 http/https 的地址。 */
+function safeUrl(u) {
+  if (!u) return null;
+  try {
+    const t = new URL(u, location.origin);
+    return t.protocol === 'http:' || t.protocol === 'https:' ? t.href : null;
+  } catch {
+    return null;
+  }
+}
+
 function openUrl(it) {
-  const url = pickUrl(it);
-  if (!url) return;
+  const url = safeUrl(pickUrl(it));
+  if (!url) { ctxToast('链接无法打开（仅支持 http/https）'); return; }
   if (it.openMethod === 3) {
     $('#modalTitle').textContent = it.title || url;
     const frame = $('#modalFrame');
@@ -933,7 +953,7 @@ $('#themeBtn').onclick = async () => {
   const cur = document.documentElement.dataset.theme;
   const next = cur === 'dark' ? 'light' : 'dark';
   applyConfig({ ...state.config, theme: next });   // 后台组件是同文档的，跟着 html.dark 自动变色
-  await fetch('/api/admin/config', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme: next }) }).catch(() => {});
+  await fetch('/api/admin/config', { method: 'PUT', headers: { 'content-type': 'application/json', 'x-requested-with': 'unav' }, body: JSON.stringify({ theme: next }) }).catch(() => {});
 };
 
 /* ---------- 管理后台弹窗（同文档组件，不再是 iframe） ---------- */
@@ -1094,7 +1114,8 @@ $('#q').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   const kw = e.target.value.trim();
   if (!kw) { ctxToast('请输入关键词'); return; }
-  const url = state.engine.url.replace('%s', encodeURIComponent(kw));
+  const url = safeUrl(state.engine.url.replace('%s', encodeURIComponent(kw)));
+  if (!url) { ctxToast('搜索引擎地址无效'); return; }
   window.open(url, '_blank');
   /* 跳转后清空搜索栏并恢复完整图标列表 */
   e.target.value = '';
@@ -1207,8 +1228,8 @@ async function ctxAction(act) {
   if (!cur) return;
   const it = cur.it;
   if (act === 'open') return openUrl(it);
-  if (act === 'wan') { if (it.url) window.open(it.url, '_blank'); return; }
-  if (act === 'lan') { if (it.lanUrl) window.open(it.lanUrl, '_blank'); return; }
+  if (act === 'wan') { const u = safeUrl(it.url); if (u) window.open(u, '_blank'); return; }
+  if (act === 'lan') { const u = safeUrl(it.lanUrl); if (u) window.open(u, '_blank'); return; }
   if (act === 'copy') {
     const u = pickUrl(it);
     if (!u) return;
@@ -1222,7 +1243,7 @@ async function ctxAction(act) {
     const dir = act === 'prev' ? -1 : 1;
     const r = await fetch('/api/admin/icons/' + it.id + '/move', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-requested-with': 'unav' },
       body: JSON.stringify({ dir: act === 'prev' ? 'up' : 'down' }),
     }).catch(() => null);
     if (!r || r.status === 401 || r.status === 403) { ctxToast('请先登录后台'); openAdmin(); return; }
@@ -1241,7 +1262,7 @@ async function ctxAction(act) {
   if (act === 'del') {
     if (it.id == null) return;
     if (!confirm(`删除卡片「${it.title}」？删除后不可恢复。`)) return;
-    const r = await fetch('/api/admin/icons/' + it.id, { method: 'DELETE' }).catch(() => null);
+    const r = await fetch('/api/admin/icons/' + it.id, { method: 'DELETE', headers: { 'x-requested-with': 'unav' } }).catch(() => null);
     if (!r || r.status === 401 || r.status === 403) { ctxToast('请先登录后台'); openAdmin(); return; }
     if (!r.ok) { ctxToast('删除失败，请重试'); return; }
     ctxToast('已删除');
@@ -1297,7 +1318,7 @@ window.addEventListener('resize', closeCtx);
 
 /* ---------- 启动：优先读后端，读不到就用内置数据 ---------- */
 const FALLBACK = {
-  config: { logo_text: 'UDeNav', favicon: '', background_blur: 10, background_mask: 0.2, margin_top: 6, icon_style: 'info', search_box_show: 1, theme: 'dark', search_engines: DEFAULT_ENGINES },
+  config: { logo_text: 'UDeNav', favicon: '', background_blur: 10, background_mask: 0.2, margin_top: 6, icon_style: 'info', search_box_show: 1, show_clock: 1, content_max_width: 1200, theme: 'dark', search_engines: DEFAULT_ENGINES },
   groups: [
     { id: 1, title: '常用', description: '每天要打开的', cardStyle: 'info', items: [
       { title: '百度', url: 'https://www.baidu.com', description: '中文搜索', color: '#2932e1', openMethod: 2 },

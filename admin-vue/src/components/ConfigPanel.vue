@@ -10,7 +10,8 @@ import { ArrowUp, ArrowDown, Delete, Plus, InfoFilled } from '@element-plus/icon
 const store = useStore();
 const f = reactive({
   logo_text: '', favicon: '', theme: 'dark', background_image: '', background_blur: 10, background_mask: 0.2,
-  margin_top: 6, icon_style: 'info', footer: '', search_box_show: 1, search_engines: [] as any[],
+  margin_top: 6, icon_style: 'info', footer: '', search_box_show: 1, show_clock: 1, content_max_width: 1200,
+  search_engines: [] as any[],
 });
 const saving = ref(false);
 
@@ -50,6 +51,24 @@ async function uploadFav(opt: any) {
   ElMessage.success('图标已上传');
 }
 
+/* ---------------- 网站图标预览 ----------------
+   仿浏览器标签页：上传/粘贴地址后立刻看到「图标 + 标题」在标签页里的样子，
+   不用保存回前台再开新标签页确认。口径与壁纸预览一致：失败给重试机会，
+   换地址重置状态，移除只清本地字段（要按「保存配置」才落库）。 */
+const favUrl = computed(() => String(f.favicon || '').trim());
+const favFailed = ref(false);
+const favDims = ref('');
+
+function onFavLoad(e: Event) {
+  const img = e.target as HTMLImageElement;
+  if (img?.naturalWidth) favDims.value = `${img.naturalWidth}×${img.naturalHeight}`;
+}
+watch(favUrl, () => { favFailed.value = false; favDims.value = ''; });
+function removeFav() {
+  f.favicon = '';
+  ElMessage.info('已清空图标地址，点右上角「保存配置」后生效');
+}
+
 async function uploadBg(opt: any) {
   const fd = new FormData();
   fd.append('file', opt.file);
@@ -87,6 +106,27 @@ function removeBg() {
 /* 换地址就得重置：上一张的尺寸不要留在这一张上，失败态也要重新给一次机会 */
 watch(bgUrl, () => { bgFailed.value = false; bgDims.value = ''; });
 
+/* ---------------- 效果参数实时预览 ----------------
+   模糊/遮罩/留白/卡片样式直接反映在右边预览图上，调参不用保存回前台确认。
+   口径与访客页一致：
+   · 模糊 = filter blur(px)，再放大一点盖住模糊边缘透出的底色（前台是整页铺满看不出来，预览图有小边）
+   · 遮罩 = 压在图上的黑/白半透明层（深色主题黑、浅色主题白，跟 .bg-mask 同款）
+   · 留白 = 内容起始线，margin_top vh ≈ 视口高度的百分比，预览里就是高度的百分比
+   · 卡片样式 = 起始线下面画几块骨架卡，横排信息卡是长条、网格是方块 */
+const pvImgStyle = computed(() => {
+  const b = Math.min(Math.max(Number(f.background_blur) || 0, 0), 30);
+  return {
+    filter: `blur(${b}px)`,
+    transform: `scale(${1 + b * 0.006})`,
+  };
+});
+const pvMaskStyle = computed(() => ({
+  background: f.theme === 'light'
+    ? `rgba(255,255,255,${Math.min(Math.max(Number(f.background_mask) || 0, 0), 1)})`
+    : `rgba(0,0,0,${Math.min(Math.max(Number(f.background_mask) || 0, 0), 1)})`,
+}));
+const pvMt = computed(() => `${Math.min(Math.max(Number(f.margin_top) || 0, 0), 30)}%`);
+
 function fmtBytes(n: number): string {
   if (!n) return '';
   if (n < 1024) return `${Math.round(n)} B`;
@@ -94,9 +134,9 @@ function fmtBytes(n: number): string {
   return `${(n / 1048576).toFixed(2)} MB`;
 }
 
-const bgMeta = computed(() => {
-  const v = bgUrl.value;
-  if (!v) return '';
+/* 图片元信息（格式/体积/来源域名），壁纸和图标共用；
+   尺寸是各自 <img> 量出来的，由调用方追加 */
+function baseMeta(v: string): string[] {
   const out: string[] = [];
   const m = /^data:([^;,]+)/.exec(v);
   if (m) {
@@ -112,7 +152,18 @@ const bgMeta = computed(() => {
   } else {
     try { out.push(new URL(v).host); } catch { /* 相对路径之类，不显示来源 */ }
   }
+  return out;
+}
+
+const bgMeta = computed(() => {
+  const out = baseMeta(bgUrl.value);
   if (bgDims.value) out.push(bgDims.value);
+  return out.filter(Boolean).join(' · ');
+});
+
+const favMeta = computed(() => {
+  const out = baseMeta(favUrl.value);
+  if (favDims.value) out.push(favDims.value);
   return out.filter(Boolean).join(' · ');
 });
 
@@ -138,17 +189,38 @@ const bgMeta = computed(() => {
           <el-input v-model="f.logo_text" placeholder="UDeNav" />
         </el-form-item>
         <el-form-item label="网站图标 (Favicon)">
-          <div style="display:flex;align-items:center;gap:12px;width:100%">
+          <div class="fav-row">
             <el-input v-model="f.favicon" placeholder="粘贴图片 URL，或点右边上传" />
             <el-upload :show-file-list="false" accept="image/*" :http-request="uploadFav" style="flex:none"><el-button>上传图标</el-button></el-upload>
-            <img v-if="f.favicon" :src="f.favicon" alt="icon" style="width:28px;height:28px;border-radius:6px;object-fit:contain;background:var(--sp-preview-bg);flex:none" />
+          </div>
+          <!-- 标签页式预览：图标 + 标题就是访客开新标签页时看到的样子 -->
+          <div v-if="favUrl && !favFailed" class="fav-pv">
+            <div class="fav-ico">
+              <img :src="favUrl" alt="图标预览" @load="onFavLoad" @error="favFailed = true" />
+            </div>
+            <div class="fav-info">
+              <div class="fav-strip">
+                <div class="fav-tab">
+                  <img :src="favUrl" alt="" @error="favFailed = true" />
+                  <span class="fav-tab-t">{{ f.logo_text || 'UDeNav' }}</span>
+                  <span class="fav-tab-x">✕</span>
+                </div>
+              </div>
+              <div class="fav-meta-row">
+                <span v-if="favMeta" class="fav-meta">{{ favMeta }}</span>
+                <span class="fav-gap"></span>
+                <button type="button" class="fav-clear" title="清空图标地址" @click="removeFav">移除图标</button>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="favUrl && favFailed" class="fav-pv bad">
+            <span class="fav-err">图标加载失败，请检查地址是否可访问</span>
+            <span class="fav-gap"></span>
+            <button type="button" class="fav-clear" @click="removeFav">移除图标</button>
           </div>
         </el-form-item>
         <el-form-item label="页脚文字">
           <el-input v-model="f.footer" placeholder="留空不显示" />
-        </el-form-item>
-        <el-form-item>
-          <el-checkbox v-model="f.search_box_show" :true-value="1" :false-value="0">显示搜索框</el-checkbox>
         </el-form-item>
       </el-form>
     </div>
@@ -178,7 +250,6 @@ const bgMeta = computed(() => {
             <div class="bg-ctl">
               <div class="ctl-row"><el-form-item label="壁纸模糊"><el-input-number v-model="f.background_blur" :min="0" :max="30" style="width:100%" /></el-form-item></div>
               <div class="ctl-row"><el-form-item label="遮罩不透明度"><el-input-number v-model="f.background_mask" :min="0" :max="1" :step="0.05" style="width:100%" /></el-form-item></div>
-              <div class="ctl-row"><el-form-item label="顶部留白 (vh)"><el-input-number v-model="f.margin_top" :min="0" :max="30" style="width:100%" /></el-form-item></div>
               <div class="ctl-row"><el-form-item label="卡片样式"><el-select v-model="f.icon_style" style="width:100%"><el-option value="info" label="横排信息卡" /><el-option value="grid" label="网格" /></el-select></el-form-item></div>
             </div>
           </div>
@@ -191,12 +262,49 @@ const bgMeta = computed(() => {
               <button v-if="bgUrl" type="button" class="bg-pv-clear" title="清空壁纸地址，前台回到纯色背景" @click="removeBg">移除图片</button>
             </div>
             <div v-if="bgUrl" class="bg-pv-stage" :class="{ bad: bgFailed }">
-              <img v-if="!bgFailed" :src="bgUrl" alt="壁纸预览" @load="onBgLoad" @error="bgFailed = true" />
+              <template v-if="!bgFailed">
+                <img :src="bgUrl" alt="壁纸预览" :style="pvImgStyle" @load="onBgLoad" @error="bgFailed = true" />
+                <div class="bg-pv-mask" :style="pvMaskStyle"></div>
+                <div class="bg-pv-content" :class="f.theme">
+                  <div class="bg-pv-spacer" :style="{ height: pvMt }"></div>
+                  <div class="bg-pv-line">
+                    <span class="bg-pv-mt-tag">内容 {{ f.margin_top }}vh</span>
+                  </div>
+                  <div class="bg-pv-cards" :class="f.icon_style">
+                    <div class="pc" v-for="n in (f.icon_style === 'grid' ? 5 : 3)" :key="n"></div>
+                  </div>
+                </div>
+              </template>
               <div v-else class="bg-pv-err">图片加载失败，请检查地址是否可访问</div>
             </div>
             <div v-else class="bg-empty">填写或上传图片后，在这里预览效果</div>
           </div>
         </div>
+      </el-form>
+    </div>
+
+    <div class="sp-card">
+      <div class="sp-card-title">个性化</div>
+      <el-form label-position="top" @submit.prevent>
+        <el-row :gutter="18">
+          <el-col :span="8">
+            <el-form-item label="页头留白 (vh)">
+              <el-input-number v-model="f.margin_top" :min="0" :max="30" style="width:100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="内容最大宽度 (px)">
+              <el-input-number v-model="f.content_max_width" :min="600" :max="1920" :step="10" style="width:100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="布局显示">
+          <div class="pl-row">
+            <el-checkbox v-model="f.show_clock" :true-value="1" :false-value="0">显示时钟 / 日期</el-checkbox>
+            <el-checkbox v-model="f.search_box_show" :true-value="1" :false-value="0">显示搜索栏</el-checkbox>
+          </div>
+          <div class="pl-hint">关闭「时钟 / 日期」时，标题与时钟之间的分隔竖线会一并隐藏。</div>
+        </el-form-item>
       </el-form>
     </div>
 
@@ -240,6 +348,64 @@ const bgMeta = computed(() => {
     .engine-row { flex-wrap: wrap; }
     .engine-row .el-input:first-child { width: 100% !important; }
   }
+
+  /* ---- 网站图标预览 ---- */
+  .fav-row { display: flex; gap: 10px; width: 100%; }
+  .fav-pv {
+    margin-top: 10px; width: 100%;
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--sp-border); border-radius: 12px;
+    background: var(--sp-card-in);
+  }
+  .fav-pv.bad { border-style: dashed; }
+  /* 左侧大图块：徽章式底座，透明图标也能看清轮廓 */
+  .fav-ico {
+    flex: none; width: 58px; height: 58px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(circle at 30% 25%, var(--sp-hover), transparent 70%),
+      var(--sp-chip-bg);
+    border: 1px solid var(--sp-border);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, .06);
+  }
+  .fav-ico img { width: 36px; height: 36px; object-fit: contain; display: block; }
+  .fav-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  /* 仿浏览器标签页：圆角朝上的小签子压在一条「标签栏」横线上 */
+  .fav-strip {
+    display: flex; align-items: flex-end;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--sp-border);
+  }
+  .fav-tab {
+    display: inline-flex; align-items: center; gap: 7px;
+    max-width: 100%;
+    padding: 5px 12px 5px 10px;
+    border: 1px solid var(--sp-border); border-bottom: none;
+    border-radius: 9px 9px 0 0;
+    background: var(--sp-hover);
+    /* 盖掉标签栏横线，做出「签子嵌在槽里」的效果 */
+    margin-bottom: -1px;
+  }
+  .fav-tab img { width: 14px; height: 14px; object-fit: contain; flex: none; }
+  .fav-tab-t {
+    font-size: 12px; color: var(--sp-text); line-height: 1.3;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fav-tab-x { font-size: 10px; color: var(--sp-faint); flex: none; line-height: 1; }
+  .fav-meta-row { display: flex; align-items: center; gap: 8px; }
+  .fav-meta {
+    font-size: 11.5px; color: var(--sp-dim); font-variant-numeric: tabular-nums;
+    background: var(--sp-chip-bg); padding: 2px 7px; border-radius: 6px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fav-gap { flex: 1; }
+  .fav-clear {
+    border: 0; background: none; padding: 3px 8px; border-radius: 7px;
+    font: inherit; font-size: 12.5px; color: var(--sp-faint); cursor: pointer; transition: all .15s;
+  }
+  .fav-clear:hover { color: var(--sp-danger-text); background: var(--sp-chip-bg); }
+  .fav-err { font-size: 12px; color: var(--sp-dim); }
 
   /* ---- 壁纸 ---- */
   /* 顶部主题/地址/上传与下面的「调参 + 预览」是两组东西，用一条虚线隔开 */
@@ -297,14 +463,47 @@ const bgMeta = computed(() => {
   }
   .bg-pv-clear:hover { color: var(--sp-danger-text); background: var(--sp-chip-bg); }
   .bg-pv-stage {
+    position: relative;
     width: 100%; aspect-ratio: 16 / 9;
     display: flex; align-items: center; justify-content: center;
     border-radius: 12px; overflow: hidden;
     border: 1px solid var(--sp-border); background: var(--sp-card-in);
   }
-  .bg-pv-stage img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .bg-pv-stage img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    transition: filter .2s, transform .2s;
+  }
   .bg-pv-stage.bad { border-style: dashed; }
   .bg-pv-err { font-size: 12px; color: var(--sp-dim); }
+
+  /* ---- 效果参数叠加层：复刻前台 .bg-mask / --mt 的视觉口径 ---- */
+  .bg-pv-mask { position: absolute; inset: 0; pointer-events: none; }
+  .bg-pv-content {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    pointer-events: none;
+  }
+  .bg-pv-spacer { flex: none; }
+  /* 内容起始线：margin_top 变化时这条线跟着走，留白调多大一目了然 */
+  .bg-pv-line { position: relative; margin: 0 7%; border-top: 1px dashed rgba(255, 255, 255, .6); }
+  .bg-pv-content.light .bg-pv-line { border-top-color: rgba(50, 50, 50, .4); }
+  .bg-pv-mt-tag {
+    position: absolute; right: 0; top: 3px;
+    font-size: 10px; line-height: 1; padding: 2px 6px; border-radius: 20px;
+    color: rgba(255, 255, 255, .85); background: rgba(0, 0, 0, .3);
+  }
+  .bg-pv-content.light .bg-pv-mt-tag { color: rgba(40, 40, 40, .75); background: rgba(255, 255, 255, .55); }
+  /* 骨架卡：横排信息卡 = 长条，网格 = 方块；白色玻璃感与前台卡片一致 */
+  .bg-pv-cards { display: flex; gap: 8px; padding: 12px 7% 0; }
+  .bg-pv-cards.info { flex-direction: column; gap: 6px; }
+  .bg-pv-cards.info .pc { height: 16px; }
+  .bg-pv-cards.grid .pc { width: 13%; aspect-ratio: 1; }
+  .bg-pv-cards .pc {
+    border-radius: 9px;
+    background: rgba(255, 255, 255, .38);
+    border: 1px solid rgba(255, 255, 255, .35);
+  }
+  .bg-pv-content.light .bg-pv-cards .pc { background: rgba(255, 255, 255, .55); border-color: rgba(255, 255, 255, .65); }
   /* 没图时也占住同样的位置，免得选图瞬间整块布局跳一下 */
   .bg-empty {
     width: 100%; aspect-ratio: 16 / 9;
@@ -312,6 +511,10 @@ const bgMeta = computed(() => {
     border-radius: 12px; border: 1px dashed var(--sp-border);
     background: var(--sp-card-in); color: var(--sp-faint); font-size: 12.5px;
   }
+
+  /* ---- 个性化 ---- */
+  .pl-row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .pl-hint { width: 100%; font-size: 12px; color: var(--sp-dim); margin-top: 6px; line-height: 1.5; }
 
   /* ---- 搜索引擎 ---- */
   .engine-list { display: flex; flex-direction: column; gap: 8px; }

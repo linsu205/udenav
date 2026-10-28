@@ -8,7 +8,7 @@ import { publicPanel, publicConfig } from './routes/public';
 import * as admin from './routes/admin';
 import { upload } from './routes/icons';
 import { iconifyProxy } from './routes/iconify';
-import { getBackupCfg, putBackupCfg, runBackupNow, scheduledBackup, listBackups, restoreBackup } from './routes/webdav';
+import { getBackupCfg, putBackupCfg, runBackupNow, scheduledBackup, listBackups, restoreBackup, testBackupConn } from './routes/webdav';
 import { linkCheck } from './routes/linkcheck';
 import { aboutInfo, checkLatest } from './routes/about';
 import type { Env } from './lib/schema';
@@ -79,15 +79,20 @@ async function route(req: Request, env: Env): Promise<Response> {
   }
 }
 
+function tooMany(wait: number): Response {
+  return new Response(JSON.stringify({ error: '请求过于频繁，请稍后再试' }), {
+    status: 429,
+    headers: { 'content-type': 'application/json; charset=utf-8', 'retry-after': String(wait) },
+  });
+}
+
 async function dispatch(req: Request, env: Env, parts: string[], seg: string): Promise<Response | null> {
   const id = Number(parts[2]);
-  const lim = async (scope: string, max: number): Promise<Response | null> => {
-    const wait = allow(ipOf(req) + ':' + scope, max, 60);
+  const m = req.method.toUpperCase();
+  const lim = async (scope: string, max: number, windowSec = 60): Promise<Response | null> => {
+    const wait = allow(ipOf(req) + ':' + scope, max, windowSec);
     if (wait <= 0) return null;
-    return new Response(JSON.stringify({ error: '请求过于频繁，请稍后再试' }), {
-      status: 429,
-      headers: { 'content-type': 'application/json; charset=utf-8', 'retry-after': String(wait) },
-    });
+    return tooMany(wait);
   };
 
   // ---------- 公开 ----------
@@ -101,12 +106,26 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
 
   // ---------- 管理员 ----------
   if (seg === 'admin') {
+    const a = parts[1];
+
+    // 防 CSRF：所有改变状态的 admin 请求必须带 X-Requested-With: unav。
+    // 同源前端（api.ts / 访客页）统一带这个头；跨站伪造请求若想带自定义头，会触发
+    // CORS 预检，而本服务的预检只放行 content-type，自定义头被浏览器拦掉 → 伪造请求全部失败。
+    if (m === 'POST' || m === 'PUT' || m === 'PATCH' || m === 'DELETE') {
+      if (req.headers.get('x-requested-with') !== 'unav') {
+        return bad('请求被拒绝（缺少 CSRF 令牌）', 403);
+      }
+    }
+
     const r = await lim('admin', 60);
     if (r) return r;
-    const a = parts[1];
-    const m = req.method.toUpperCase();
 
-    if (m === 'POST' && a === 'login') return admin.login(env, req);
+    if (m === 'POST' && a === 'login') {
+      // 登录再加一层按 IP 的限流，和账号级锁定（5 次失败锁 30 分）互补，挡住撞库式爆破
+      const wait = allow(ipOf(req) + ':login', 30, 300);
+      if (wait > 0) return tooMany(wait);
+      return admin.login(env, req);
+    }
     if (m === 'GET' && a === 'setup') return admin.setupState(env);
     if (m === 'POST' && a === 'register') return admin.register(env, req);
     if (m === 'POST' && a === 'logout') return admin.logout();
@@ -123,6 +142,7 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     /* 带子路径的要排在 /api/admin/backup 泛匹配前面，否则会被当成读配置 */
     if (m === 'GET' && a === 'backup' && parts[2] === 'list') return listBackups(env, req);
     if (m === 'POST' && a === 'backup' && parts[2] === 'restore') return restoreBackup(env, req);
+    if (m === 'POST' && a === 'backup' && parts[2] === 'test') return testBackupConn(env, req);
     if (m === 'GET' && a === 'backup') return getBackupCfg(env, req);
     if (m === 'PUT' && a === 'backup') return putBackupCfg(env, req);
     if (m === 'POST' && a === 'backup') return runBackupNow(env, req);

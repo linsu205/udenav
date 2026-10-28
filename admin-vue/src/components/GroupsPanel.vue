@@ -240,16 +240,52 @@ async function checkGroup(g: Group) {
   }
 }
 
-/* 单条结果文字：正常只显示状态码，异常把原因放 title 里 */
+/* 单条结果文字：正常只显示状态码，异常把原因放悬浮提示里 */
 function linkText(s?: LinkState): string {
   if (!s) return '';
   if (s.error) return '异常';
   return String(s.status);
 }
-function linkTitle(s?: LinkState): string {
-  if (!s) return '';
-  const head = s.error ? s.error : `HTTP ${s.status}`;
-  return `${head} · ${s.ms}ms`;
+
+/* 常见状态码的人话解释：悬浮色标时告诉用户「这个数字到底意味着什么」。
+   4xx/5xx 里专门标注了哪些是「站点挡机器人、链接本身没事」，避免误删正常卡片 */
+const STATUS_HINT: Record<number, string> = {
+  301: '永久重定向：站点跳到了新地址，建议把卡片改成最终地址',
+  302: '临时重定向：站点跳转到了别的地址（链接本身可用）',
+  303: '重定向：站点要求用 GET 重新请求（链接本身可用）',
+  307: '临时重定向：站点暂时跳转到别的地址',
+  308: '永久重定向：站点永久跳转到新地址，建议更新卡片',
+  400: '请求无效：站点认为地址或参数格式有问题',
+  401: '需要登录：站点要求身份验证，未登录访客打开可能看不到内容',
+  403: '访问被拒绝：站点开了反爬 / 防火墙，挡住了自动检查；用浏览器打开大概率正常',
+  404: '页面不存在：地址可能已失效，建议核对或更新',
+  405: '请求方式不被允许：站点不支持探测请求（已自动重试过 GET）',
+  408: '请求超时：站点响应太慢被掐断',
+  410: '已永久下线：资源被站点移除，建议删除或更换卡片',
+  412: '前置条件失败：常见于防火墙 / CDN（如 Cloudflare）拦截探测请求，浏览器打开大概率正常',
+  418: '站点拒绝机器人访问（彩蛋状态码，链接本身正常）',
+  429: '请求过于频繁：站点限流了自动检查；用浏览器打开大概率正常',
+  451: '地区限制：站点在当前区域不可访问',
+  500: '服务器内部错误：站点自身故障',
+  502: '网关错误：站点后端无响应',
+  503: '服务不可用：站点过载或正在维护',
+  504: '网关超时：站点后端响应超时',
+  530: 'Cloudflare 无法回源：源站宕机或配置异常',
+};
+function statusHint(s: LinkState): string {
+  if (s.error) return s.error;
+  const hit = STATUS_HINT[s.status];
+  if (hit) return hit;
+  if (s.status >= 500) return '服务器错误：站点自身出了故障';
+  if (s.status >= 400) return '请求被站点拒绝：具体原因站点未说明';
+  return '正常响应：链接可达';
+}
+
+/* 悬浮提示标题行：状态码 + 分级结论 */
+const LEVEL_LABEL: Record<LinkState['level'], string> = { ok: '正常', warn: '受限（链接可用，站点挡了自动检查）', bad: '异常' };
+function linkTipHead(s: LinkState): string {
+  if (s.error) return '连接失败';
+  return `HTTP ${s.status} · ${LEVEL_LABEL[s.level]}`;
 }
 </script>
 
@@ -341,10 +377,19 @@ function linkTitle(s?: LinkState): string {
                   <span v-if="!it.url && !it.lan_url" class="url-none">未填写网址</span>
                 </div>
               </div>
-              <!-- 右侧补状态：打开方式 + 链接检查结果（只有查过才显示） -->
+              <!-- 右侧补状态：打开方式 + 链接检查结果（只有查过才显示）。
+                   检查结果悬浮出提示：状态码含义 + 耗时，不再只给一个看不懂的数字 -->
               <div class="item-tags">
-                <span v-if="linkMap[it.id]" class="lc" :class="'lc-' + linkMap[it.id].level"
-                      :title="linkTitle(linkMap[it.id])">{{ linkText(linkMap[it.id]) }}</span>
+                <el-tooltip v-if="linkMap[it.id]" placement="top" :show-after="120">
+                  <template #content>
+                    <div class="lc-tip">
+                      <div class="lc-tip-head" :class="'is-' + linkMap[it.id].level">{{ linkTipHead(linkMap[it.id]) }}</div>
+                      <div class="lc-tip-reason">{{ statusHint(linkMap[it.id]) }}</div>
+                      <div class="lc-tip-foot">耗时 {{ linkMap[it.id].ms }}ms · 再点一次「链接检查」可重新检测</div>
+                    </div>
+                  </template>
+                  <span class="lc" :class="'lc-' + linkMap[it.id].level">{{ linkText(linkMap[it.id]) }}</span>
+                </el-tooltip>
                 <span class="tag">{{ OPEN_LABEL[it.open_method] || '新标签打开' }}</span>
               </div>
               <div class="item-ops">
@@ -457,6 +502,15 @@ function linkTitle(s?: LinkState): string {
   .lc-ok { color: var(--sp-ok); background: rgba(var(--sp-ok-rgb), .10); border-color: rgba(var(--sp-ok-rgb), .28); }
   .lc-warn { color: #c98a2e; background: rgba(230, 162, 60, .12); border-color: rgba(230, 162, 60, .32); }
   .lc-bad { color: #d1544b; background: rgba(239, 68, 68, .10); border-color: rgba(239, 68, 68, .30); }
+
+  /* 链接检查悬浮提示（el-tooltip 内容，编译在本组件所以 scoped 能命中） */
+  .lc-tip { max-width: 340px; line-height: 1.55; }
+  .lc-tip-head { font-weight: 600; margin-bottom: 2px; }
+  .lc-tip-head.is-ok { color: #95d475; }
+  .lc-tip-head.is-warn { color: #eebe77; }
+  .lc-tip-head.is-bad { color: #f89898; }
+  .lc-tip-reason { margin-bottom: 2px; }
+  .lc-tip-foot { opacity: .65; font-size: 11px; }
 
   /* 头部右侧：只剩「添加分组」 */
   .head-ops { display: flex; align-items: center; gap: 10px; }

@@ -32,6 +32,10 @@ SEED_DEMO = "1"
 # 若启用了 Cloudflare Access，填入 Access 应用的 AUD
 ACCESS_AUD = "udenav"
 
+# Cloudflare Access 团队域名（如 yourteam.cloudflareaccess.com），用于拉取验签公钥。
+# 配了它，后端才会真正校验 Access JWT 的 RS256 签名；不配则只校验 aud/exp（边缘已鉴权）。
+# ACCESS_TEAM_DOMAIN = "yourteam.cloudflareaccess.com"
+
 # ---------- 定时任务 ----------
 # 每小时整点触发一次。真正的执行策略（每小时/每天/每周）由后台配置决定：
 # cron 表达式是部署配置，运行时改不了，所以这里固定每小时，代码里按策略判断是否执行

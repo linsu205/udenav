@@ -57,6 +57,7 @@ const wd = reactive({
 const wdLoading = ref(false);
 const wdSaving = ref(false);
 const wdRunning = ref(false);
+const wdTesting = ref(false);
 
 const PRESETS = [
   { label: '坚果云', url: 'https://dav.jianguoyun.com/dav/', tip: '密码填「应用密码」，不是登录密码' },
@@ -104,6 +105,21 @@ async function runWdNow() {
     await loadWd();
   } finally {
     wdRunning.value = false;
+  }
+}
+
+/* 测试连接：不发真实数据、不建目录，只验「地址可达 + 账号密码对不对」，
+   密码留空时后端沿用已保存的那份，方便改完其他配置直接测 */
+async function testWd() {
+  wdTesting.value = true;
+  try {
+    const r = await post<any>('/api/admin/backup/test', { url: wd.url, user: wd.user, pass: wd.pass, dir: wd.dir });
+    if (r.ok) ElMessage.success(r.message || '连接成功');
+    else ElMessage.warning({ message: r.message || '连接失败', duration: 8000, showClose: true });
+  } catch (e: any) {
+    ElMessage.error({ message: '测试失败：' + (e?.message || '未知错误'), duration: 8000, showClose: true });
+  } finally {
+    wdTesting.value = false;
   }
 }
 
@@ -276,6 +292,10 @@ async function doRestore() {
               <el-input v-model="wd.pass" type="password" show-password autocomplete="new-password"
                         :placeholder="wd.has_pass ? '已保存，留空不改' : '应用密码'">
                 <template #prefix><el-icon><Lock /></el-icon></template>
+                <!-- 测试连接：填完账号就能先验一遍再保存，密码留空时后端自动沿用已存的 -->
+                <template #append>
+                  <el-button :loading="wdTesting" @click="testWd">测试连接</el-button>
+                </template>
               </el-input>
             </el-form-item>
           </el-col>

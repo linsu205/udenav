@@ -7,6 +7,9 @@ export type Env = {
   SECRET: string;
   SEED_DEMO?: string;
   ACCESS_AUD?: string;
+  /** Cloudflare Access 团队域名（如 yourteam.cloudflareaccess.com），用于拉取验签公钥；
+      只配 ACCESS_AUD 不配本项时，Access 校验退化为仅检查 aud/exp（边缘已鉴权）。 */
+  ACCESS_TEAM_DOMAIN?: string;
   CORS_ORIGIN?: string;
 };
 
@@ -69,6 +72,8 @@ export const DEFAULT_CONFIG = {
   margin_bottom: 6,
   icon_style: 'info',
   search_box_show: 1,
+  show_clock: 1,
+  content_max_width: 1200,
   footer: '',
   theme: 'dark',
   search_engines: [

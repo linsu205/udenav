@@ -13,6 +13,9 @@ const LOCK_SEC = 1800;
 /* ---------------- 鉴权 ---------------- */
 
 export async function getSession(env: Env, req: Request): Promise<Session | null> {
+  // 注：Access 作为可选的边缘 perimeter，由 Cloudflare 在边缘完成认证后把请求透传进来；
+  // 这里不把 Access 作为硬性闸门（否则未真正前置 Access 的部署会被整体锁死）。
+  // 若请求里带了 Access JWT，readAccessIdentity 会在配置团队域名时校验其 RS256 签名。
   if (!requireAccess(req)) return null;
   const token = readSessionCookie(req);
   if (!token) return null;
@@ -23,9 +26,9 @@ export function deny(res: Response): Response {
   return withSetCookie(res, clearSessionCookie());
 }
 
-function withSetCookie(res: Response, cookie: string): Response {
+function withSetCookie(res: Response, cookie: string | string[]): Response {
   const h = new Headers(res.headers);
-  h.set('set-cookie', cookie);
+  for (const c of Array.isArray(cookie) ? cookie : [cookie]) h.append('set-cookie', c);
   return new Response(res.body, { status: res.status, headers: h });
 }
 
@@ -121,7 +124,7 @@ export async function login(env: Env, req: Request): Promise<Response> {
 }
 
 export async function logout(): Promise<Response> {
-  return json({ ok: true }, { headers: { 'set-cookie': clearSessionCookie() } });
+  return withSetCookie(json({ ok: true }), clearSessionCookie());
 }
 
 export async function me(req: Request, env: Env): Promise<Response> {
@@ -268,6 +271,7 @@ export async function getConfig(env: Env, req: Request): Promise<Response> {
   const rows = await env.DB.prepare('SELECT * FROM user_config').all<ConfigRow>();
   const out: Record<string, unknown> = { ...DEFAULT_CONFIG };
   for (const r of rows.results) {
+    if (r.key.startsWith('_')) continue; // 内部键不回传前端
     try { out[r.key] = JSON.parse(r.value); } catch { /* skip */ }
   }
   return json({ ok: true, config: out });
@@ -613,7 +617,9 @@ export async function exportAll(env: Env, req: Request): Promise<Response> {
     ok: true,
     app: 'udenav',
     exported_at: Date.now(),
-    config: c.results.map((r) => ({ key: r.key, value: safeParse(r.value) })),
+    config: c.results
+      .filter((r) => !r.key.startsWith('_')) // 内部键（如密钥）绝不进导出文件
+      .map((r) => ({ key: r.key, value: safeParse(r.value) })),
     users: u.results.map((r) => ({ ...r, password: '<请用 JSON 导入界面单独设置>' })),
     groups: g.results,
     icons: i.results,

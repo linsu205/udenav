@@ -9,6 +9,7 @@
 
 import { json, bad, readJson } from '../lib/http';
 import { requireRole, applySnapshot } from './admin';
+import { getSecret } from '../lib/secret';
 import type { Env, ConfigRow, GroupRow, IconRow } from '../lib/schema';
 
 export interface BackupCfg {
@@ -38,6 +39,44 @@ function normFreq(v: unknown, fallback: BackupCfg['freq']): BackupCfg['freq'] {
   return v === 'hourly' || v === 'daily' || v === 'weekly' ? v : fallback;
 }
 
+/* ---------------- WebDAV 密码静态加密 ----------------
+ * 密码落库只存密文：用 SECRET 派生的 AES-GCM 密钥加密。
+ * 这样即使 D1 数据或备份文件泄露，第三方也拿不到坚果云等账号的明文密码。
+ * 历史明文（未加密）仍可正常解密回退，下一次保存时自动转成密文。 */
+async function aesKey(secret: string): Promise<CryptoKey> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+  return crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
+async function encryptSecret(plain: string, secret: string): Promise<string> {
+  if (!plain) return '';
+  const key = await aesKey(secret);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plain));
+  const merged = new Uint8Array(iv.length + ct.byteLength);
+  merged.set(iv, 0);
+  merged.set(new Uint8Array(ct), iv.length);
+  let bin = '';
+  for (let i = 0; i < merged.length; i++) bin += String.fromCharCode(merged[i]);
+  return 'enc:' + btoa(bin);
+}
+
+async function decryptSecret(stored: string, secret: string): Promise<string> {
+  if (!stored || !stored.startsWith('enc:')) return stored; // 兼容历史明文
+  try {
+    const bin = atob(stored.slice(4));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const iv = bytes.slice(0, 12);
+    const ct = bytes.slice(12);
+    const key = await aesKey(secret);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+    return new TextDecoder().decode(pt);
+  } catch {
+    return ''; // 解密失败（密钥已变更）→ 视为未配置，用户需重填
+  }
+}
+
 /** 这一轮 Cron 是否该真正执行（按北京时间判断小时/星期） */
 function dueNow(cfg: BackupCfg): boolean {
   if (!cfg.enabled || !cfg.url) return false;
@@ -62,16 +101,20 @@ async function loadCfg(env: Env): Promise<BackupCfg> {
   const row = await env.DB.prepare('SELECT value FROM app_setting WHERE key = ?').bind(KEY).first<{ value: string }>();
   if (!row?.value) return { ...DEFAULT_CFG };
   try {
-    return { ...DEFAULT_CFG, ...JSON.parse(row.value) };
+    const cfg = { ...DEFAULT_CFG, ...JSON.parse(row.value) } as BackupCfg;
+    if (cfg.pass) cfg.pass = await decryptSecret(cfg.pass, await getSecret(env));
+    return cfg;
   } catch {
     return { ...DEFAULT_CFG };
   }
 }
 
 async function saveCfg(env: Env, cfg: BackupCfg): Promise<void> {
+  const secret = await getSecret(env);
+  const stored: BackupCfg = { ...cfg, pass: await encryptSecret(cfg.pass, secret) };
   await env.DB
     .prepare('INSERT INTO app_setting (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at')
-    .bind(KEY, JSON.stringify(cfg), Date.now())
+    .bind(KEY, JSON.stringify(stored), Date.now())
     .run();
 }
 
@@ -147,7 +190,9 @@ async function buildSnapshot(env: Env) {
     app: 'udenav',
     exported_at: Date.now(),
     source: 'webdav-auto',
-    config: c.results.map((r) => ({ key: r.key, value: safeParse(r.value) })),
+    config: c.results
+      .filter((r) => !r.key.startsWith('_')) // 内部键（如密钥）绝不进备份文件
+      .map((r) => ({ key: r.key, value: safeParse(r.value) })),
     users: u.results.map((r) => ({ ...r, password: '<请用 JSON 导入界面单独设置>' })),
     groups: g.results,
     icons: i.results,
@@ -251,6 +296,59 @@ export async function runBackupNow(env: Env, req: Request): Promise<Response> {
   const saved: BackupCfg = { ...cfg, last_at: Date.now(), last_ok: res.ok, last_msg: res.message + (res.file ? `（${res.file}）` : '') };
   await saveCfg(env, saved);
   return json({ ok: res.ok, message: res.message, file: res.file, pruned: res.pruned ?? 0 }, { status: res.ok ? 200 : 500 });
+}
+
+/** POST /api/admin/backup/test —— 测试连接（不写库、不在云端建任何东西）
+ *  body 可带表单值临时覆盖（和「立即备份」同口径）；pass 留空沿用已保存的密码，
+ *  这样密码已存好的场景下填完账号就能直接测，不用重输密码。 */
+export async function testBackupConn(env: Env, req: Request): Promise<Response> {
+  await requireRole(req, env, 'owner');
+  const body = await readJson(req);
+  const old = await loadCfg(env);
+  const url = String(body.url ?? old.url).trim();
+  const user = String(body.user ?? old.user).trim();
+  const pass = String(body.pass ?? '') || old.pass;
+  const dir = String(body.dir ?? old.dir).trim();
+
+  if (!url) return json({ ok: false, message: '先填 WebDAV 地址再测试' });
+  if (!/^https?:\/\//i.test(url)) return json({ ok: false, message: 'WebDAV 地址要以 http:// 或 https:// 开头' });
+  if (!user || !pass) return json({ ok: false, message: '先填账号和密码（坚果云要用「应用密码」）再测试' });
+
+  const auth = basicAuth(user, pass);
+
+  /* 第一步：PROPFIND 根目录，验证「地址可达 + 账号密码正确」。
+     depth 0 只看目录本身，返回体最小；部分服务把 207 报成 200，两者都算成功。 */
+  let r: Response;
+  try {
+    r = await fetch(url, {
+      method: 'PROPFIND',
+      headers: { authorization: auth, depth: '0', 'content-type': 'application/xml; charset=utf-8' },
+      body: '<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>',
+    });
+  } catch {
+    return json({ ok: false, message: '连不上这个地址：检查域名、端口和网络（自建服务确认外网可访问）' });
+  }
+  if (r.status === 401) return json({ ok: false, message: '地址可达但认证失败：账号或密码不对（坚果云要用「应用密码」）' });
+  if (r.status === 403) return json({ ok: false, message: '服务器拒绝访问（403）：这个账号可能没有开启 WebDAV 权限' });
+  if (r.status === 404) return json({ ok: false, message: '地址 404：路径不对（坚果云固定是 https://dav.jianguoyun.com/dav/）' });
+  if (!r.ok && r.status !== 207) {
+    return json({ ok: false, message: `服务端返回 HTTP ${r.status}，这个地址可能不是 WebDAV 服务` });
+  }
+
+  /* 第二步：看看备份目录在不在。目录不存在不算失败——真正备份时会先自动创建，
+     这里只提示，让用户心里有数。 */
+  let dirMsg = '';
+  if (dir) {
+    try {
+      const d = await fetch(joinUrl(url, dir), { method: 'PROPFIND', headers: { authorization: auth, depth: '0' } });
+      if (d.ok || d.status === 207) dirMsg = `备份目录「${dir}」已存在`;
+      else if (d.status === 404) dirMsg = `备份目录「${dir}」不存在，首次备份会自动创建`;
+      else dirMsg = `备份目录检查返回 HTTP ${d.status}，备份若报错请检查目录权限`;
+    } catch {
+      dirMsg = '备份目录检查失败，但不影响连接';
+    }
+  }
+  return json({ ok: true, message: `连接成功${dirMsg ? '，' + dirMsg : ''}` });
 }
 
 /** Cron 入口：只在启用时跑，失败也把状态写回去，方便下次打开面板看到原因 */
