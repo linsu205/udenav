@@ -107,12 +107,12 @@ function removeBg() {
 watch(bgUrl, () => { bgFailed.value = false; bgDims.value = ''; });
 
 /* ---------------- 效果参数实时预览 ----------------
-   模糊/遮罩/留白/卡片样式直接反映在右边预览图上，调参不用保存回前台确认。
+   模糊/遮罩/留白直接反映在右边预览图上，调参不用保存回前台确认。
    口径与访客页一致：
    · 模糊 = filter blur(px)，再放大一点盖住模糊边缘透出的底色（前台是整页铺满看不出来，预览图有小边）
    · 遮罩 = 压在图上的黑/白半透明层（深色主题黑、浅色主题白，跟 .bg-mask 同款）
    · 留白 = 内容起始线，margin_top vh ≈ 视口高度的百分比，预览里就是高度的百分比
-   · 卡片样式 = 起始线下面画几块骨架卡，横排信息卡是长条、网格是方块 */
+   （卡片样式不在预览里体现：前台卡片外观由每个分组自己的 card_style 决定，全局没有这个开关） */
 const pvImgStyle = computed(() => {
   const b = Math.min(Math.max(Number(f.background_blur) || 0, 0), 30);
   return {
@@ -250,7 +250,6 @@ const favMeta = computed(() => {
             <div class="bg-ctl">
               <div class="ctl-row"><el-form-item label="壁纸模糊"><el-input-number v-model="f.background_blur" :min="0" :max="30" style="width:100%" /></el-form-item></div>
               <div class="ctl-row"><el-form-item label="遮罩不透明度"><el-input-number v-model="f.background_mask" :min="0" :max="1" :step="0.05" style="width:100%" /></el-form-item></div>
-              <div class="ctl-row"><el-form-item label="卡片样式"><el-select v-model="f.icon_style" style="width:100%"><el-option value="info" label="横排信息卡" /><el-option value="grid" label="网格" /></el-select></el-form-item></div>
             </div>
           </div>
 
@@ -270,8 +269,8 @@ const favMeta = computed(() => {
                   <div class="bg-pv-line">
                     <span class="bg-pv-mt-tag">内容 {{ f.margin_top }}vh</span>
                   </div>
-                  <div class="bg-pv-cards" :class="f.icon_style">
-                    <div class="pc" v-for="n in (f.icon_style === 'grid' ? 5 : 3)" :key="n"></div>
+                  <div class="bg-pv-cards">
+                    <div class="pc" v-for="n in 5" :key="n"></div>
                   </div>
                 </div>
               </template>
@@ -297,14 +296,17 @@ const favMeta = computed(() => {
               <el-input-number v-model="f.content_max_width" :min="600" :max="1920" :step="10" style="width:100%" />
             </el-form-item>
           </el-col>
+          <el-col :span="4">
+            <el-form-item label="时钟 / 日期">
+              <el-switch v-model="f.show_clock" :active-value="1" :inactive-value="0" class="pl-switch" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="4">
+            <el-form-item label="搜索栏">
+              <el-switch v-model="f.search_box_show" :active-value="1" :inactive-value="0" class="pl-switch" />
+            </el-form-item>
+          </el-col>
         </el-row>
-        <el-form-item label="布局显示">
-          <div class="pl-row">
-            <el-checkbox v-model="f.show_clock" :true-value="1" :false-value="0">显示时钟 / 日期</el-checkbox>
-            <el-checkbox v-model="f.search_box_show" :true-value="1" :false-value="0">显示搜索栏</el-checkbox>
-          </div>
-          <div class="pl-hint">关闭「时钟 / 日期」时，标题与时钟之间的分隔竖线会一并隐藏。</div>
-        </el-form-item>
       </el-form>
     </div>
 
@@ -495,9 +497,7 @@ const favMeta = computed(() => {
   .bg-pv-content.light .bg-pv-mt-tag { color: rgba(40, 40, 40, .75); background: rgba(255, 255, 255, .55); }
   /* 骨架卡：横排信息卡 = 长条，网格 = 方块；白色玻璃感与前台卡片一致 */
   .bg-pv-cards { display: flex; gap: 8px; padding: 12px 7% 0; }
-  .bg-pv-cards.info { flex-direction: column; gap: 6px; }
-  .bg-pv-cards.info .pc { height: 16px; }
-  .bg-pv-cards.grid .pc { width: 13%; aspect-ratio: 1; }
+  .bg-pv-cards .pc { width: 13%; aspect-ratio: 1; }
   .bg-pv-cards .pc {
     border-radius: 9px;
     background: rgba(255, 255, 255, .38);
@@ -513,8 +513,8 @@ const favMeta = computed(() => {
   }
 
   /* ---- 个性化 ---- */
-  .pl-row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
-  .pl-hint { width: 100%; font-size: 12px; color: var(--sp-dim); margin-top: 6px; line-height: 1.5; }
+  /* 开关与左侧数值输入同行同基线：输入框 32px 高，开关本体 20px，往下垫 6px 视觉居中 */
+  .pl-switch { margin-top: 6px; }
 
   /* ---- 搜索引擎 ---- */
   .engine-list { display: flex; flex-direction: column; gap: 8px; }
