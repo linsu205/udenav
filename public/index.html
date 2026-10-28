@@ -107,7 +107,8 @@
   /* 注意：以下 .group / .card / .mini 规则必须限定在访客页 .wrap 内。
      后台是同一个文档里的 Vue 组件（#adminRoot 在 .modal 里），
      它的分组卡片也用了 .group 类，不限定作用域会被这里的 opacity:0 直接隐掉。 */
-  .wrap .group{margin-top:38px}
+  /* 分组间距可由后台配置（--gmt，默认 22px，范围 10~38），作用于所有分组 */
+  .wrap .group{margin-top:var(--gmt,22px)}
   /* 标题行按底对齐：＋ 要贴住标题的右下角，用 center 会让它浮在标题中线附近 */
   .group-head{display:flex;align-items:flex-end;gap:10px;margin-bottom:14px;padding:0 4px}
   /* max-width + ellipsis：标题再长也不会撑到「＋」底下（之前文字压在按钮上是这个原因） */
@@ -537,6 +538,7 @@ function applyConfig(c) {
   document.documentElement.style.setProperty('--mask', c.background_mask ?? 0.2);
   document.documentElement.style.setProperty('--mt', `${c.margin_top ?? 6}vh`);
   document.documentElement.style.setProperty('--cmw', `${c.content_max_width ?? 1200}px`);
+  document.documentElement.style.setProperty('--gmt', `${c.group_margin_top ?? 22}px`);
   document.documentElement.classList.toggle('no-clock', !c.show_clock);
   $('#footer').textContent = c.footer || '';
   $('#searchBox').style.display = c.search_box_show ? 'flex' : 'none';
@@ -1318,7 +1320,7 @@ window.addEventListener('resize', closeCtx);
 
 /* ---------- 启动：优先读后端，读不到就用内置数据 ---------- */
 const FALLBACK = {
-  config: { logo_text: 'UDeNav', favicon: '', background_blur: 10, background_mask: 0.2, margin_top: 6, icon_style: 'info', search_box_show: 1, show_clock: 1, content_max_width: 1200, theme: 'dark', search_engines: DEFAULT_ENGINES },
+  config: { logo_text: 'UDeNav', favicon: '', background_blur: 10, background_mask: 0.2, margin_top: 6, icon_style: 'info', search_box_show: 1, show_clock: 1, content_max_width: 1200, group_margin_top: 22, theme: 'dark', search_engines: DEFAULT_ENGINES },
   groups: [
     { id: 1, title: '常用', description: '每天要打开的', cardStyle: 'info', items: [
       { title: '百度', url: 'https://www.baidu.com', description: '中文搜索', color: '#2932e1', openMethod: 2 },

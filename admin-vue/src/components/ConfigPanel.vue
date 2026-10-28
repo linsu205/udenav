@@ -11,6 +11,7 @@ const store = useStore();
 const f = reactive({
   logo_text: '', favicon: '', theme: 'dark', background_image: '', background_blur: 10, background_mask: 0.2,
   margin_top: 6, icon_style: 'info', footer: '', search_box_show: 1, show_clock: 1, content_max_width: 1200,
+  group_margin_top: 22,
   search_engines: [] as any[],
 });
 const saving = ref(false);
@@ -148,6 +149,9 @@ const pvInset = computed(() => {
   return `${((1 - mw / 1920) * 50).toFixed(2)}%`;
 });
 
+/* 分组间距 → 预览骨架卡行的上间距，口径与访客页 --gmt 一致（所有分组同值，两行都绑） */
+const pvGMt = computed(() => `${Math.min(Math.max(Number(f.group_margin_top) || 22, 10), 38)}px`);
+
 function fmtBytes(n: number): string {
   if (!n) return '';
   if (n < 1024) return `${Math.round(n)} B`;
@@ -181,6 +185,21 @@ const bgMeta = computed(() => {
   if (bgDims.value) out.push(bgDims.value);
   return out.filter(Boolean).join(' · ');
 });
+
+/* 个性化一键恢复默认：只改本地表单，跟其他修改一样要点右上角「保存配置」才落库。
+   口径与后端 DEFAULT_CONFIG（src/lib/schema.ts）一致，改后端默认值时这里要跟着改 */
+function resetPersonalDefaults() {
+  f.theme = 'dark';
+  f.background_image = '';
+  f.background_blur = 10;
+  f.background_mask = 0.2;
+  f.margin_top = 6;
+  f.content_max_width = 1200;
+  f.group_margin_top = 22;
+  f.show_clock = 1;
+  f.search_box_show = 1;
+  ElMessage.info('已恢复默认设置，点右上角「保存配置」后生效');
+}
 
 const favMeta = computed(() => {
   const out = baseMeta(favUrl.value);
@@ -247,7 +266,11 @@ const favMeta = computed(() => {
     </div>
 
     <div class="sp-card">
-      <div class="sp-card-title">个性化</div>
+      <div class="sp-card-head">
+        <div class="sp-card-title">个性化</div>
+        <span class="sp-card-gap"></span>
+        <button type="button" class="reset-defaults" title="主题、壁纸及下方全部参数恢复默认值（需再点「保存配置」生效）" @click="resetPersonalDefaults">恢复默认</button>
+      </div>
       <el-form label-position="top" @submit.prevent>
         <el-row :gutter="18" class="bg-top">
           <el-col :span="6"><el-form-item label="主题"><el-select v-model="f.theme" style="width:100%"><el-option value="dark" label="深色" /><el-option value="light" label="浅色" /></el-select></el-form-item></el-col>
@@ -273,6 +296,7 @@ const favMeta = computed(() => {
               <div class="ctl-row"><el-form-item label="遮罩不透明度"><el-input-number v-model="f.background_mask" :min="0" :max="1" :step="0.05" style="width:100%" /></el-form-item></div>
               <div class="ctl-row"><el-form-item label="页头留白 (vh)"><el-input-number v-model="f.margin_top" :min="0" :max="30" style="width:100%" /></el-form-item></div>
               <div class="ctl-row"><el-form-item label="内容最大宽度 (px)"><el-input-number v-model="f.content_max_width" :min="600" :max="1920" :step="10" style="width:100%" /></el-form-item></div>
+              <div class="ctl-row"><el-form-item label="分组间距 (px)"><el-input-number v-model="f.group_margin_top" :min="10" :max="38" style="width:100%" /></el-form-item></div>
               <div class="ctl-row sw-row">
                 <div class="sw-col"><span class="sw-label">时钟 / 日期</span><el-switch v-model="f.show_clock" :active-value="1" :inactive-value="0" /></div>
                 <div class="sw-col"><span class="sw-label">搜索栏</span><el-switch v-model="f.search_box_show" :active-value="1" :inactive-value="0" /></div>
@@ -312,8 +336,12 @@ const favMeta = computed(() => {
                     <el-icon><Search /></el-icon>
                     <span>搜索</span>
                   </div>
-                  <div class="bg-pv-cards">
+                  <!-- 两行骨架卡 = 两个分组：行间距即「分组间距」参数（访客页所有分组同值），改动实时可见 -->
+                  <div class="bg-pv-cards g2" :style="{ marginTop: pvGMt }">
                     <div class="pc" v-for="n in 5" :key="n"></div>
+                  </div>
+                  <div class="bg-pv-cards g2" :style="{ marginTop: pvGMt }">
+                    <div class="pc" v-for="n in 5" :key="'g2-' + n"></div>
                   </div>
                 </div>
               </div>
@@ -358,6 +386,16 @@ const favMeta = computed(() => {
 <style scoped>
   .head-actions { display: flex; gap: 10px; flex: none; }
   @media (max-width: 768px) { .head-actions { width: 100%; } }
+
+  /* ---- 卡片标题行：标题居左，「恢复默认」挂在最右 ---- */
+  .sp-card-head { display: flex; align-items: center; gap: 8px; }
+  .sp-card-gap { flex: 1; }
+  /* 与「移除图标 / 移除图片」同款的弱化文字按钮，hover 才泛红 —— 误触成本低但看得见 */
+  .reset-defaults {
+    border: 0; background: none; padding: 3px 8px; border-radius: 7px;
+    font: inherit; font-size: 12.5px; color: var(--sp-faint); cursor: pointer; transition: all .15s;
+  }
+  .reset-defaults:hover { color: var(--sp-danger-text); background: var(--sp-chip-bg); }
   .engine-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
   @media (max-width: 768px) {
     .engine-row { flex-wrap: wrap; }

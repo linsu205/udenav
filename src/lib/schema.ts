@@ -74,6 +74,9 @@ export const DEFAULT_CONFIG = {
   search_box_show: 1,
   show_clock: 1,
   content_max_width: 1200,
+  /* 分组间距：访客页所有分组（.wrap .group）的 margin-top，后台可调 10~38；
+     后台改默认值时 ConfigPanel.resetPersonalDefaults 要同步 */
+  group_margin_top: 22,
   footer: '',
   theme: 'dark',
   search_engines: [
