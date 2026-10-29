@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { User, Lock } from '@element-plus/icons-vue';
 import { useStore } from '../store';
 
 const store = useStore();
@@ -64,45 +65,49 @@ async function submit() {
 <template>
   <div class="sp-login">
     <div class="sp-card">
+      <!-- 品牌区：项目内置 logo（蓝底 U + 上升箭头，与站点 favicon 同一枚）+ 两行品牌文字 -->
       <div class="brand">
-        <svg class="brand-logo" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <defs>
-            <linearGradient id="udenavG" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stop-color="#66b1ff" />
-              <stop offset="1" stop-color="#337ecc" />
-            </linearGradient>
-          </defs>
-          <rect x="3" y="3" width="42" height="42" rx="13" fill="url(#udenavG)" />
-          <path d="M24 10 L28.6 28 L24 25 L19.4 28 Z" fill="#fff" />
-          <circle cx="24" cy="24" r="2.4" fill="#fff" opacity="0.9" />
+        <svg class="brand-logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect width="64" height="64" rx="16" fill="#409EFF" />
+          <path d="M22 22 V36 Q22 46 32 46 Q42 46 42 36 V14" fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" />
+          <path d="M34 22 L42 12 L50 22" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
         <div class="brand-text">
-          <div class="brand-name">UDeNav</div>
-          <div class="brand-sub">导航面板 · 管理后台</div>
+          <span class="brand-name">UDeNav</span>
+          <span class="brand-sub">导航面板 · 管理后台</span>
         </div>
       </div>
       <h1>{{ mode === 'login' ? '登录管理后台' : '注册管理后台' }}</h1>
-      <p class="tip">{{ mode === 'login' ? '使用管理员账号登录' : '首次使用请注册唯一管理员账号' }}</p>
-      <el-form @submit.prevent="submit" label-position="top">
-        <el-form-item label="用户名">
-          <el-input v-model="username" placeholder="3-20 位字母/数字/下划线" autocomplete="username" />
+      <el-form @submit.prevent="submit" label-position="top" class="login-form">
+        <!-- 用户名 / 密码：label 内嵌在输入框左侧（图标 + 文字 + 竖分隔线） -->
+        <el-form-item class="field">
+          <el-input v-model="username" size="large" placeholder="请输入用户名" autocomplete="username">
+            <template #prefix>
+              <span class="in-label"><el-icon><User /></el-icon><span>用户名</span></span>
+            </template>
+          </el-input>
         </el-form-item>
-        <el-form-item label="密码">
-          <el-input v-model="password" type="password" placeholder="至少 4 位" autocomplete="current-password" />
+        <el-form-item class="field">
+          <el-input v-model="password" size="large" type="password" placeholder="请输入密码" autocomplete="current-password" show-password>
+            <template #prefix>
+              <!-- 「密码」二字之间补两个 en 空格（各 0.5em），合计正好一个字宽，与上行「用户名」视觉等宽 -->
+              <span class="in-label"><el-icon><Lock /></el-icon><span>密&ensp;&ensp;码</span></span>
+            </template>
+          </el-input>
         </el-form-item>
-        <el-form-item v-if="mode === 'login'" label="登录有效期" class="exp-row">
-          <el-radio-group v-model="duration">
+        <el-form-item v-if="mode === 'login'" class="exp-row">
+          <el-radio-group v-model="duration" size="small">
             <el-radio-button value="day">一天</el-radio-button>
             <el-radio-button value="week">一周</el-radio-button>
             <el-radio-button value="long">长期</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <div v-if="err" class="err">{{ err }}</div>
-        <el-button type="primary" native-type="submit" :loading="loading" style="width:100%;margin-top:4px">
+        <el-button type="primary" native-type="submit" :loading="loading" class="submit-btn">
           {{ mode === 'login' ? '登录' : '注册' }}
         </el-button>
       </el-form>
-      <div v-if="store.needSetup" style="text-align:center;margin-top:16px;font-size:13px">
+      <div v-if="store.needSetup" class="switch-row">
         <el-link type="primary" :underline="'never'" @click="mode = mode === 'login' ? 'register' : 'login'">
           {{ mode === 'login' ? '还没有账号？注册' : '已有账号？登录' }}
         </el-link>
@@ -110,8 +115,3 @@ async function submit() {
     </div>
   </div>
 </template>
-
-<style scoped>
-  .err { color: var(--sp-danger); font-size: 13px; margin: 0 0 10px; }
-  .exp-row :deep(.el-radio-group) { flex-wrap: wrap; }
-</style>

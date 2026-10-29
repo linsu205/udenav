@@ -341,15 +341,61 @@ html.dark {
   /* --adm-h 由 mount.ts 按挂载容器实测高度写入；独立成页时退回 100vh */
   min-height: var(--adm-h, 100vh); display: flex; align-items: center; justify-content: center; padding: 20px;
   background:
-    radial-gradient(ellipse 60% 45% at 18% 8%, rgba(var(--sp-accent-rgb), .08), transparent),
-    radial-gradient(ellipse 50% 40% at 85% 90%, rgba(var(--sp-accent-rgb), .06), transparent),
+    radial-gradient(ellipse 60% 45% at 18% 8%, rgba(var(--sp-accent-rgb), .10), transparent),
+    radial-gradient(ellipse 50% 40% at 85% 90%, rgba(var(--sp-accent-rgb), .07), transparent),
     var(--sp-bg);
 }
-.sp-login .sp-card { width: min(400px, 94vw); padding: 30px 30px 26px; }
-.sp-login .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-.sp-login .brand-logo { width: 44px; height: 44px; flex: none; border-radius: 12px; box-shadow: 0 4px 14px rgba(var(--sp-accent-rgb), .35); display: block; }
-.sp-login .brand-name { font-size: 21px; font-weight: 800; letter-spacing: .4px; color: var(--sp-text); line-height: 1.1; }
-.sp-login .brand-sub { font-size: 12.5px; color: var(--sp-dim); margin-top: 2px; }
-.sp-login h1 { margin: 0 0 6px; font-size: 21px; }
-.sp-login .tip { color: var(--sp-dim); font-size: 13px; margin: 0 0 22px; }
-.sp-login .exp-row { margin-bottom: 6px; }
+/* 卡片：顶部一层极淡品牌色渐变 + 更大圆角与柔和投影，比默认 .sp-card 更有"浮起"感 */
+.sp-login .sp-card {
+  width: min(400px, 94vw); padding: 34px 32px 28px; margin: 0; border-radius: 18px;
+  background: linear-gradient(180deg, rgba(var(--sp-accent-rgb), .06), rgba(var(--sp-accent-rgb), 0) 140px), var(--sp-card);
+  box-shadow: 0 18px 48px rgba(20, 30, 50, .12);
+}
+html.dark .sp-login .sp-card { box-shadow: 0 18px 48px rgba(0, 0, 0, .45); }
+/* 品牌区：项目 logo + 两行品牌文字（UDeNav / 导航面板 · 管理后台），靠左 */
+.sp-login .brand { display: flex; align-items: center; justify-content: flex-start; gap: 10px; margin-bottom: 20px; }
+.sp-login .brand-logo { width: 36px; height: 36px; flex: none; display: block; border-radius: 9px; box-shadow: 0 4px 10px rgba(var(--sp-accent-rgb), .26); }
+.sp-login .brand-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sp-login .brand-name { font-size: 20px; font-weight: 800; letter-spacing: .4px; line-height: 1.1; color: var(--sp-text); }
+.sp-login .brand-sub { font-size: 12px; letter-spacing: .3px; line-height: 1.1; color: var(--sp-dim); }
+.sp-login h1 { margin: 30px 0 24px; font-size: 20px; text-align: center; letter-spacing: .5px; }
+
+/* 输入框：label 内嵌在输入框左侧（图标 + 文字 + 竖分隔线） */
+.sp-login .login-form .field { margin-bottom: 16px; }
+.sp-login .login-form .field .el-form-item__content { line-height: normal; }
+/* 内嵌 label：固定宽度，保证「用户名」「密码」两行的竖分隔线与文字起点完全对齐 */
+.sp-login .login-form .el-input__prefix { flex: 0 0 auto; }
+.sp-login .in-label {
+  display: inline-flex; align-items: center; gap: 5px;
+  flex: 0 0 74px; width: 74px; box-sizing: border-box;
+  margin-right: 12px; padding-right: 12px; border-right: 1px solid var(--sp-border);
+  font-size: 13px; font-weight: 600; color: var(--sp-text); white-space: nowrap;
+}
+.sp-login .in-label .el-icon { font-size: 14px; color: var(--sp-accent); flex: none; }
+.sp-login .login-form .el-input__wrapper {
+  border-radius: 11px; padding-left: 13px; padding-right: 13px;
+  transition: box-shadow .18s;
+}
+.sp-login .login-form .el-input__wrapper:hover { box-shadow: 0 0 0 1px rgba(var(--sp-accent-rgb), .45) inset; }
+.sp-login .login-form .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--sp-accent) inset, 0 0 0 3px rgba(var(--sp-accent-rgb), .13);
+}
+
+/* 登录有效期：无标签行，小号三档整体靠右 */
+.sp-login .exp-row { margin-top: 4px; margin-bottom: 20px; }
+.sp-login .exp-row .el-form-item__content { justify-content: flex-end; }
+.sp-login .exp-row .el-radio-button__inner {
+  padding: 4px 11px; font-size: 12px; height: 26px; line-height: 18px;
+}
+/* 主按钮：品牌渐变 + 微投影 */
+.sp-login .submit-btn {
+  width: 100%; height: 42px; margin-top: 6px; border-radius: 10px;
+  font-size: 15px; font-weight: 600; letter-spacing: 1px;
+  background-image: linear-gradient(135deg, #4aa3ff, #337ecc); border: none;
+  box-shadow: 0 8px 18px rgba(var(--sp-accent-rgb), .30);
+  transition: box-shadow .2s, transform .1s, filter .2s;
+}
+.sp-login .submit-btn:hover { filter: brightness(1.06); box-shadow: 0 10px 22px rgba(var(--sp-accent-rgb), .38); }
+.sp-login .submit-btn:active { transform: translateY(1px); }
+.sp-login .err { color: var(--sp-danger); font-size: 13px; margin: 0 0 10px; text-align: center; }
+.sp-login .switch-row { text-align: center; margin-top: 16px; font-size: 13px; }
