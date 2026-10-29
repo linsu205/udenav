@@ -132,15 +132,21 @@ function cookieName(secure: boolean): string {
 }
 
 export function setSessionCookie(token: string, maxAgeSec: number, secure: boolean): string {
+  // 生产环境（https）用 SameSite=None; Secure：让会话 Cookie 能在「第三方上下文」里发送。
+  // 典型场景——把本站嵌进浏览器扩展的新标签页（iframe 顶层是 extension://，本站请求对浏览器
+  // 而言是第三方），SameSite=Lax 在第三方 iframe 中不会发送 Cookie，导致登录后 me/loadAll
+  // 拿不到会话、几秒后退登。None 显式允许跨站发送，且不受第三方 Cookie 屏蔽影响。
+  // 本地 http 无法设 Secure，None 必须配 Secure，故回退保持 Lax（同源本地开发无影响）。
+  const sameSite = secure ? 'SameSite=None; Secure' : 'SameSite=Lax';
   const name = cookieName(secure);
-  return `${name}=${token}; Path=/; Max-Age=${maxAgeSec}; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+  return `${name}=${token}; Path=/; Max-Age=${maxAgeSec}; HttpOnly; ${sameSite}`;
 }
 
 /** 登出：同时清掉两个名字，兼容历史会话（旧部署写的是 sp_session） */
 export function clearSessionCookie(): string[] {
   return [
     `${COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`,
-    `${HOST_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure`,
+    `${HOST_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=None; Secure`,
   ];
 }
 
