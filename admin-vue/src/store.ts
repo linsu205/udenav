@@ -22,6 +22,12 @@ export interface IconItem {
   id: number; group_id: number; title: string; url: string; lan_url: string;
   icon_type: string; icon_text: string; icon_url: string; description: string;
   open_method: number; background_color: string; sort: number;
+  /** 'link' 普通卡片（默认）| 'calendar' | 'memo' | 'todo' 内置组件 */
+  kind?: string;
+  /** 组件外观/功能配置（JSON 字符串）：{ icon, color, opts }，见后台「组件管理」。
+      注意这里是**数据库列名**口径（管理接口直接回 SELECT * 的行），
+      前台 /api/public/panel 那边对应的是 wCfg */
+  w_cfg?: string;
 }
 
 export const useStore = defineStore('udenav', () => {

@@ -268,6 +268,10 @@
   html[data-theme="light"] .ctx-menu .acts button:hover:not(:disabled){background:rgba(31,35,40,.05);border-color:rgba(31,35,40,.24)}
   .ctx-menu .sep{height:1px;background:rgba(255,255,255,.09);margin:5px 4px}
   html[data-theme="light"] .ctx-menu .sep{background:rgba(31,35,40,.1)}
+  /* 组件卡片的菜单只有「前移 / 后移 / 删除」三条，用不着那排等宽方块按钮
+     （两个按钮 flex:1 会被拉成两条又宽又空的格子），统一成文字行更整齐 */
+  .ctx-menu .mi.dis{opacity:.32;cursor:not-allowed}
+  .ctx-menu .mi.dis:hover{background:transparent}
 
   /* ---------- 入场与滚动动画 ---------- */
   @keyframes rise{
@@ -367,6 +371,198 @@
   .modal #adminRoot .adm-boot i{width:14px;height:14px;border-radius:50%;display:inline-block;
     border:2px solid rgba(128,128,128,.28);border-top-color:var(--text-dim);animation:admSpin .7s linear infinite}
   @keyframes admSpin{to{transform:rotate(360deg)}}
+
+  /* ---------- 内置组件面板（日历 / 备忘录 / 待办） ----------
+     背景用接近实色的底：面板里是文字和大片留白，沿用 .modal 的 0.82 半透明底
+     会把背后壁纸的色块透上来，看着发脏；这里单独加深并提高模糊半径。 */
+  .modal.wp .box{width:min(880px,94vw);height:min(620px,86vh);
+    background:rgba(28,31,36,.95);backdrop-filter:blur(26px) saturate(1.15);-webkit-backdrop-filter:blur(26px) saturate(1.15)}
+  html[data-theme="light"] .modal.wp .box{background:rgba(255,255,255,.96)}
+  .modal.wp .bar{background:transparent}
+  #wpBody{flex:1;min-height:0;display:flex;overflow:hidden}
+  .wp-boot{display:flex;align-items:center;justify-content:center;width:100%;min-height:180px;color:var(--text-dim);font-size:13px}
+  /* 组件卡片的图标用组件自己的主色（--wc，由 renderGroups 内联写入；
+     没配就是品牌蓝 #409EFF，见 /api/public/widget-meta 的 defaultColor），
+     和普通卡片的图片/文字图标区分开。
+     选择器必须带 html[data-theme]：主题里有一条 html[data-theme="light"] .card .ic.plain
+     会把 .ic 的颜色压回 --text，权重比 .card.is-widget .ic 高。 */
+  html[data-theme="light"] .card.is-widget .ic,
+  html[data-theme="dark"] .card.is-widget .ic,
+  html:not([data-theme]) .card.is-widget .ic{color:var(--wc,var(--accent))}
+  /* 组件图标的画法（淡底 + 实心细节）见 libPath / 后端 ICON_LIBRARY：细节本身就占满 24 网格，
+     所以比同类线性图标要「大一号」才在视觉重量上持平 —— 卡片 26px、小图标 36px。 */
+  .card.is-widget .ic svg{width:26px;height:26px;display:block}
+  /* 选了在线图标（Iconify）时是 <img>，尺寸跟内联 svg 对齐，彩色图标不套主色 */
+  .card.is-widget .ic img.w-ico{width:26px;height:26px;display:block;object-fit:contain}
+  html[data-theme="light"] .mini.is-widget .mic,
+  html[data-theme="dark"] .mini.is-widget .mic,
+  html:not([data-theme]) .mini.is-widget .mic{color:var(--wc,var(--accent))}
+  .mini.is-widget .mic svg{width:36px;height:36px;display:block}
+  .mini.is-widget .mic img.w-ico{width:36px;height:36px;display:block;object-fit:contain}
+
+  /* 日历
+     排版参考系统日历：顶部胶囊导航 + 周行 + 大号日期/农历脚注。
+     格子平时不上底色，只有「今天 / 法定节假日 / 调休上班」这三种状态才上色，
+     视觉重心全落在日期数字上；背后压一个超大月份水印当装饰。 */
+  .wp-cal{--cal-red:#e5484d;--cal-blue:var(--wc,var(--accent));
+    position:relative;overflow:hidden;flex:1;display:flex;flex-direction:column;
+    padding:12px 20px 14px;min-width:0}
+  html[data-theme="dark"] .wp-cal{--cal-red:#f06b70}
+  .cal-wm{position:absolute;right:9%;top:11%;z-index:0;font-size:min(47vh,330px);font-weight:700;
+    line-height:.78;letter-spacing:-.05em;color:var(--text);opacity:.032;pointer-events:none;
+    user-select:none;font-variant-numeric:tabular-nums}
+  html[data-theme="dark"] .cal-wm{opacity:.03}
+  .cal-bar,.cal-week,.cal-grid{position:relative;z-index:1}
+  .cal-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+  .cal-nav{display:flex;align-items:center;gap:8px}
+  .cal-pill{display:flex;align-items:center;height:32px;padding:0 3px;border-radius:10px;background:rgba(128,128,128,.11)}
+  .cal-pill b{display:block;min-width:44px;text-align:center;font-size:13.5px;font-weight:600;
+    color:var(--text);letter-spacing:.2px;font-variant-numeric:tabular-nums}
+  .cal-pill.m b{min-width:34px}
+  .cal-ar{width:24px;height:24px;border:0;border-radius:7px;background:transparent;color:var(--text-dim);
+    font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    transition:background .15s,color .15s}
+  .cal-ar:hover{background:rgba(128,128,128,.2);color:var(--text)}
+  .cal-today{height:32px;padding:0 14px;border:0;border-radius:10px;background:rgba(128,128,128,.11);
+    color:var(--text);font-size:12.5px;cursor:pointer;transition:background .15s}
+  .cal-today:hover{background:rgba(128,128,128,.2)}
+  .cal-week{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:2px}
+  .cal-week span{text-align:center;font-size:12px;color:var(--text-dim);padding:6px 0 4px;letter-spacing:.5px}
+  .cal-week span.we{color:var(--cal-red)}
+  .cal-grid{flex:1;display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:1fr;gap:2px;min-height:0}
+  .cal-d{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    border-radius:12px;min-height:0;transition:background .15s}
+  .cal-d:hover{background:rgba(128,128,128,.09)}
+  .cal-d .cd{position:relative;font-size:20px;font-weight:600;color:var(--text);line-height:1.1;
+    letter-spacing:.2px;font-variant-numeric:tabular-nums}
+  .cal-d .cl{font-size:10.5px;color:var(--text-dim);line-height:1.2;white-space:nowrap}
+  .cal-d .cl.fest{color:var(--cal-blue)}
+  /* 非本月的日期只留个影子，点它没有意义，也不该抢当前月注意力 */
+  .cal-d.out .cd{color:var(--text-dim);opacity:.8}
+  .cal-d.out .cl{opacity:.6}
+  .cal-d.we .cd{color:var(--cal-red)}
+  /* 法定节假日：整片浅红底 + 红字，连成一段假期的视觉块 */
+  .cal-d.off,.cal-d.off:hover{background:rgba(229,72,77,.075)}
+  html[data-theme="dark"] .cal-d.off{background:rgba(229,72,77,.11)}
+  .cal-d.off:hover{background:rgba(229,72,77,.13)}
+  .cal-d.off .cd{color:var(--cal-red)}
+  .cal-d.off .cl{color:rgba(229,72,77,.78)}
+  html[data-theme="dark"] .cal-d.off .cl{color:rgba(240,107,112,.8)}
+  .cal-d.off .cl.fest{color:var(--cal-blue)}
+  /* 调休上班：灰底，且覆盖周末红字 —— 这天本来就放假不了，还标红等于骗人 */
+  .cal-d.duty{background:rgba(128,128,128,.1)}
+  .cal-d.duty .cd{color:var(--text)}
+  .cal-d.duty .cl{color:var(--text-dim)}
+  /* 休/班 角标：挂在日期数字右上角，9px 小字，别抢主数字 */
+  .cal-d .cb{position:absolute;top:-4px;right:-13px;padding:0 3px;border-radius:4px;
+    font-size:9px;font-style:normal;font-weight:700;line-height:12px;letter-spacing:0}
+  .cal-d .cb.rest{background:rgba(229,72,77,.14);color:var(--cal-red)}
+  .cal-d .cb.duty{background:rgba(128,128,128,.2);color:var(--text-dim)}
+  .cal-d.today,.cal-d.today:hover{background:var(--cal-blue)}
+  .cal-d.today .cd{color:#fff}
+  .cal-d.today .cl,.cal-d.today .cl.fest{color:rgba(255,255,255,.88)}
+  .cal-d.today .cb.rest,.cal-d.today .cb.duty{background:rgba(255,255,255,.26);color:#fff}
+
+  /* 备忘录 */
+  .wp-memo{flex:1;display:flex;min-width:0;min-height:0}
+  .mm-side{width:228px;flex:none;display:flex;flex-direction:column;min-height:0;border-right:1px solid rgba(128,128,128,.18)}
+  .mm-sidehead{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 8px;
+    font-size:14px;font-weight:600;color:var(--text)}
+  /* 加号用内联 svg 而不是「＋」字符：全角字形本身带侧边留白、基线又偏下，
+     24px 的方按钮里怎么调 line-height 看着都不居中；svg 是几何图形，flex 居中就是真的居中 */
+  .mm-new{width:24px;height:24px;display:flex;align-items:center;justify-content:center;padding:0;
+    border:0;border-radius:7px;background:var(--wc,var(--accent));color:#fff;cursor:pointer}
+  .mm-new svg{width:16px;height:16px;display:block}
+  .mm-new:hover{filter:brightness(1.08)}
+  .mm-list{flex:1;overflow:auto;padding:0 8px 10px}
+  .mm-item{display:flex;flex-direction:column;gap:2px;width:100%;padding:8px 10px;margin-bottom:4px;
+    border:0;border-radius:9px;background:transparent;text-align:left;cursor:pointer}
+  .mm-item:hover{background:rgba(128,128,128,.12)}
+  .mm-item.on{background:rgba(128,128,128,.2)}
+  .mm-item .mm-t{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mm-item .mm-d{font-size:11px;color:var(--text-dim)}
+  .mm-main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:14px 18px 12px}
+  .mm-title{width:100%;border:0;background:transparent;font-size:18px;font-weight:700;color:var(--text);
+    outline:none;padding:2px 0 8px;font-family:inherit}
+  .mm-body{flex:1;width:100%;min-height:0;resize:none;border:0;background:transparent;color:var(--text);
+    font-size:13.5px;line-height:1.8;outline:none;font-family:inherit}
+  .mm-foot{display:flex;align-items:center;justify-content:space-between;padding-top:8px;border-top:1px solid rgba(128,128,128,.16)}
+  .mm-time{font-size:11.5px;color:var(--text-dim)}
+  .mm-del{border:0;background:transparent;color:var(--text-dim);font-size:12px;cursor:pointer;padding:4px 8px;border-radius:7px}
+  .mm-del:hover{background:rgba(128,128,128,.16);color:#e06c6c}
+
+  /* 待办 */
+  .wp-todo{flex:1;display:flex;min-width:0;min-height:0}
+  .td-side{width:196px;flex:none;display:flex;flex-direction:column;gap:2px;padding:12px 8px;
+    border-right:1px solid rgba(128,128,128,.18)}
+  .td-nav{display:flex;align-items:center;justify-content:space-between;width:100%;padding:9px 12px;
+    border:0;border-radius:9px;background:transparent;color:var(--text);font-size:13px;cursor:pointer;text-align:left}
+  .td-nav:hover{background:rgba(128,128,128,.12)}
+  .td-nav.on{background:rgba(128,128,128,.2);font-weight:600}
+  .td-nav i{font-style:normal;font-size:11.5px;color:var(--text-dim)}
+  .td-main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:14px 18px}
+  .td-head{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+  .td-head h3{margin:0;font-size:18px;color:var(--text)}
+  .td-date{font-size:12px;color:var(--text-dim)}
+  .td-add{display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:10px;
+    border-radius:10px;background:rgba(128,128,128,.1)}
+  .td-input{flex:1;min-width:0;border:0;background:transparent;color:var(--text);font-size:13.5px;outline:none;font-family:inherit}
+  /* 日期按钮：显示「今天 / 明天 / 10月31日」，点击调起原生日期面板。
+     原生 input[type=date] 在不同浏览器里的外观差异太大（Safari 还是空文本框），
+     所以用它当隐藏的取值器，露出来的是这个自己画的按钮 */
+  .td-due{display:flex;align-items:center;gap:4px;flex:none;height:26px;padding:0 8px;border:0;border-radius:8px;
+    background:rgba(128,128,128,.16);color:var(--text-dim);font-size:12px;font-family:inherit;cursor:pointer;
+    transition:background .15s,color .15s}
+  .td-due:hover{background:rgba(128,128,128,.26);color:var(--text)}
+  .td-due svg{width:13px;height:13px;display:block;flex:none}
+  .td-due.today{color:var(--wc,var(--accent))}
+  /* 取值器本身不可见也不参与布局，只为了拿 showPicker() 的系统面板 */
+  .td-due-in{position:absolute;width:0;height:0;padding:0;border:0;opacity:0;pointer-events:none}
+  .td-add-btn{width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;padding:0;
+    border:0;border-radius:8px;background:var(--wc,var(--accent));color:#fff;cursor:pointer}
+  .td-add-btn svg{width:16px;height:16px;display:block}
+  .td-add-btn:hover{filter:brightness(1.08)}
+  .td-list{flex:1;overflow:auto;min-height:0}
+  .td-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px}
+  .td-item:hover{background:rgba(128,128,128,.1)}
+  .td-ck{width:18px;height:18px;flex:none;border:1.5px solid var(--text-dim);border-radius:50%;background:transparent;
+    color:#fff;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .td-item.done .td-ck{background:var(--wc,var(--accent));border-color:var(--wc,var(--accent))}
+  .td-text{flex:1;font-size:13.5px;color:var(--text);word-break:break-word}
+  .td-item.done .td-text{color:var(--text-dim);text-decoration:line-through}
+  .td-when{font-size:11.5px;color:var(--text-dim);flex:none}
+  /* 过期未完成：日期标红。完成态不再提醒，否则勾掉后还是一片红 */
+  .td-when.over{color:#e5484d}
+  html[data-theme="dark"] .td-when.over{color:#f06b70}
+  /* 优先级点：没设优先级时是一个淡空心圈，设了就填实心色。
+     平时压暗，鼠标进到这一行才显出来，免得整列圆点抢视线 */
+  .td-prio{width:18px;height:18px;flex:none;position:relative;padding:0;border:0;border-radius:50%;
+    background:transparent;color:var(--text-dim);cursor:pointer;opacity:.55;transition:opacity .15s}
+  .td-prio.on,.td-item:hover .td-prio{opacity:1}
+  .td-prio::after{content:'';position:absolute;inset:3px;border-radius:50%;background:var(--pc,transparent);
+    border:1.5px solid var(--pc,currentColor)}
+  /* 优先级气泡：白色浮层 + 四色圆点，选中项加一圈外环（和参考图一个样式）。
+     挂在 body 下用 fixed 定位 —— 放 .td-item 里会被 .td-list 的 overflow 裁掉 */
+  .prio-pop{position:fixed;z-index:70;display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:12px;
+    background:var(--card-bg-hover);border:1px solid rgba(128,128,128,.18);box-shadow:0 10px 28px rgba(0,0,0,.22);
+    backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);animation:prioIn .13s ease}
+  @keyframes prioIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .prio-pop .pp-t{font-size:12px;color:var(--text-dim);white-space:nowrap}
+  .prio-pop button{width:18px;height:18px;padding:0;border:0;border-radius:50%;cursor:pointer;
+    background:var(--pc);box-shadow:0 0 0 0 transparent;transition:box-shadow .12s,transform .12s}
+  .prio-pop button:hover{transform:scale(1.12)}
+  .prio-pop button.on{box-shadow:0 0 0 2.5px var(--card-bg-hover),0 0 0 4px var(--pc)}
+  .prio-pop button.none{background:transparent;border:1.5px dashed var(--text-dim)}
+  .prio-pop button.none.on{box-shadow:0 0 0 2.5px var(--card-bg-hover),0 0 0 4px rgba(128,128,128,.5)}
+  .td-del{width:22px;height:22px;flex:none;border:0;border-radius:6px;background:transparent;color:var(--text-dim);
+    font-size:12px;cursor:pointer;opacity:0;transition:opacity .15s}
+  .td-item:hover .td-del{opacity:1}
+  .td-del:hover{background:rgba(128,128,128,.2);color:#e06c6c}
+  .td-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;
+    color:var(--text-dim);font-size:13px}
+  .td-empty p{margin:0}
+  .td-empty-ic{opacity:.22}
+  .td-empty-ic svg{width:64px;height:64px;color:var(--text);display:block}
 </style>
 <noscript><style>.wrap .group,.wrap .card{opacity:1!important}</style></noscript>
 <script>
@@ -486,9 +682,18 @@
      右键「编辑」只往这里挂一个编辑组件，后台面板不会被创建，也就不会闪 -->
 <div id="editRoot" hidden></div>
 
+<!-- 内置组件面板（日历 / 备忘录 / 待办）：点导航里的组件卡片打开。
+     内容和上面的后台弹窗互不干扰，独立一层，关闭即卸载内部结构 -->
+<div class="modal wp" id="wpanel">
+  <div class="box">
+    <div class="bar"><span id="wpTitle">组件</span><button class="close" id="wpClose" data-tip="关闭" aria-label="关闭">✕</button></div>
+    <div id="wpBody"></div>
+  </div>
+</div>
+
 <script>
 const $ = s => document.querySelector(s);
-const state = { config: {}, groups: [], engine: null, engines: [], intranet: false, admin: false };
+const state = { config: {}, groups: [], engine: null, engines: [], intranet: false, admin: false, wmeta: null, caldays: null };
 
 /* ---------- 渲染 ---------- */
 /* 主题：访客页 CSS 认 data-theme，后台 theme.css 认 html.dark。
@@ -874,6 +1079,7 @@ function renderGroups(instant) {
     const grid = document.createElement('div');
     grid.className = g.cardStyle === 'icon' ? 'grid icons' : 'grid';
     g.items.forEach(it => {
+      const isW = isWidget(it);
       if (g.cardStyle === 'icon') {
         /* 小图标模式（参照 sun-panel）：未设背景色用玻璃底板（同卡片），设了则用实色 */
         const plate = it.color ? ` style="background:${esc(it.color)}"` : '';
@@ -881,29 +1087,33 @@ function renderGroups(instant) {
         const short = clipName(it.title);
         /* 底板文字：自定义图标文字优先，留空取标题；同样 4 字宽封顶 */
         const plateTxt = clipPlate(String(it.iconText || '').trim() || it.title);
-        const inner = iconMiniInner(it, plateTxt);
+        /* 内置组件用组件自己的图标（图标变体可在后台「组件管理」里换），
+           不跟随卡片的图标/文字配置 —— 组件的身份要一眼可辨 */
+        const inner = isW ? widgetIcon(it) : iconMiniInner(it, plateTxt);
         const c = document.createElement('div');
-        c.className = 'mini';
+        c.className = 'mini' + (isW ? ' is-widget' : '');
+        if (isW) { const wc = widgetColor(it); if (wc) c.style.setProperty('--wc', wc); }
         c.dataset.id = String(it.id ?? '');
         c.dataset.gid = String(g.id);
         /* 底板下方的名称：所有小图标卡片都渲染（图片图标、文字图标都要有名字） */
         const label = `<span class="mname">${esc(short)}</span>`;
         c.innerHTML = `<span class="${micCls}"${plate}>${inner}</span>${label}`;
-        c.onclick = () => openUrl(it);
+        c.onclick = () => (isW ? openWidget(it) : openUrl(it));
         grid.appendChild(c);
         return;
       }
       const c = document.createElement('div');
-      c.className = 'card';
+      c.className = 'card' + (isW ? ' is-widget' : '');
+      if (isW) { const wc = widgetColor(it); if (wc) c.style.setProperty('--wc', wc); }
       const short = clipName(it.title);
       c.dataset.id = String(it.id ?? '');
       c.dataset.gid = String(g.id);
       /* 未设背景色时给 plain：走玻璃底板，而不是内联一块纯黑。
          之前这里恒写 `it.color || '#2a2a2a'`，用户把背景色清空后底板上
          还压着一块 #2a2a2a 实色，看起来像「清不掉」 */
-      c.innerHTML = `<div class="ic${it.color ? '' : ' plain'}"${it.color ? ` style="background:${esc(it.color)}"` : ''}>${iconHtml(it)}</div>`
+      c.innerHTML = `<div class="ic${it.color ? '' : ' plain'}"${it.color ? ` style="background:${esc(it.color)}"` : ''}>${isW ? widgetIcon(it) : iconHtml(it)}</div>`
         + `<div class="body"><div class="title">${esc(short)}</div>${it.description ? `<div class="dsc">${esc(it.description)}</div>` : ''}</div>`;
-      c.onclick = () => openUrl(it);
+      c.onclick = () => (isW ? openWidget(it) : openUrl(it));
       grid.appendChild(c);
     });
     sec.appendChild(grid);
@@ -962,6 +1172,565 @@ function openUrl(it) {
   } else {
     window.open(url, '_blank');
   }
+}
+
+/* ============================================================
+   内置组件（日历 / 备忘录 / 待办）
+   组件在库里仍是一条 item_icon 记录，靠 kind 区分；真正的内容存在
+   widget_data 表（仅登录可读写）—— 访客点组件卡片时提示先登录。
+   ============================================================ */
+/* 三个内置组件图标：统一「淡底 + 1.5 细描边 + 实心细节」的画法 ——
+   底板 fill-opacity .2、外轮廓描边 1.5、细节实心，全部落在同一套 24×24 网格上。
+   为什么不是纯淡底：只铺淡色时，图标剪影压在白色底板上会发虚、像是糊了；
+   加一圈同色细线，轮廓立刻立住（纯淡底 / 更浓淡底 / 淡底+细线三版对比后选的这版）。
+   为什么不用写死色值：图标颜色由 .ic 的 color 决定（主题强调色），
+   写死色值在换主题、或用户给卡片设了图标背景色时会失衡；
+   统一走 currentColor + 透明度，深浅两个主题都自适应。 */
+const W_FRAME = 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"';
+/* 离线兜底用的图标库子集（仅三个默认图标，与后端 ICON_LIBRARY 同形）。
+   正常情况走 /api/public/widget-meta 返回的 library；下面的 libPath 会优先用接口数据。 */
+const WIDGET_LIB = [
+  { key: 'cal', label: '日历',
+    dual: '<rect x="3" y="4.2" width="18" height="16.6" rx="3.9" fill-opacity=".2"/><path d="M6.9 4.2h10.2a3.9 3.9 0 0 1 3.9 3.9v1.4H3V8.1a3.9 3.9 0 0 1 3.9-3.9Z"/><rect x="3" y="4.2" width="18" height="16.6" rx="3.9" ' + W_FRAME + '/><rect x="7.15" y="1.9" width="2" height="5.2" rx="1"/><rect x="14.85" y="1.9" width="2" height="5.2" rx="1"/><circle cx="8" cy="15.1" r="1.3"/><circle cx="12" cy="15.1" r="1.3"/><circle cx="16" cy="15.1" r="1.3"/>',
+    line: '<rect x="3" y="4.2" width="18" height="16.6" rx="3.9" ' + W_FRAME + '/><path d="M3.4 8.9h17.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8.15 2.2v3.7M15.85 2.2v3.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="8" cy="15.3" r="1.15"/><circle cx="12" cy="15.3" r="1.15"/><circle cx="16" cy="15.3" r="1.15"/>',
+    solid: '<rect x="7.2" y="1.8" width="2.1" height="4.6" rx="1.05"/><rect x="14.7" y="1.8" width="2.1" height="4.6" rx="1.05"/><rect x="2.6" y="3.7" width="18.8" height="17.5" rx="4.6"/><rect x="5" y="10.3" width="14" height="1.7" rx=".85" fill="#fff" opacity=".92"/><circle cx="8" cy="15.4" r="1.25" fill="#fff"/><circle cx="12" cy="15.4" r="1.25" fill="#fff"/><circle cx="16" cy="15.4" r="1.25" fill="#fff"/>' },
+  { key: 'memo', label: '备忘录',
+    dual: '<path d="M7.4 2.3h6.2c.4 0 .8.2 1.1.5l5.1 5.1c.3.3.5.7.5 1.1v8.5a4.2 4.2 0 0 1-4.2 4.2H7.4a4.2 4.2 0 0 1-4.2-4.2V6.5a4.2 4.2 0 0 1 4.2-4.2Z" fill-opacity=".2"/><path d="M14.7 2.8v4.3c0 .5.4.9.9.9h4.2Z"/><path d="M7.4 2.3h6.2c.4 0 .8.2 1.1.5l5.1 5.1c.3.3.5.7.5 1.1v8.5a4.2 4.2 0 0 1-4.2 4.2H7.4a4.2 4.2 0 0 1-4.2-4.2V6.5a4.2 4.2 0 0 1 4.2-4.2Z" ' + W_FRAME + '/><rect x="6.8" y="12.7" width="10.4" height="2.2" rx="1.1"/><rect x="6.8" y="16.9" width="7.2" height="2.2" rx="1.1"/>',
+    line: '<path d="M7.4 2.3h6.2c.4 0 .8.2 1.1.5l5.1 5.1c.3.3.5.7.5 1.1v8.5a4.2 4.2 0 0 1-4.2 4.2H7.4a4.2 4.2 0 0 1-4.2-4.2V6.5a4.2 4.2 0 0 1 4.2-4.2Z" ' + W_FRAME + '/><path d="M13.9 2.6v4.9c0 .7.6 1.3 1.3 1.3h4.9" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7.7 13.4h8.2M7.7 17h5.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+    solid: '<path d="M7.4 2.3h6.2c.4 0 .8.2 1.1.5l5.1 5.1c.3.3.5.7.5 1.1v8.5a4.2 4.2 0 0 1-4.2 4.2H7.4a4.2 4.2 0 0 1-4.2-4.2V6.5a4.2 4.2 0 0 1 4.2-4.2Z"/><path d="M13.9 2.6v4.9c0 .7.6 1.3 1.3 1.3h4.9" fill="none" stroke="#fff" stroke-width="1.6" opacity=".85"/><rect x="6.9" y="12.8" width="10.2" height="2.2" rx="1.1" fill="#fff"/><rect x="6.9" y="16.9" width="7" height="2.2" rx="1.1" fill="#fff"/>' },
+  { key: 'todo', label: '待办',
+    dual: '<rect x="3" y="3.3" width="18" height="17.4" rx="4.4" fill-opacity=".2"/><rect x="3" y="3.3" width="18" height="17.4" rx="4.4" ' + W_FRAME + '/><path d="M7.4 12 10.8 15.4 17.1 8.9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>',
+    line: '<rect x="3" y="3.3" width="18" height="17.4" rx="4.4" ' + W_FRAME + '/><path d="M7.4 12 10.8 15.4 17.1 8.9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
+    solid: '<rect x="3" y="3.3" width="18" height="17.4" rx="4.4"/><path d="M7.4 12 10.8 15.4 17.1 8.9" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' },
+];
+const WIDGET_DEFICON = { calendar: 'cal', memo: 'memo', todo: 'todo' };
+const isWidget = it => !!(it && it.kind && it.kind !== 'link');
+/* 新建按钮里的加号：描边十字，落在 24 网格正中，四周留白够，缩到 13px 也不糊 */
+const PLUS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" '
+  + 'stroke-linecap="round" aria-hidden="true"><path d="M12 4.2v15.6M4.2 12h15.6"/></svg>';
+/* 待办输入栏的日期按钮图标：一个极简月历，13px 下比图标库里的 dual 版更清楚 */
+const DUE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" '
+  + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  + '<rect x="3.2" y="4.9" width="17.6" height="16" rx="3.6"/><path d="M3.6 9.7h16.8M8.2 2.7v4M15.8 2.7v4"/></svg>';
+
+/* ---------- 组件外观 / 功能配置 ----------
+   每个组件的图标形状 + 风格、主色、功能开关存在 item_icon.w_cfg（JSON 字符串），
+   由后台「组件管理」写入；合法取值（有哪些图标、有哪些风格）来自 /api/public/widget-meta，
+   前台和后台读的是同一份定义，不在两边各硬编码一遍。 */
+function wmetaOf(kind) {
+  const list = (state.wmeta && state.wmeta.kinds) || [];
+  return list.find(x => x.kind === kind) || null;
+}
+function widgetCfg(it) {
+  let o = null;
+  try { o = JSON.parse((it && it.wCfg) || '{}'); } catch (e) { o = null; }
+  if (!o || typeof o !== 'object') o = {};
+  const opts = (o.opts && typeof o.opts === 'object') ? o.opts : {};
+  let icon = String(o.icon || ''), variant = String(o.variant || '');
+  /* 兼容旧配置：旧版把「风格」存进了 icon 字段（那时还没有图标库），
+     读到 dual/line/solid 就把它当风格，图标回到该组件的默认形状。
+     不认这一条的话，老的 icon:"solid" 会命中不了图标库，卡片图标直接退成日历。 */
+  if (!variant && /^(dual|line|solid)$/.test(icon)) { variant = icon; icon = ''; }
+  return { icon, variant, color: String(o.color || ''), opts };
+}
+/* 主色：组件自己配的 → 全局默认（/api/public/widget-meta 的 defaultColor，即 logo 蓝）→ 写死的品牌蓝。
+   最后一档是给「接口没回来 / 离线打开」兜底的：宁可显示项目色，也不要退回主题绿把三种颜色混在一起。
+   通过 --wc 变量下发，图标、日历「今天」格、待办勾选这些地方共用同一个色 */
+function widgetColor(it) {
+  return widgetCfg(it).color || (state.wmeta && state.wmeta.defaultColor) || '#409EFF';
+}
+/* 按「图标形状 + 风格」解出要画的 SVG 内部标记：优先用接口返回的图标库，
+   离线时退回内置三枚兜底。形状没配 → 该组件默认图标；风格没配 → dual。 */
+function libPath(name, variant) {
+  const lib = (state.wmeta && state.wmeta.library) || WIDGET_LIB;
+  const ic = lib.find(x => x.key === name) || lib.find(x => x.key === 'cal');
+  const v = (variant === 'line' || variant === 'solid') ? variant : 'dual';
+  return ic ? (ic[v] || ic.dual) : '';
+}
+/* 在线图标名（Iconify，形如 flat-color-icons:calendar）：
+   和 w_cfg.icon 里的内置图标 key 靠「有没有冒号」区分，后端入库前已按同一规则校验过 */
+const ICONIFY_RE = /^[a-z0-9-]+:[a-z0-9-]+$/;
+const isIconifyIcon = v => ICONIFY_RE.test(String(v || '').trim());
+
+function widgetIcon(it) {
+  const kind = (it && it.kind) || 'calendar';
+  const cfg = widgetCfg(it);
+  /* 选了在线图标就走代理取 SVG：彩色图标自带颜色（主色对它无效），单色图标
+     靠 URL 上的 color 参数上色（和底板上的图标同一套规则） */
+  if (isIconifyIcon(cfg.icon)) {
+    const c = widgetColor(it).replace('#', '');
+    return `<img class="w-ico" src="/api/icon?name=${encodeURIComponent(cfg.icon)}&color=${c}" alt="" loading="lazy">`;
+  }
+  const name = cfg.icon || (wmetaOf(kind) ? wmetaOf(kind).icon : (WIDGET_DEFICON[kind] || 'cal'));
+  return svgOf(libPath(name, cfg.variant));
+}
+/* 面板里当前打开那个组件的开关值：库里存的 0/1 优先，没配过用 meta 里的默认值 */
+function widgetOpt(key, dflt) {
+  const v = widgetCfg(wpItem).opts[key];
+  if (v === 0 || v === 1) return v;
+  const t = ((wmetaOf(wpKind) || {}).toggles || []).find(x => x.key === key);
+  return t ? t.def : dflt;
+}
+const fmtDT = ms => {
+  const d = new Date(ms || Date.now()), p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
+let wpItem = null, wpKind = '', wpData = null, wpTimer = 0;
+
+function openWidget(it) {
+  /* 组件内容属于私人数据，接口要登录；未登录时别打开空面板，直接提示 */
+  if (!state.admin) { ctxToast('请先登录后台再使用组件'); return; }
+  wpItem = it; wpKind = it.kind;
+  /* 待办默认落在「今天」：上次关面板前选的日期（比如明天）不该带到下一次，
+     否则新任务会悄悄跑到别的日期里，看上去像「添加了却没出现」 */
+  if (wpKind === 'todo') tdDue = todayKey();
+  /* 面板里的强调色跟着这个组件的主色走（日历今天格、备忘录新建、待办勾选），
+     不设就退回主题强调色 —— 与卡片图标同一个色，视觉上才是「这一张卡」 */
+  const wc = widgetColor(it);
+  if (wc) $('#wpanel').style.setProperty('--wc', wc);
+  else $('#wpanel').style.removeProperty('--wc');
+  $('#wpTitle').textContent = it.title || '组件';
+  $('#wpanel').classList.add('open');
+  $('#wpBody').innerHTML = '<div class="wp-boot">加载中…</div>';
+  fetch('/api/admin/widgets/' + it.id, { headers: { 'X-Requested-With': 'unav' }, cache: 'no-store' })
+    .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+    .then(j => { wpData = parseWidget(j.payload); renderWidget(); })
+    .catch(() => { wpData = parseWidget(''); renderWidget(); });
+  /* 日历没有实例数据，但「休 / 班」角标来自另一个接口：
+     首次进页面时若那次请求失败（离线、限流），这里补一次，免得日历一直没角标 */
+  if (wpKind === 'calendar') {
+    refreshCalDays().then(() => { if (wpKind === 'calendar' && wpData) renderCalendar(); });
+  }
+}
+
+/* 拉一次节假日表。单独成函数是因为三处都要用：
+   首屏 init、后台改完后的 syncFromAdmin、以及打开日历时的兜底 */
+function refreshCalDays() {
+  return fetch('/api/public/cal-days', { cache: 'no-store' })
+    .then(r => (r.ok ? r.json() : null))
+    .then(j => { if (j && j.days && typeof j.days === 'object') state.caldays = j.days; })
+    .catch(() => {});
+}
+
+function parseWidget(raw) {
+  let o = {};
+  try { o = JSON.parse(raw || '{}') || {}; } catch { o = {}; }
+  if (wpKind === 'memo' && !Array.isArray(o.notes)) o.notes = [];
+  if (wpKind === 'todo' && !Array.isArray(o.tasks)) o.tasks = [];
+  return o;
+}
+
+function renderWidget() {
+  if (wpKind === 'calendar') return renderCalendar();
+  if (wpKind === 'memo') return renderMemo();
+  if (wpKind === 'todo') return renderTodo();
+}
+
+/* 实时保存：输入时 600ms 防抖，关闭面板时强制落一次。
+   PUT 整份 payload 覆盖，后端只做长度兜底。 */
+function saveWidgetNow() {
+  if (!wpItem || !wpData) return;
+  clearTimeout(wpTimer);
+  fetch('/api/admin/widgets/' + wpItem.id, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'unav' },
+    body: JSON.stringify({ payload: JSON.stringify(wpData) })
+  }).catch(() => ctxToast('保存失败，请检查网络'));
+}
+function scheduleSave() { clearTimeout(wpTimer); wpTimer = setTimeout(saveWidgetNow, 600); }
+
+function closeWidget() {
+  closePrioPop();
+  if (wpData) saveWidgetNow();
+  $('#wpanel').classList.remove('open');
+  $('#wpBody').innerHTML = '';
+  wpItem = null; wpData = null;
+}
+$('#wpClose').onclick = closeWidget;
+$('#wpanel').addEventListener('click', e => { if (e.target.id === 'wpanel') closeWidget(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('#wpanel').classList.contains('open')) closeWidget();
+});
+
+/* ---------- 日历：公历 + 农历 + 二十四节气 ---------- */
+let calY = new Date().getFullYear(), calM = new Date().getMonth();
+const CAL_WEEK = ['一', '二', '三', '四', '五', '六', '日'];
+const TERMS = ['小寒', '大寒', '立春', '雨水', '惊蛰', '春分', '清明', '谷雨', '立夏', '小满', '芒种', '夏至', '小暑', '大暑', '立秋', '处暑', '白露', '秋分', '寒露', '霜降', '立冬', '小雪', '大雪', '冬至'];
+const TERM_MIN = [0, 21208, 42467, 63836, 85337, 107014, 128867, 150921, 173149, 195551, 218072, 240693, 263343, 285989, 308563, 331033, 353350, 375494, 397447, 419210, 440795, 462224, 483532, 504758];
+/* 节气近似算法（1900—2100 有效，个别年份±1 天），足以做日历脚注 */
+function termDay(y, i) {
+  return new Date(31556925974.7 * (y - 1900) + TERM_MIN[i] * 60000 + Date.UTC(1900, 0, 6, 2, 5)).getUTCDate();
+}
+function termOf(y, m, d) {
+  for (const i of [m * 2, m * 2 + 1]) if (termDay(y, i) === d) return TERMS[i];
+  return '';
+}
+const LUNAR_FMT = new Intl.DateTimeFormat('zh-CN-u-ca-chinese', { month: 'long', day: 'numeric' });
+const CN_NUM = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+function lunarDayName(n) {
+  if (n === 10) return '初十';
+  if (n < 10) return '初' + CN_NUM[n];
+  if (n < 20) return '十' + CN_NUM[n - 10];
+  if (n === 20) return '二十';
+  if (n === 30) return '三十';
+  return '廿' + CN_NUM[n - 20];
+}
+const LUNAR_FEST = { '正月1': '春节', '正月15': '元宵节', '五月5': '端午节', '八月15': '中秋节', '九月9': '重阳节', '腊月8': '腊八节' };
+/* 公历固定节日。农历的节日在 LUNAR_FEST 里，这张表只放没有农历规律的那几个 */
+const SOLAR_FEST = { '1-1': '元旦', '5-1': '劳动节', '10-1': '国庆节' };
+/* 农历脚注：节气 > 传统节日 > 初一显示月名 > 否则农历日 */
+function lunarInfo(y, m, d) {
+  let mo = '', da = 1;
+  try {
+    const parts = LUNAR_FMT.formatToParts(new Date(y, m, d, 12));
+    mo = (parts.find(p => p.type === 'month') || {}).value || '';
+    da = Number((parts.find(p => p.type === 'day') || {}).value || 1);
+  } catch { return ''; }
+  return LUNAR_FEST[mo + da] || (da === 1 ? mo : lunarDayName(da));
+}
+
+/* ---------- 法定节假日 / 调休上班 ----------
+   数据存在数据库里（后台「组件管理 → 日历 → 节假日」按年维护），前台只负责画：
+   每年通知一发就要改代码重新部署，还容易漏；放后台后用户自己点几下就行。
+   没取到数据（接口失败 / 那一年还没录）就干脆不画「休/班」角标 ——
+   猜日期比不标更糟，标错了会直接误导出行和排班。 */
+const calKey = (y, m, d) => y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+function calMark(y, m, d) {
+  const v = (state.caldays || {})[calKey(y, m, d)];
+  return v === 'work' ? '班' : (v === 'off' ? '休' : '');
+}
+
+function renderCalendar() {
+  const now = new Date(), ty = now.getFullYear(), tm = now.getMonth(), td = now.getDate();
+  /* 两个功能开关都在后台「组件管理」里设：周首日、农历/节气脚注 */
+  const monFirst = widgetOpt('monFirst', 1);
+  const showLunar = widgetOpt('lunar', 1);
+  const weekRow = monFirst ? CAL_WEEK : ['日', '一', '二', '三', '四', '五', '六'];
+  const firstDay = new Date(calY, calM, 1).getDay();
+  const lead = monFirst ? (firstDay + 6) % 7 : firstDay;
+  const dim = new Date(calY, calM + 1, 0).getDate();
+  const cells = [];
+  const prev = new Date(calY, calM, 0);
+  for (let i = lead - 1; i >= 0; i--) cells.push({ y: prev.getFullYear(), m: prev.getMonth(), d: prev.getDate() - i, out: true });
+  for (let d = 1; d <= dim; d++) cells.push({ y: calY, m: calM, d, out: false });
+  for (let nx = 1; cells.length % 7 || cells.length < 35; nx++) {
+    const dt = new Date(calY, calM + 1, nx);
+    cells.push({ y: dt.getFullYear(), m: dt.getMonth(), d: dt.getDate(), out: true });
+  }
+  const grid = cells.map(c => {
+    const isT = c.y === ty && c.m === tm && c.d === td;
+    const wd = new Date(c.y, c.m, c.d).getDay();
+    const term = showLunar ? termOf(c.y, c.m, c.d) : '';
+    const fest = term || (showLunar ? (SOLAR_FEST[(c.m + 1) + '-' + c.d] || '') : '');
+    const note = fest || (showLunar ? lunarInfo(c.y, c.m, c.d) : '');
+    const mk = calMark(c.y, c.m, c.d);
+    const cls = 'cal-d' + (c.out ? ' out' : '') + (wd === 0 || wd === 6 ? ' we' : '')
+      + (mk === '休' ? ' off' : '') + (mk === '班' ? ' duty' : '') + (isT ? ' today' : '');
+    return `<div class="${cls}">`
+      + `<span class="cd">${c.d}${mk ? `<i class="cb ${mk === '休' ? 'rest' : 'duty'}">${mk}</i>` : ''}</span>`
+      /* 关掉农历时不渲染这个 span，而不是渲染一个空标签：空行会让日期数字在格子里偏上 */
+      + (note ? `<span class="cl${fest ? ' fest' : ''}">${esc(note)}</span>` : '')
+      + '</div>';
+  }).join('');
+
+  $('#wpBody').innerHTML = `<div class="wp-cal">
+    <div class="cal-wm">${calM + 1}</div>
+    <div class="cal-bar">
+      <div class="cal-nav">
+        <div class="cal-pill">
+          <button class="cal-ar" data-nav="py" aria-label="上一年">‹</button><b>${calY}</b><button class="cal-ar" data-nav="ny" aria-label="下一年">›</button>
+        </div>
+        <div class="cal-pill m">
+          <button class="cal-ar" data-nav="pm" aria-label="上个月">‹</button><b>${calM + 1} 月</b><button class="cal-ar" data-nav="nm" aria-label="下个月">›</button>
+        </div>
+      </div>
+      <button class="cal-today" data-nav="today">今天</button>
+    </div>
+    <div class="cal-week">${weekRow.map(w => `<span${w === '六' || w === '日' ? ' class="we"' : ''}>${w}</span>`).join('')}</div>
+    <div class="cal-grid">${grid}</div>
+  </div>`;
+  $('#wpBody').querySelectorAll('[data-nav]').forEach(b => {
+    b.onclick = () => {
+      const v = b.dataset.nav;
+      if (v === 'today') { const n = new Date(); calY = n.getFullYear(); calM = n.getMonth(); }
+      else if (v === 'pm' || v === 'nm') {
+        const d = new Date(calY, calM + (v === 'pm' ? -1 : 1), 1);
+        calY = d.getFullYear(); calM = d.getMonth();
+      } else calY += (v === 'py' ? -1 : 1);
+      renderCalendar();
+    };
+  });
+}
+
+/* ---------- 备忘录：左侧列表 + 右侧编辑，输入即存 ---------- */
+function renderMemo() {
+  const showTime = widgetOpt('showTime', 1) === 1;
+  const notes = wpData.notes;
+  if (!notes.length) {
+    notes.push({ id: 'n' + Date.now().toString(36), title: '', content: '', updatedAt: Date.now() });
+    wpData.currentId = notes[0].id;
+  }
+  if (!notes.some(n => n.id === wpData.currentId)) wpData.currentId = notes[0].id;
+  const cur = notes.find(n => n.id === wpData.currentId);
+  const list = notes.map(n => `<button class="mm-item${n.id === cur.id ? ' on' : ''}" data-nid="${esc(n.id)}">`
+    + `<span class="mm-t">${esc(n.title || '无标题')}</span>`
+    + (showTime ? `<span class="mm-d">${fmtDT(n.updatedAt)}</span>` : '')
+    + '</button>').join('');
+
+  $('#wpBody').innerHTML = `<div class="wp-memo">
+    <aside class="mm-side">
+      <div class="mm-sidehead"><span>备忘录</span><button class="mm-new" data-act="new" aria-label="新建">${PLUS_SVG}</button></div>
+      <div class="mm-list">${list}</div>
+    </aside>
+    <section class="mm-main">
+      <input class="mm-title" data-act="title" placeholder="无标题" value="${esc(cur.title)}" />
+      <textarea class="mm-body" data-act="body" placeholder="请输入备忘录内容">${esc(cur.content)}</textarea>
+      <div class="mm-foot">
+        ${showTime ? `<span class="mm-time">最后编辑：${fmtDT(cur.updatedAt)}</span>` : '<span></span>'}
+        <button class="mm-del" data-act="del">删除</button>
+      </div>
+    </section>
+  </div>`;
+
+  const body = $('#wpBody');
+  const titleEl = body.querySelector('.mm-title');
+  const bodyEl = body.querySelector('.mm-body');
+  const timeEl = body.querySelector('.mm-time');
+
+  /* timeEl 可能不存在（「显示编辑时间」关掉时），这里必须判空再写 */
+  const stamp = () => { cur.updatedAt = Date.now(); if (timeEl) timeEl.textContent = '最后编辑：' + fmtDT(cur.updatedAt); };
+
+  body.querySelector('[data-act="new"]').onclick = () => {
+    const n = { id: 'n' + Date.now().toString(36), title: '', content: '', updatedAt: Date.now() };
+    /* 新建放最前还是最后，是组件管理里的开关（newFirst） */
+    if (widgetOpt('newFirst', 1)) notes.unshift(n); else notes.push(n);
+    wpData.currentId = n.id;
+    renderMemo();
+    saveWidgetNow();
+  };
+  body.querySelectorAll('.mm-item').forEach(el => {
+    el.onclick = () => { wpData.currentId = el.dataset.nid; renderMemo(); };
+  });
+  titleEl.oninput = () => {
+    cur.title = titleEl.value;
+    stamp();
+    /* 只改左侧那一行的文字，不整块重渲染 —— 否则每敲一个字输入框都会失焦 */
+    const t = body.querySelector(`.mm-item[data-nid="${cur.id}"] .mm-t`);
+    if (t) t.textContent = cur.title || '无标题';
+    scheduleSave();
+  };
+  bodyEl.oninput = () => { cur.content = bodyEl.value; stamp(); scheduleSave(); };
+  body.querySelector('[data-act="del"]').onclick = () => {
+    if (notes.length === 1) { cur.title = ''; cur.content = ''; cur.updatedAt = Date.now(); }
+    else wpData.notes = notes.filter(n => n.id !== cur.id);
+    wpData.currentId = (wpData.notes[0] || {}).id;
+    renderMemo();
+    saveWidgetNow();
+  };
+}
+
+/* ---------- 待办：今天 / 所有 / 待办事项 + 日期 + 优先级 ----------
+   一条任务：{ id, text, done, createdAt, due: 'YYYY-MM-DD', prio: 0|1|2|3 }
+   due / prio 是后加的字段，老数据没有：due 缺省时按「创建那天」算（以前就是这个口径），
+   prio 缺省 = 无优先级，所以升级后老任务不会突然全部标成某个颜色。 */
+let tdView = 'today';
+let tdDue = '';                  // 新增任务默认落在哪天；首次用 todayKey() 填
+
+const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const todayKey = () => ymd(new Date());
+/* 四色优先级：红=高、黄=中、蓝=低、灰=无。p 存进数据，顺序也按这个排 */
+const PRIO = [
+  { p: 1, c: '#e5484d', label: '高' },
+  { p: 2, c: '#f5a524', label: '中' },
+  { p: 3, c: '#3b82f6', label: '低' },
+  { p: 0, c: '', label: '无' }
+];
+const prioColor = p => ((PRIO.find(x => x.p === Number(p)) || {}).c || '');
+/* 排位：高 → 中 → 低 → 无。空优先级排最后，而不是当成 p=0 排最前 */
+const prioRank = t => { const p = Number(t.prio) || 0; return p ? p - 1 : 9; };
+
+/* 任务的落点日期：有 due 用 due，老数据回退到创建日 */
+function dueOf(t) {
+  if (t && typeof t.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.due)) return t.due;
+  return t && t.createdAt ? ymd(new Date(t.createdAt)) : '';
+}
+/* 日期文案：今天 / 明天 / 昨天 用相对说法，同年只给「M月D日」，跨年才补年份 */
+function dueLabel(due) {
+  const now = new Date();
+  if (!due || due === todayKey()) return '今天';
+  const d = new Date(due + 'T00:00:00');
+  const diff = Math.round((d - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+  if (diff === 1) return '明天';
+  if (diff === -1) return '昨天';
+  return d.getFullYear() === now.getFullYear()
+    ? (d.getMonth() + 1) + '月' + d.getDate() + '日'
+    : d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+/* 优先级气泡：挂在 body 上用 fixed 定位（.td-list 有 overflow，放行内会被裁掉）。
+   全局只允许存在一个，点外面、切视图、关面板都会清掉 */
+let prioPop = null;
+function closePrioPop() {
+  if (!prioPop) return;
+  document.removeEventListener('mousedown', prioPop._off, true);
+  prioPop.remove();
+  prioPop = null;
+}
+function openPrioPop(anchor, cur, pick) {
+  closePrioPop();
+  const el = document.createElement('div');
+  el.className = 'prio-pop';
+  el.innerHTML = '<span class="pp-t">优先级</span>' + PRIO.map(x =>
+    `<button data-p="${x.p}" class="${Number(cur) === x.p ? 'on' : ''}${x.p ? '' : ' none'}"`
+    + (x.c ? ` style="--pc:${x.c}"` : '') + ` title="${x.label}"></button>`).join('');
+  document.body.appendChild(el);
+
+  const r = anchor.getBoundingClientRect();
+  const w = el.offsetWidth, h = el.offsetHeight;
+  let left = r.right - w, top = r.bottom + 6;
+  if (left < 8) left = 8;
+  if (left + w > innerWidth - 8) left = innerWidth - 8 - w;
+  if (top + h > innerHeight - 8) top = r.top - h - 6;
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+
+  el.querySelectorAll('button').forEach(b => {
+    b.onclick = () => { pick(Number(b.dataset.p)); closePrioPop(); };
+  });
+  /* mousedown 而不是 click：click 会晚于「打开另一个气泡」的 mousedown，
+     先关后开才对；用 click 会出现关掉新气泡的情况 */
+  const off = e => { if (!el.contains(e.target)) closePrioPop(); };
+  el._off = off;
+  setTimeout(() => document.addEventListener('mousedown', off, true), 0);
+  prioPop = el;
+}
+
+function renderTodo() {
+  const tasks = wpData.tasks;
+  const showWhen = widgetOpt('showWhen', 1) === 1;
+  /* 「今天」视图默认只列未完成的（列表重心是「还要做什么」）；
+     打开 doneToday 就把已完成的也留在今天里，方便回头核对当天做完了什么 */
+  const doneToday = widgetOpt('doneToday', 0) === 1;
+  const today = todayKey();
+  if (!tdDue) tdDue = today;
+  const inToday = t => dueOf(t) === today && (doneToday || !t.done);
+  const views = [
+    { k: 'today', t: '今天', n: tasks.filter(inToday).length },
+    { k: 'all', t: '所有', n: tasks.length },
+    { k: 'open', t: '待办事项', n: tasks.filter(t => !t.done).length }
+  ];
+  /* 排序：未完成在前 → 日期早的在前 → 优先级高（p 小）的在前 → 新建的在前。
+     先按日期是因为「所有」视图里跨天混排，光看优先级会让人找不到今天该干什么 */
+  const cmp = (a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0)
+    || String(dueOf(a)).localeCompare(String(dueOf(b)))
+    || prioRank(a) - prioRank(b)
+    || (b.createdAt || 0) - (a.createdAt || 0);
+  const shown = (tdView === 'today'
+    ? tasks.filter(inToday)
+    : tdView === 'open'
+      ? tasks.filter(t => !t.done)
+      : tasks).slice().sort(cmp);
+
+  const items = shown.length
+    ? shown.map(t => {
+      const p = Number(t.prio) || 0;
+      const due = dueOf(t);
+      const over = !t.done && due && due < today;
+      return `<div class="td-item${t.done ? ' done' : ''}" data-tid="${esc(t.id)}">
+        <button class="td-ck" data-act="toggle" aria-label="切换完成">${t.done ? '✓' : ''}</button>
+        <span class="td-text">${esc(t.text)}</span>
+        ${showWhen ? `<span class="td-when${over ? ' over' : ''}">${dueLabel(due)}</span>` : ''}
+        <button class="td-prio${p ? ' on' : ''}" data-act="prio" title="设置优先级" aria-label="设置优先级"${p ? ` style="--pc:${prioColor(p)}"` : ''}></button>
+        <button class="td-del" data-act="del" aria-label="删除">✕</button>
+      </div>`;
+    }).join('')
+    : `<div class="td-empty"><span class="td-empty-ic">${svgOf(libPath('todo', 'dual'))}</span><p>赶快添加您的待办吧</p></div>`;
+
+  const viewTitle = (views.find(v => v.k === tdView) || views[0]).t;
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${WEEK[now.getDay()]}`;
+
+  $('#wpBody').innerHTML = `<div class="wp-todo">
+    <aside class="td-side">
+      ${views.map(v => `<button class="td-nav${v.k === tdView ? ' on' : ''}" data-view="${v.k}">${v.t}<i>${v.n}</i></button>`).join('')}
+    </aside>
+    <section class="td-main">
+      <div class="td-head"><h3>${viewTitle}</h3><span class="td-date">${dateStr}</span></div>
+      <div class="td-add">
+        <input class="td-input" placeholder="添加任务，回车确认" />
+        <button class="td-due${tdDue === today ? ' today' : ''}" data-act="due" title="设置任务日期">${DUE_ICON}<span>${dueLabel(tdDue)}</span></button>
+        <input type="date" class="td-due-in" value="${tdDue}" tabindex="-1" aria-hidden="true" />
+        <button class="td-add-btn" data-act="add" aria-label="添加任务">${PLUS_SVG}</button>
+      </div>
+      <div class="td-list">${items}</div>
+    </section>
+  </div>`;
+
+  const body = $('#wpBody');
+  const input = body.querySelector('.td-input');
+  const dueBtn = body.querySelector('[data-act="due"]');
+  const dueIn = body.querySelector('.td-due-in');
+
+  const add = () => {
+    const text = input.value.trim();
+    if (!text) return;
+    tasks.unshift({
+      id: 't' + Date.now().toString(36), text, done: false,
+      createdAt: Date.now(), due: tdDue || today, prio: 0
+    });
+    renderTodo();
+    saveWidgetNow();
+    const again = $('#wpBody').querySelector('.td-input');
+    if (again) again.focus();
+  };
+  input.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
+  body.querySelector('[data-act="add"]').onclick = add;
+
+  /* 日期按钮：借原生日期面板取值，露在外面的仍是我们自己的按钮（样式才可控）。
+     选了之后不重渲染，只改按钮上的字 —— 重渲染会让输入框里没提交的文字丢掉 */
+  dueBtn.onclick = () => {
+    dueIn.value = tdDue;
+    try { dueIn.showPicker(); } catch (e) { dueIn.focus(); dueIn.click(); }
+  };
+  dueIn.onchange = () => {
+    if (!dueIn.value) return;
+    tdDue = dueIn.value;
+    dueBtn.querySelector('span').textContent = dueLabel(tdDue);
+    dueBtn.classList.toggle('today', tdDue === today);
+    input.focus();
+  };
+
+  body.querySelectorAll('[data-view]').forEach(b => {
+    b.onclick = () => { closePrioPop(); tdView = b.dataset.view; renderTodo(); };
+  });
+  body.querySelectorAll('.td-item').forEach(row => {
+    const id = row.dataset.tid;
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+    row.querySelector('[data-act="toggle"]').onclick = e => {
+      e.stopPropagation();
+      task.done = !task.done;
+      renderTodo();
+      saveWidgetNow();
+    };
+    row.querySelector('[data-act="prio"]').onclick = e => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      openPrioPop(btn, Number(task.prio) || 0, p => {
+        task.prio = p;
+        renderTodo();
+        saveWidgetNow();
+      });
+    };
+    row.querySelector('[data-act="del"]').onclick = e => {
+      e.stopPropagation();
+      closePrioPop();
+      wpData.tasks = tasks.filter(t => t.id !== id);
+      renderTodo();
+      saveWidgetNow();
+    };
+  });
 }
 
 /* ---------- 时钟 ---------- */
@@ -1188,6 +1957,8 @@ $('#adminBtn').onclick = () => openAdmin();
    不整页刷新 —— 不闪屏、不丢滚动位置、弹窗不用被迫关掉 */
 function syncFromAdmin() {
   refreshAdminState();   // 登录/退出后右键菜单的可用性要跟着变
+  /* 节假日可能刚在后台改过：单独重拉一次，日历面板打开时角标才是新的 */
+  refreshCalDays();
   fetch('/api/public/panel', { cache: 'no-store' })
     .then(r => r.ok ? r.json() : null)
     .then(j => {
@@ -1270,6 +2041,21 @@ function buildCtxMenu(it) {
     ? `<button data-act="prev" data-tip="向前移动一位" ${canPrev ? '' : 'disabled'}>${svgOf(CTX_ICONS.prev)}</button>`
       + `<button data-act="next" data-tip="向后移动一位" ${canNext ? '' : 'disabled'}>${svgOf(CTX_ICONS.next)}</button>`
     : '';
+
+  /* 内置组件（日历 / 备忘录 / 待办）不是链接：没有默认地址、没有内网地址、没有链接可复制，
+     也不能改名换图标 —— 名字和图标就是它的身份，改了就认不出这是什么组件了。
+     所以右键只留「排序 + 删除」；要换分组请去后台卡片列表操作。
+     排序这里用文字行而不是那排图标方块：两条按钮 flex:1 会拉成两个空荡的宽格子 */
+  if (isWidget(it)) {
+    if (!managed) return false;
+    ctxMenu.innerHTML =
+      `<div class="mi${canPrev ? '' : ' dis'}" data-act="prev"${canPrev ? '' : ' data-dis="1"'}>${svgOf(CTX_ICONS.prev)}<span>向前移动</span></div>`
+      + `<div class="mi${canNext ? '' : ' dis'}" data-act="next"${canNext ? '' : ' data-dis="1"'}>${svgOf(CTX_ICONS.next)}<span>向后移动</span></div>`
+      + `<div class="sep"></div>
+         <div class="mi danger" data-act="del">${svgOf(CTX_ICONS.trash)}<span>删除</span></div>`;
+    return true;
+  }
+
   ctxMenu.innerHTML =
     `<div class="mi" data-act="open">${svgOf(CTX_ICONS.open)}<span>打开默认地址</span></div>`
     + `<div class="acts">
@@ -1283,6 +2069,7 @@ function buildCtxMenu(it) {
          <div class="mi" data-act="edit">${svgOf(CTX_ICONS.edit)}<span>编辑</span></div>
          <div class="mi danger" data-act="del">${svgOf(CTX_ICONS.trash)}<span>删除</span></div>`
       : '');
+  return true;
 }
 
 /* 复制兜底：HTTP 环境或旧浏览器没有 clipboard API 时走 execCommand */
@@ -1374,7 +2161,12 @@ async function ctxAction(act) {
   }
   if (act === 'del') {
     if (it.id == null) return;
-    if (!confirm(`删除卡片「${it.title}」？删除后不可恢复。`)) return;
+    /* 删组件会连带删掉 widget_data（备忘录正文 / 待办清单），必须说清楚，
+       否则用户以为只是去掉一张卡片，回头发现写的东西没了 */
+    const msg = isWidget(it)
+      ? `删除组件「${it.title}」？组件里记录的内容会一并删除，且不可恢复。`
+      : `删除卡片「${it.title}」？删除后不可恢复。`;
+    if (!confirm(msg)) return;
     const r = await fetch('/api/admin/icons/' + it.id, { method: 'DELETE', headers: { 'x-requested-with': 'unav' } }).catch(() => null);
     if (!r || r.status === 401 || r.status === 403) { ctxToast('请先登录后台'); openAdmin(); return; }
     if (!r.ok) { ctxToast('删除失败，请重试'); return; }
@@ -1385,7 +2177,8 @@ async function ctxAction(act) {
 
 ctxMenu.addEventListener('click', e => {
   const btn = e.target.closest('[data-act]');
-  if (!btn || btn.disabled) return;
+  /* data-dis 是给组件菜单的文字行用的（div 没有 disabled 属性） */
+  if (!btn || btn.disabled || btn.dataset.dis === '1') return;
   ctxAction(btn.dataset.act);
 });
 
@@ -1411,7 +2204,9 @@ $('#groups').addEventListener('contextmenu', e => {
   e.preventDefault();
   e.stopPropagation();   // 别冒泡到 document 的 contextmenu 关闭逻辑，把刚开的菜单又关掉
   ctxItem = { gid: g.id, it };
-  buildCtxMenu(it);
+  /* 组件卡片的菜单只有「排序 + 删除」；万一连 id 都没有（内置示例数据），
+     菜单会是空的，这时干脆不弹，别留一个空白小方块 */
+  if (!buildCtxMenu(it)) { ctxItem = null; return; }
   ctxMenu.style.display = 'block';
   const r = ctxMenu.getBoundingClientRect();
   const x = Math.max(8, Math.min(e.clientX, innerWidth - r.width - 8));
@@ -1446,10 +2241,18 @@ const FALLBACK = {
 (async function init() {
   let data = FALLBACK;
   try {
-    const [r] = await Promise.all([
+    /* widget-meta 与 panel 一起拉：卡片渲染时就要按它挑图标变体和默认色，
+       晚一步到就会先画一帧「通用图标」再跳一下。接口失败不影响出页，
+       widgetIcon/widgetColor 都有内置兜底。 */
+    const [r, , m] = await Promise.all([
       fetch('/api/public/panel', { cache: 'no-store' }),
       refreshAdminState(),   // 登录状态决定右键有没有管理功能
+      fetch('/api/public/widget-meta').then(x => (x.ok ? x.json() : null)).catch(() => null),
+      /* 节假日和 panel 一起取：日历面板一打开就要画「休 / 班」角标，
+         晚一步到会先画一屏没有角标的日历再跳一下 */
+      refreshCalDays(),
     ]);
+    if (m && Array.isArray(m.kinds)) state.wmeta = m;
     if (r.ok) { const j = await r.json(); if (j && Array.isArray(j.groups)) data = j; }
   } catch { /* 离线打开时用内置数据 */ }
   applyConfig(data.config || FALLBACK.config);

@@ -20,7 +20,23 @@ const isAdd = computed(() => !props.modelValue.it);
 const f = reactive({
   title: '', url: '', lan_url: '', description: '', icon_type: 'color',
   icon_url: '', icon_name: '', icon_text: '', background_color: '', open_method: 2, sort: 0, group_id: 0,
+  /* 'link' 普通卡片 | 'calendar' | 'memo' | 'todo' 内置组件 */
+  kind: 'link',
 });
+
+/* 顶部页签：添加卡片 / 添加组件。编辑态不显示页签（语义是「编辑」而不是「添加」），
+   只在编辑组件卡片时给一条说明，提示组件内容在导航页点开使用 */
+const tab = ref<'card' | 'widget'>('card');
+const isWidgetEdit = computed(() => !!props.modelValue.it && (props.modelValue.it.kind || 'link') !== 'link');
+/* 卡片页（预览 + 表单）是否显示：新建时跟随页签，编辑时恒显示 */
+const showCardPane = computed(() => !isAdd.value || tab.value === 'card');
+
+/* 可添加的内置组件清单。图标用 Remix Icon（项目图标库已在用同一套命名） */
+const WIDGET_DEFS = [
+  { kind: 'calendar', title: '日历', desc: '月视图 · 农历节气', icon: 'ri:calendar-line' },
+  { kind: 'memo', title: '备忘录', desc: '随手记 · 实时保存', icon: 'ri:sticky-note-line' },
+  { kind: 'todo', title: '待办', desc: '任务清单 · 勾选完成', icon: 'ri:checkbox-multiple-line' },
+] as const;
 
 /* 预览图标地址：data 用上传/粘贴的 icon_url；iconify 走后台 /api/icon 代理取 SVG（与前台一致）。
    颜色必须跟着「预览主题 + 底板」走 —— 不带 color 的话 SVG 里的 currentColor 解析成黑色，深底上就是黑底黑图 */
@@ -124,6 +140,9 @@ watch(() => props.modelValue, v => {
   pvLight.value = document.documentElement.dataset.theme === 'light';
   if (v.it) {
     Object.assign(f, v.it);
+    /* 老数据没有 kind 字段时 Object.assign 不会覆盖，必须显式兜底回 'link'，
+       否则上一张组件卡片的 kind 会残留到这张普通卡片上 */
+    f.kind = (v.it as { kind?: string }).kind || 'link';
     if (v.it.icon_type === 'r2') { f.icon_type = 'data'; }
     /* 前台/列表都是「有 icon_url 就显示图片」，历史数据可能 icon_type='color' 但 icon_url 有值
        （如旧版获取图标只写了 URL 没改类型）→ 弹窗按实际数据纠正，有图即选中「图片」tab */
@@ -131,8 +150,11 @@ watch(() => props.modelValue, v => {
     /* group_id 兜底成打开时的分组：少数字段可能没随卡片带回来（如前台只传了部分字段），
        留空会让下拉框变空白，保存时还会把 group_id 当成非法值提交 */
     f.group_id = Number(f.group_id) || v.gid;
+    /* 组件卡片默认落在「组件」页签，但编辑态不显示页签，这里只为语义分支用 */
+    tab.value = (f.kind || 'link') === 'link' ? 'card' : 'widget';
   } else {
-    Object.assign(f, { title: '', url: '', lan_url: '', description: '', icon_type: 'color', icon_url: '', icon_name: '', background_color: '', open_method: 2, sort: 0, group_id: v.gid });
+    Object.assign(f, { title: '', url: '', lan_url: '', description: '', icon_type: 'color', icon_url: '', icon_name: '', background_color: '', open_method: 2, sort: 0, group_id: v.gid, kind: 'link' });
+    tab.value = 'card';
   }
 }, { immediate: true });
 
@@ -156,9 +178,11 @@ async function uploadIcon(e: Event) {
 
 function save() {
   if (!f.title.trim()) return ElMessage.warning('标题不能为空');
-  if (!f.url.trim()) return ElMessage.warning('默认地址不能为空');
+  /* 组件卡片没有网址（点开是面板而不是跳转），不能拿「默认地址必填」去卡它 */
+  const isWidget = (f.kind || 'link') !== 'link';
+  if (!isWidget && !f.url.trim()) return ElMessage.warning('默认地址不能为空');
   // el-color-picker 点「清除」后 v-model 是 null，统一归一化成空串（= 不设背景色）
-  const payload = { ...f, title: f.title.trim(), url: f.url.trim(), background_color: f.background_color || '' };
+  const payload: any = { ...f, title: f.title.trim(), url: f.url.trim(), background_color: f.background_color || '', kind: f.kind || 'link' };
   /* 分组兜底：万一没选（历史数据没带 group_id），回落到打开弹窗时所在的分组，
      不要让 0 传上去 —— 后端会把 0 当非法分组直接拒绝保存 */
   payload.group_id = Number(payload.group_id) || props.modelValue.gid;
@@ -174,6 +198,28 @@ function save() {
     if (payload.icon_name.trim()) pushRecent(payload.icon_name.trim());
   }
   emit('save', payload);
+}
+
+/**
+ * 添加内置组件：不走「保存」按钮，点组件卡片这一次点击就等于确认。
+ * 组件本体仍是一条 item_icon 记录（kind 标类型、url 留空），所以直接复用 emit('save')，
+ * 分组、排序、前台同步这些链路与普通卡片完全一致。
+ */
+function addWidget(w: (typeof WIDGET_DEFS)[number]) {
+  emit('save', {
+    title: w.title,
+    url: '',
+    lan_url: '',
+    description: w.desc,
+    icon_type: 'iconify',
+    icon_name: w.icon,
+    icon_text: '',
+    icon_url: '',
+    background_color: '',
+    open_method: 2,
+    kind: w.kind,
+    group_id: Number(f.group_id) || props.modelValue.gid,
+  });
 }
 
 const fetchingIcon = ref(false);
@@ -236,7 +282,22 @@ function chooseImg(it: PickImg) {
 
 <template>
   <!-- 弹窗层（遮罩、层级、不锁滚动、ESC 关闭）统一交给 ModalShell -->
-  <ModalShell :title="isAdd ? '添加卡片' : '编辑卡片'" width="720px" max-height="calc(94vh - 24px)" @close="emit('close')">
+  <ModalShell :title="isAdd ? '添加卡片' : (isWidgetEdit ? '编辑组件' : '编辑卡片')" width="720px" max-height="calc(94vh - 24px)" @close="emit('close')">
+    <!-- 顶部页签：只在「新建」时出现 —— 编辑已有卡片是「编辑」语义，不需要再切类型 -->
+    <template v-if="isAdd" #head>
+      <div class="ed-tabs">
+        <button type="button" class="ed-tab" :class="{ on: tab === 'card' }" @click="tab = 'card'">添加卡片</button>
+        <button type="button" class="ed-tab" :class="{ on: tab === 'widget' }" @click="tab = 'widget'">添加组件</button>
+      </div>
+    </template>
+
+    <!-- ========== 卡片页：效果预览 + 卡片表单 ========== -->
+    <template v-if="showCardPane">
+      <!-- 编辑组件卡片时给一条说明：组件的内容在导航页点开使用，这里只改外观 -->
+      <div v-if="isWidgetEdit" class="wg-note">
+        这是内置组件卡片，点击导航页上的卡片即可使用。名称、分组、描述可在此修改；
+        图标样式、主色和功能开关到「组件管理」里设置。
+      </div>
     <!-- 效果预览：按访客页真实尺寸 1:1 渲染（不是缩略图），底纹镜像访客页背景渐变，
          所以「预览 = 导航实际」。左边是放大的图标本体（看图标细节），右边是卡片成品 -->
     <div class="pv-stage" :class="{ light: pvLight }">
@@ -400,6 +461,26 @@ function chooseImg(it: PickImg) {
         </el-collapse-item>
       </el-collapse>
     </el-form>
+    </template>
+
+    <!-- ========== 组件页：选一个内置组件，点一下就加到导航 ========== -->
+    <div v-if="isAdd && tab === 'widget'" class="wg-pane">
+      <p class="wg-tip">选择一个组件，它会以卡片形式加到导航里；点击卡片即可使用。</p>
+      <div class="wg-group">
+        <span class="wg-group-lb">添加到分组</span>
+        <el-select v-model="f.group_id" style="width:100%">
+          <el-option v-for="g in groups" :key="g.id" :label="g.title" :value="g.id" />
+        </el-select>
+      </div>
+      <div class="wg-grid">
+        <button v-for="w in WIDGET_DEFS" :key="w.kind" type="button" class="wg-card" @click="addWidget(w)">
+          <span class="wg-ic"><IIcon :name="w.icon" :size="22" /></span>
+          <span class="wg-name">{{ w.title }}</span>
+          <span class="wg-desc">{{ w.desc }}</span>
+          <span class="wg-add">点击添加</span>
+        </button>
+      </div>
+    </div>
 
     <!-- 项目图标选择弹窗：append-to-body，z-index 由 Element Plus 管理器分配，会盖在编辑弹窗之上。
          align-center 走 flex 垂直居中（此时 top 不生效），比固定 top:8vh 在高低屏上都不会偏 -->
@@ -426,8 +507,9 @@ function chooseImg(it: PickImg) {
     </el-dialog>
 
     <template #footer>
-      <el-button @click="emit('close')">取消</el-button>
-      <el-button type="primary" @click="save">保存</el-button>
+      <el-button @click="emit('close')">{{ isAdd && tab === 'widget' ? '关闭' : '取消' }}</el-button>
+      <!-- 组件页没有「保存」：点组件卡片那一下即已提交 -->
+      <el-button v-if="showCardPane" type="primary" @click="save">保存</el-button>
     </template>
   </ModalShell>
 </template>
@@ -839,5 +921,59 @@ function chooseImg(it: PickImg) {
   overflow: hidden;
   text-overflow: ellipsis;
   text-shadow: 0 1px 8px rgba(0, 0, 0, .42), 0 2px 20px rgba(0, 0, 0, .28);
+}
+
+/* ---------- 顶部页签（添加卡片 / 添加组件）---------- */
+.ed-tabs { display: flex; align-items: center; gap: 4px; }
+.ed-tab {
+  position: relative; padding: 4px 2px 8px; margin-right: 18px;
+  border: 0; background: none; cursor: pointer;
+  font-size: 16px; font-weight: 600; line-height: 1.4;
+  color: var(--el-text-color-secondary, #6b7480);
+  transition: color .15s;
+}
+.ed-tab:hover { color: var(--el-text-color-primary, #1f2328); }
+.ed-tab.on { color: var(--el-color-primary, #409eff); }
+.ed-tab.on::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+  border-radius: 2px; background: var(--el-color-primary, #409eff);
+}
+
+/* ---------- 组件页 ---------- */
+.wg-pane { padding: 4px 0 8px; }
+.wg-tip { margin: 0 0 18px; font-size: 13px; color: var(--el-text-color-secondary, #6b7480); }
+.wg-group { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.wg-group-lb { flex: none; font-size: 13px; color: var(--el-text-color-regular, #4b5563); }
+
+.wg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.wg-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  padding: 16px 14px; text-align: left; cursor: pointer;
+  border: 1px solid var(--el-border-color-lighter, rgba(0, 0, 0, .09));
+  border-radius: 12px;
+  background: var(--el-bg-color, #fff);
+  transition: border-color .18s, box-shadow .18s, transform .1s;
+}
+.wg-card:hover {
+  border-color: var(--el-color-primary, #409eff);
+  box-shadow: 0 8px 20px rgba(64, 158, 255, .16);
+}
+.wg-card:active { transform: translateY(1px); }
+.wg-ic {
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 11px;
+  color: var(--el-color-primary, #409eff);
+  background: rgba(64, 158, 255, .12);
+}
+.wg-name { font-size: 14px; font-weight: 600; color: var(--el-text-color-primary, #1f2328); }
+.wg-desc { font-size: 12px; line-height: 1.5; color: var(--el-text-color-secondary, #6b7480); }
+.wg-add { margin-top: 2px; font-size: 12px; color: var(--el-color-primary, #409eff); }
+
+/* 编辑组件卡片时的说明条 */
+.wg-note {
+  margin: 0 0 14px; padding: 9px 12px; border-radius: 9px;
+  font-size: 12.5px; line-height: 1.6;
+  color: var(--el-color-primary, #409eff);
+  background: rgba(64, 158, 255, .10);
 }
 </style>

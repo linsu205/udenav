@@ -2,10 +2,11 @@
 import { ref, computed } from 'vue';
 import { useStore } from '../store';
 import { ElMessage } from 'element-plus';
-import { Setting, FolderOpened, Files, TrendCharts, User, SwitchButton, ArrowRight, Picture, InfoFilled, Grid } from '@element-plus/icons-vue';
+import { Setting, FolderOpened, Files, TrendCharts, User, SwitchButton, ArrowRight, Picture, InfoFilled, Grid, Collection } from '@element-plus/icons-vue';
 import { logoSrc } from '../lib/brand';
 import ConfigPanel from './ConfigPanel.vue';
 import GroupsPanel from './GroupsPanel.vue';
+import WidgetsPanel from './WidgetsPanel.vue';
 import ImagesPanel from './ImagesPanel.vue';
 import IconsPanel from './IconsPanel.vue';
 import BackupPanel from './BackupPanel.vue';
@@ -21,6 +22,7 @@ const active = ref(store.tab || 'config');
 const menus = [
   { key: 'config', label: '页面配置', icon: Setting },
   { key: 'groups', label: '分组与卡片', icon: FolderOpened },
+  { key: 'widgets', label: '组件管理', icon: Collection },
   { key: 'images', label: '图片管理', icon: Picture },
   { key: 'icons', label: '图标管理', icon: Grid },
   { key: 'backup', label: '备份与导入', icon: Files },
@@ -33,7 +35,7 @@ const menus = [
 const sideLogo = computed(() => logoSrc(store.config?.favicon));
 
 const current = computed(() => ({
-  config: ConfigPanel, groups: GroupsPanel, images: ImagesPanel, icons: IconsPanel, backup: BackupPanel,
+  config: ConfigPanel, groups: GroupsPanel, widgets: WidgetsPanel, images: ImagesPanel, icons: IconsPanel, backup: BackupPanel,
   stats: StatsPanel, users: UsersPanel, about: AboutPanel,
 }[active.value] || ConfigPanel));
 

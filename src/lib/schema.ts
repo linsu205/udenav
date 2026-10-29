@@ -46,6 +46,10 @@ export interface IconRow {
   description: string;
   open_method: number;
   background_color: string;
+  /** 'link' 普通卡片（默认）| 'calendar' | 'memo' | 'todo' 内置组件 */
+  kind: string;
+  /** 组件外观/功能配置（JSON）：{ icon, color, opts }。见 lib/widgets.ts；空串 = 全用默认 */
+  w_cfg: string;
   sort: number;
   created_by: number | null;
   created_at: number;
@@ -60,7 +64,33 @@ export interface ConfigRow {
 }
 
 /* 数据模型版本：后台「关于」页会展示实际库里的值，方便核对「代码升级了、库没升」 */
-export const SCHEMA_VERSION = '1.3';
+export const SCHEMA_VERSION = '1.6';
+
+/**
+ * 节假日 / 调休上班的种子数据（2026 年，国办发明电〔2025〕7 号）。
+ *
+ * 只用来初始化新库，之后完全由后台「组件管理 → 日历 → 节假日」维护 ——
+ * 前台不再硬编码任何一年的安排，否则每年通知一发就要改代码、发版本。
+ * off = 法定放假（画「休」角标），work = 调休上班（画「班」，覆盖周末红字）。
+ */
+const SEED_CAL_DAYS: Array<[string, string]> = (() => {
+  const out: Array<[string, string]> = [];
+  const ymd = (d: Date) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const span = (kind: string, from: string, to = from) => {
+    const t = new Date(from + 'T00:00:00'), end = new Date(to + 'T00:00:00');
+    for (; t <= end; t.setDate(t.getDate() + 1)) out.push([ymd(t), kind]);
+  };
+  span('off', '2026-01-01', '2026-01-03');   // 元旦
+  span('off', '2026-02-15', '2026-02-23');   // 春节
+  span('off', '2026-04-04', '2026-04-06');   // 清明
+  span('off', '2026-05-01', '2026-05-05');   // 劳动节
+  span('off', '2026-06-19', '2026-06-21');   // 端午
+  span('off', '2026-09-25', '2026-09-27');   // 中秋
+  span('off', '2026-10-01', '2026-10-07');   // 国庆
+  ['2026-01-04', '2026-02-14', '2026-02-28', '2026-05-09', '2026-09-20', '2026-10-10']
+    .forEach((d) => span('work', d));
+  return out;
+})();
 
 export const DEFAULT_CONFIG = {
   logo_text: 'UDeNav',
@@ -149,9 +179,31 @@ CREATE TABLE IF NOT EXISTS item_icon (
   description TEXT NOT NULL DEFAULT '',
   open_method INTEGER NOT NULL DEFAULT 2,
   background_color TEXT NOT NULL DEFAULT '#2a2a2a6b',
+  kind TEXT NOT NULL DEFAULT 'link',
+  /* 组件外观与功能配置（JSON）：图标变体 / 主色 / 功能开关。
+     只有 kind != 'link' 的行会用它，普通卡片留空串，免得每行多存一份 {} */
+  w_cfg TEXT NOT NULL DEFAULT '',
   sort INTEGER NOT NULL DEFAULT 0,
   created_by INTEGER,
   created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+
+/* 内置组件（kind != 'link' 的卡片）的实例数据：备忘录正文、待办清单等。
+   一张卡片对应一行，payload 是 JSON 字符串；组件本身仍是 item_icon 记录，
+   所以分组、排序、拖拽、备份全部复用卡片那一套，不用另建体系。 */
+CREATE TABLE IF NOT EXISTS widget_data (
+  icon_id INTEGER PRIMARY KEY,
+  payload TEXT NOT NULL DEFAULT '{}',
+  updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+
+/* 日历用到的法定节假日 / 调休上班日。一天一行，kind = off（休）| work（班）。
+   单独建表而不是塞 user_config 大 JSON：后台是按年整年覆盖写的，
+   用行记录可以直接 DELETE 掉某一年的全部再重插，不用先读-改-写一整坨。 */
+CREATE TABLE IF NOT EXISTS cal_day (
+  day TEXT PRIMARY KEY,
+  kind TEXT NOT NULL DEFAULT 'off',
   updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
 
@@ -217,6 +269,11 @@ export function ensureSchema(db: D1Database): Promise<void> {
     // 1.1 → 1.2：卡片新增 icon_name（在线图标 Iconify 名）。此前只有分组有这一列，
     //             卡片选「在线图标」保存后图标名无处可存 → 表现为「保存不上」
     // 1.2 → 1.3：账号新增 avatar（自定义头像 data URL）
+    // 1.3 → 1.4：卡片新增 kind（link 普通卡片 / calendar 日历 / memo 备忘录 / todo 待办），
+    //             组件数据另存 widget_data 表
+    // 1.4 → 1.5：卡片新增 w_cfg（组件图标变体 / 主色 / 功能开关，JSON）
+    // 1.5 → 1.6：新增 cal_day 表（日历的法定放假 / 调休上班），并把 2026 年安排
+    //             作为初始数据写进去 —— 之后完全由后台「组件管理 → 日历」维护
     // 新库建表时已有该列，ALTER 会报 duplicate column，catch 掉即可
     await db
       .prepare('ALTER TABLE item_icon_group ADD COLUMN public_show INTEGER NOT NULL DEFAULT 0')
@@ -229,6 +286,21 @@ export function ensureSchema(db: D1Database): Promise<void> {
     await db
       .prepare("ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''")
       .run()
+      .catch(() => {});
+    await db
+      .prepare("ALTER TABLE item_icon ADD COLUMN kind TEXT NOT NULL DEFAULT 'link'")
+      .run()
+      .catch(() => {});
+    await db
+      .prepare("ALTER TABLE item_icon ADD COLUMN w_cfg TEXT NOT NULL DEFAULT ''")
+      .run()
+      .catch(() => {});
+
+    /* 节假日种子：INSERT OR IGNORE，用户已经改过的日期不会被覆盖（主键是 day，
+       同一天重复插入直接忽略）。只在版本升级时跑这一次。 */
+    await db
+      .batch(SEED_CAL_DAYS.map(([day, kind]) =>
+        db.prepare('INSERT OR IGNORE INTO cal_day (day, kind) VALUES (?, ?)').bind(day, kind)))
       .catch(() => {});
 
     await db

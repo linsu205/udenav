@@ -4,6 +4,7 @@
 import { json, bad, q, num, numBody, readJson, httpErr } from '../lib/http';
 import { hashPassword, verifyPassword, signToken, verifyToken, setSessionCookie, clearSessionCookie, clearLegacyCookie, readSessionCookie, requireAccess, type Session, type Role, nowSec } from '../lib/auth';
 import { DEFAULT_CONFIG, type Env, type GroupRow, type IconRow, type IconType, type ConfigRow } from '../lib/schema';
+import { normWidgetCfg, stringifyWidgetCfg } from '../lib/widgets';
 import { getSecret } from '../lib/secret';
 
 const SESSION_HOURS = 24;
@@ -408,6 +409,16 @@ export async function listIcons(env: Env, req: Request, params: URLSearchParams)
   return json({ ok: true, icons });
 }
 
+/* 内置组件类型。组件本质就是「没有网址的特殊卡片」——仍是 item_icon 一行，
+   所以分组、排序、拖拽、备份全部复用卡片那套，不必另建体系；
+   真正的实例数据（备忘录正文、待办清单）存 widget_data 表。 */
+const WIDGET_KINDS = ['calendar', 'memo', 'todo'] as const;
+type WidgetKind = (typeof WIDGET_KINDS)[number];
+function normKind(v: unknown): string {
+  const s = String(v ?? '').trim();
+  return (WIDGET_KINDS as readonly string[]).includes(s) ? s : 'link';
+}
+
 export async function createIcon(env: Env, req: Request): Promise<Response> {
   const s = await requireRole(req, env, 'editor');
   const body = await readJson(req);
@@ -419,11 +430,94 @@ export async function createIcon(env: Env, req: Request): Promise<Response> {
   if (!g) return bad('分组不存在', 404);
   const next = await env.DB.prepare('SELECT COALESCE(MAX(sort), -10) AS n FROM item_icon WHERE group_id = ?').bind(gid).first<{ n: number }>();
   const icon_type: IconType = normIconType(body.icon_type);
+  const kind = normKind(body.kind);
   const res = await env.DB
-    .prepare('INSERT INTO item_icon (group_id, title, url, lan_url, icon_type, icon_text, icon_name, icon_url, description, open_method, background_color, sort, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(gid, title, String(body.url || ''), String(body.lan_url || ''), icon_type, String(body.icon_text || ''), String(body.icon_name || ''), String(body.icon_url || ''), String(body.description || ''), Number(body.open_method ?? 2), String(body.background_color ?? ''), Number(next?.n ?? -10) + 10, s.sub)
+    .prepare('INSERT INTO item_icon (group_id, title, url, lan_url, icon_type, icon_text, icon_name, icon_url, description, open_method, background_color, kind, sort, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(gid, title, String(body.url || ''), String(body.lan_url || ''), icon_type, String(body.icon_text || ''), String(body.icon_name || ''), String(body.icon_url || ''), String(body.description || ''), Number(body.open_method ?? 2), String(body.background_color ?? ''), kind, Number(next?.n ?? -10) + 10, s.sub)
     .run();
-  return json({ ok: true, id: Number(res.meta.last_row_id) });
+  return json({ ok: true, id: Number(res.meta.last_row_id), kind });
+}
+
+/* ---------------- 节假日（日历的「休 / 班」角标） ---------------- */
+
+/**
+ * 读某一年的节假日安排，返回 { 'YYYY-MM-DD': 'off' | 'work' }。
+ * 后台「组件管理 → 日历 → 节假日」按年编辑，一次取一年足够画那张年历。
+ */
+export async function getCalDays(env: Env, req: Request): Promise<Response> {
+  await requireRole(req, env, 'editor');
+  const q = new URL(req.url).searchParams;
+  const year = Number(q.get('year')) || new Date().getFullYear();
+  if (!Number.isInteger(year) || year < 1970 || year > 2100) return bad('年份无效');
+  const rows = await env.DB
+    .prepare("SELECT day, kind FROM cal_day WHERE day LIKE ?")
+    .bind(year + '-%')
+    .all<{ day: string; kind: string }>();
+  const days: Record<string, string> = {};
+  for (const r of rows.results) days[r.day] = r.kind;
+  return json({ ok: true, year, days });
+}
+
+/**
+ * 整年覆盖写：先删该年的全部记录，再插入前端提交的那些天。
+ * 为什么不逐条 diff：年历是无状态的「涂色板」，整年覆盖语义最简单，
+ * 也不会有「删了某天但没提交删除」这类残留。空对象 = 把这年清空。
+ */
+export async function putCalDays(env: Env, req: Request): Promise<Response> {
+  await requireRole(req, env, 'editor');
+  const body = await readJson(req);
+  const year = Number(body.year);
+  if (!Number.isInteger(year) || year < 1970 || year > 2100) return bad('年份无效');
+
+  const src = (body.days && typeof body.days === 'object') ? body.days as Record<string, unknown> : {};
+  const rows: Array<[string, string]> = [];
+  for (const [k, v] of Object.entries(src)) {
+    /* 只收「格式对、年份对、日期真实存在、kind 合法」的那几天：前端算错年份、多传了别年的数据，
+       或者手写成 2027-13-01 / 2027-02-30 都不该写进库 —— 日历上多一个错的「休」比少一个更误导人 */
+    const mm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(k);
+    if (!mm) continue;
+    const yy = Number(mm[1]), mo = Number(mm[2]), dd = Number(mm[3]);
+    if (yy !== year) continue;
+    const dt = new Date(yy, mo - 1, dd);
+    if (dt.getMonth() !== mo - 1 || dt.getDate() !== dd) continue;
+    const kind = v === 'work' ? 'work' : v === 'off' ? 'off' : '';
+    if (!kind) continue;
+    rows.push([k, kind]);
+  }
+  if (rows.length > 400) return bad('一年的日期不能超过 400 天');
+
+  const stmts: D1PreparedStatement[] = [env.DB.prepare('DELETE FROM cal_day WHERE day LIKE ?').bind(year + '-%')];
+  const now = Date.now();
+  for (const [day, kind] of rows) {
+    stmts.push(env.DB.prepare('INSERT OR REPLACE INTO cal_day (day, kind, updated_at) VALUES (?, ?, ?)').bind(day, kind, now));
+  }
+  await env.DB.batch(stmts);
+  return json({ ok: true, year, count: rows.length });
+}
+
+/* ---------------- 内置组件数据 ---------------- */
+
+/** 读组件数据（备忘录 / 待办）。仅登录用户可读 —— 内容属于私人信息，不适合公开 */
+export async function getWidgetData(env: Env, req: Request, id: number): Promise<Response> {
+  await requireRole(req, env, 'editor');
+  const row = await env.DB.prepare('SELECT payload FROM widget_data WHERE icon_id = ?').bind(id).first<{ payload: string }>();
+  return json({ ok: true, payload: row?.payload || '' });
+}
+
+/** 写组件数据：整份 payload 覆盖（前端已做 debounce，这里只做长度兜底） */
+export async function putWidgetData(env: Env, req: Request, id: number): Promise<Response> {
+  await requireRole(req, env, 'editor');
+  const ic = await env.DB.prepare('SELECT id, kind FROM item_icon WHERE id = ?').bind(id).first<{ id: number; kind: string }>();
+  if (!ic) return bad('卡片不存在', 404);
+  if (!ic.kind || ic.kind === 'link') return bad('不是组件卡片');
+  const body = await readJson(req);
+  const payload = String(body.payload ?? '');
+  if (payload.length > 262144) return bad('内容过大（上限 256KB）');
+  await env.DB
+    .prepare('INSERT INTO widget_data (icon_id, payload, updated_at) VALUES (?, ?, ?) ON CONFLICT(icon_id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at')
+    .bind(id, payload, Date.now())
+    .run();
+  return json({ ok: true });
 }
 
 export async function patchIcon(env: Env, req: Request, id: number): Promise<Response> {
@@ -441,6 +535,16 @@ export async function patchIcon(env: Env, req: Request, id: number): Promise<Res
   // el-color-picker 清除后 v-model 为 null，用 ?? 兜底会把 null 当成未传而回退旧色，导致清不掉。
   const hasBg = Object.prototype.hasOwnProperty.call(body, 'background_color');
   const bgColor = hasBg ? String(body.background_color ?? '') : ic.background_color;
+
+  /* 组件外观/功能配置（图标变体 / 主色 / 功能开关）。
+     只对 kind != 'link' 的行生效：普通卡片没有组件面板，存了也没人读，
+     留着反而会让「这张卡到底是不是组件」变得含糊。
+     用户点「恢复默认」时前端传 w_cfg: {} → 归一化后是空串，等于清掉配置。 */
+  const kindOf = String(ic.kind || 'link');
+  const wCfg = Object.prototype.hasOwnProperty.call(body, 'w_cfg') && kindOf !== 'link'
+    ? stringifyWidgetCfg(normWidgetCfg(kindOf, body.w_cfg))
+    : String(ic.w_cfg || '');
+  if (wCfg.length > 4096) return bad('组件配置过大');
 
   /* 换组：body.group_id 有效且与当前不同才动。
      换组时不沿用原来的 sort —— 那张卡的 sort 属于旧组的编号序列，
@@ -466,8 +570,8 @@ export async function patchIcon(env: Env, req: Request, id: number): Promise<Res
   }
 
   await env.DB
-    .prepare('UPDATE item_icon SET title=?, url=?, lan_url=?, icon_type=?, icon_text=?, icon_name=?, icon_url=?, description=?, open_method=?, background_color=?, sort=?, group_id=?, updated_at=? WHERE id=?')
-    .bind(title, String(body.url ?? ic.url), String(body.lan_url ?? ic.lan_url), icon_type, String(body.icon_text ?? ic.icon_text), String(body.icon_name ?? ic.icon_name), String(body.icon_url ?? ic.icon_url), String(body.description ?? ic.description), Number(body.open_method ?? ic.open_method), bgColor, sortVal, groupId, Date.now(), id)
+    .prepare('UPDATE item_icon SET title=?, url=?, lan_url=?, icon_type=?, icon_text=?, icon_name=?, icon_url=?, description=?, open_method=?, background_color=?, w_cfg=?, sort=?, group_id=?, updated_at=? WHERE id=?')
+    .bind(title, String(body.url ?? ic.url), String(body.lan_url ?? ic.lan_url), icon_type, String(body.icon_text ?? ic.icon_text), String(body.icon_name ?? ic.icon_name), String(body.icon_url ?? ic.icon_url), String(body.description ?? ic.description), Number(body.open_method ?? ic.open_method), bgColor, wCfg, sortVal, groupId, Date.now(), id)
     .run();
   return json({ ok: true, group_id: groupId, moved: movedGroup });
 }
@@ -502,6 +606,8 @@ export async function moveIcon(env: Env, req: Request, id: number): Promise<Resp
 
 export async function deleteIcon(env: Env, req: Request, id: number): Promise<Response> {
   await requireRole(req, env, 'editor');
+  /* 组件卡片一并清掉实例数据，否则重新创建时 id 复用不到，但残留行白占空间 */
+  await env.DB.prepare('DELETE FROM widget_data WHERE icon_id = ?').bind(id).run().catch(() => {});
   const res = await env.DB.prepare('DELETE FROM item_icon WHERE id = ?').bind(id).run();
   return json({ ok: true, changed: Number(res?.meta?.changes ?? 0) });
 }
@@ -704,11 +810,13 @@ export async function purgeLogs(env: Env, req: Request): Promise<Response> {
 
 export async function exportAll(env: Env, req: Request): Promise<Response> {
   await requireRole(req, env, 'owner');
-  const [g, i, c, u] = await Promise.all([
+  const [g, i, c, u, cd] = await Promise.all([
     env.DB.prepare('SELECT * FROM item_icon_group ORDER BY sort, id').all<GroupRow>(),
     env.DB.prepare('SELECT * FROM item_icon ORDER BY group_id, sort, id').all<IconRow>(),
     env.DB.prepare('SELECT * FROM user_config').all<ConfigRow>(),
     env.DB.prepare('SELECT id, username, display_name, role, created_at FROM users').all(),
+    /* 节假日也是「配置」而不是私人数据，一次导出手工录的放假安排不用重做 */
+    env.DB.prepare('SELECT day, kind FROM cal_day ORDER BY day').all<{ day: string; kind: string }>(),
   ]);
   return json({
     ok: true,
@@ -720,6 +828,7 @@ export async function exportAll(env: Env, req: Request): Promise<Response> {
     users: u.results.map((r) => ({ ...r, password: '<请用 JSON 导入界面单独设置>' })),
     groups: g.results,
     icons: i.results,
+    calDays: cd.results,
   });
 }
 
@@ -738,15 +847,31 @@ export async function applySnapshot(env: Env, body: any, sub: number): Promise<S
   const groups = body.groups || [];
   const icons = body.icons || [];
 
-  const stmts: D1PreparedStatement[] = [env.DB.prepare('DELETE FROM item_icon'), env.DB.prepare('DELETE FROM item_icon_group'), env.DB.prepare('DELETE FROM user_config')];
+  /* widget_data 也要清：备份里不含组件内容（备忘录正文属于私人数据，不导出），
+     卡片全删重建后旧 payload 会挂在已不存在的 icon_id 上；更糟的是新建组件
+     复用同一个自增 id 时会「继承」别人的备忘录内容。 */
+  const stmts: D1PreparedStatement[] = [env.DB.prepare('DELETE FROM item_icon'), env.DB.prepare('DELETE FROM item_icon_group'), env.DB.prepare('DELETE FROM user_config'), env.DB.prepare('DELETE FROM widget_data')];
   for (const c of cfg) stmts.push(env.DB.prepare('INSERT INTO user_config (key, value) VALUES (?, ?)').bind(String(c.key), JSON.stringify(c.value ?? '')));
   for (const g of groups) {
     stmts.push(env.DB.prepare('INSERT INTO item_icon_group (id, title, description, icon_type, icon_name, icon_url, sort, public_hide, public_show, card_style, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(Number(g.id), String(g.title), String(g.description ?? ''), g.icon_type || 'iconify', String(g.icon_name ?? ''), String(g.icon_url ?? ''), Number(g.sort ?? 0), g.public_hide ? 1 : 0, g.public_show ? 1 : 0, g.card_style || 'info', sub));
   }
   for (const ic of icons) {
-    stmts.push(env.DB.prepare('INSERT INTO item_icon (id, group_id, title, url, lan_url, icon_type, icon_text, icon_name, icon_url, description, open_method, background_color, sort, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(Number(ic.id), Number(ic.group_id), String(ic.title), String(ic.url ?? ''), String(ic.lan_url ?? ''), ic.icon_type || 'color', String(ic.icon_text ?? ''), String(ic.icon_name ?? ''), String(ic.icon_url ?? ''), String(ic.description ?? ''), Number(ic.open_method ?? 2), String(ic.background_color ?? '#2a2a2a6b'), Number(ic.sort ?? 0), sub));
+    /* kind / w_cfg 必须一起写入：老版本导入时漏了 kind，导入后组件卡片全变成
+       「没有网址的普通卡片」（点不开、还要求填网址），配置更要一起还原 */
+    stmts.push(env.DB.prepare('INSERT INTO item_icon (id, group_id, title, url, lan_url, icon_type, icon_text, icon_name, icon_url, description, open_method, background_color, kind, w_cfg, sort, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(Number(ic.id), Number(ic.group_id), String(ic.title), String(ic.url ?? ''), String(ic.lan_url ?? ''), ic.icon_type || 'color', String(ic.icon_text ?? ''), String(ic.icon_name ?? ''), String(ic.icon_url ?? ''), String(ic.description ?? ''), Number(ic.open_method ?? 2), String(ic.background_color ?? '#2a2a2a6b'), String(ic.kind || 'link'), String(ic.w_cfg ?? ''), Number(ic.sort ?? 0), sub, Number(ic.updated_at ?? Date.now())));
+  }
+  /* 节假日：只在备份里确实带了这个字段时才覆盖。
+     老备份（1.5 及以前）没有 calDays，若照删不误，恢复一次就把手工录的放假安排清空了 */
+  if (Array.isArray(body.calDays)) {
+    stmts.push(env.DB.prepare('DELETE FROM cal_day'));
+    for (const d of body.calDays) {
+      const day = String(d?.day ?? '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+      stmts.push(env.DB.prepare('INSERT OR REPLACE INTO cal_day (day, kind) VALUES (?, ?)')
+        .bind(day, d?.kind === 'work' ? 'work' : 'off'));
+    }
   }
 
   /* D1 的 batch 是单个事务：全部成功或全部回滚。

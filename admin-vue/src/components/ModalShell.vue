@@ -39,7 +39,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
       <div class="ce-card" role="dialog" aria-modal="true" :aria-label="props.title"
            :style="{ '--ce-w': props.width, maxHeight: props.maxHeight }" @wheel.stop>
         <div class="ce-head">
-          <span class="ce-title">{{ props.title }}</span>
+          <!-- #head 插槽：调用方要放页签等自定义头部时用；不传时回落到 title 文本 -->
+          <div class="ce-head-main">
+            <slot name="head"><span class="ce-title">{{ props.title }}</span></slot>
+          </div>
           <button type="button" class="ce-x" aria-label="关闭" @click="emit('close')">
             <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
               <path d="M1.5 1.5l11 11M12.5 1.5l-11 11" fill="none" stroke="currentColor"
@@ -86,6 +89,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
     display: flex; align-items: center; justify-content: space-between;
     padding: 16px 20px 6px;
   }
+  .ce-head-main { flex: 1; min-width: 0; }
   .ce-title { font-size: 17px; font-weight: 600; line-height: 1.4; }
   .ce-x {
     display: flex; align-items: center; justify-content: center;

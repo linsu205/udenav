@@ -4,6 +4,7 @@ import { json } from '../lib/http';
 import { readSessionCookie, verifyToken } from '../lib/auth';
 import { getSecret } from '../lib/secret';
 import { DEFAULT_CONFIG, type Env, type GroupRow, type IconRow, type ConfigRow } from '../lib/schema';
+import { WIDGET_KINDS, WIDGET_DEFAULT_COLOR, ICON_LIBRARY, WIDGET_VARIANTS } from '../lib/widgets';
 
 function parseConfig(rows: ConfigRow[]): Record<string, unknown> {
   const map: Record<string, unknown> = { ...DEFAULT_CONFIG };
@@ -87,6 +88,10 @@ export async function publicPanel(env: Env, req: Request): Promise<Response> {
         iconName: r.icon_type === 'iconify' ? r.icon_name : '',
         color: r.background_color,
         openMethod: r.open_method,
+        /* 内置组件标记：'link' 是普通卡片，其余（calendar/memo/todo）前台点开走组件面板 */
+        kind: (r as { kind?: string }).kind || 'link',
+        /* 组件外观/功能配置（JSON 字符串，前台自己解析）。普通卡片恒为空串 */
+        wCfg: (r as { w_cfg?: string }).w_cfg || '',
         sort: r.sort,
       })),
     })),
@@ -96,4 +101,39 @@ export async function publicPanel(env: Env, req: Request): Promise<Response> {
 export async function publicConfig(env: Env): Promise<Response> {
   const rows = await env.DB.prepare('SELECT * FROM user_config').all<ConfigRow>();
   return json({ ok: true, config: parseConfig(rows.results) });
+}
+
+/**
+ * 节假日 / 调休上班日：前台日历画「休 / 班」角标用。
+ *
+ * 数据量很小（一年几十条），一次全返回，用户翻到别的年份也不用再请求一次。
+ * 不要求登录 —— 日历是公开组件，谁打开首页都要看到正确的放假安排。
+ */
+export async function publicCalDays(env: Env): Promise<Response> {
+  const rows = await env.DB.prepare('SELECT day, kind FROM cal_day').all<{ day: string; kind: string }>();
+  const days: Record<string, 'off' | 'work'> = {};
+  for (const r of rows.results) days[r.day] = r.kind === 'work' ? 'work' : 'off';
+  /* 不缓存：后台改完节假日，前台 syncFromAdmin 会立刻重拉，
+     若这里给 max-age，浏览器会把旧值端上来，表现成「改完前台没变」 */
+  return json({ ok: true, days }, { headers: { 'cache-control': 'no-store' } });
+}
+
+/**
+ * 内置组件的元数据：图标库 + 风格列表 + 各组件的默认图标 + 功能开关定义 + 默认主色。
+ *
+ * 前台（渲染组件卡片和面板）与后台（组件管理页的图标选择器、开关列表）都从这里取，
+ * 不各存一份 —— 同一份 SVG 路径写两处，改了必然有一边忘记，最后表现成
+ * 「后台选的图标和前台显示的不一样」。这些内容不随用户数据变化，可放心缓存。
+ */
+export async function widgetMeta(): Promise<Response> {
+  return json(
+    {
+      ok: true,
+      defaultColor: WIDGET_DEFAULT_COLOR,
+      kinds: WIDGET_KINDS,
+      library: ICON_LIBRARY,
+      variants: WIDGET_VARIANTS,
+    },
+    { headers: { 'cache-control': 'public, max-age=600' } },
+  );
 }

@@ -90,8 +90,8 @@ async function submit() {
         <el-form-item class="field">
           <el-input v-model="password" size="large" type="password" placeholder="请输入密码" autocomplete="current-password" show-password>
             <template #prefix>
-              <!-- 「密码」二字之间补两个 en 空格（各 0.5em），合计正好一个字宽，与上行「用户名」视觉等宽 -->
-              <span class="in-label"><el-icon><Lock /></el-icon><span>密&ensp;&ensp;码</span></span>
+              <!-- 「密码」二字之间补两个半角空格（约 7px），既不太挤也不会像两个字被拉开 -->
+              <span class="in-label"><el-icon><Lock /></el-icon><span>密&nbsp;&nbsp;码</span></span>
             </template>
           </el-input>
         </el-form-item>

@@ -4,7 +4,7 @@
 import { ensureSchemaOnce } from './lib/bootstrap';
 import { withCors, bad } from './lib/http';
 import { allow, ipOf } from './lib/ratelimit';
-import { publicPanel, publicConfig } from './routes/public';
+import { publicPanel, publicConfig, widgetMeta, publicCalDays } from './routes/public';
 import * as admin from './routes/admin';
 import { upload } from './routes/icons';
 import { iconifyProxy } from './routes/iconify';
@@ -111,6 +111,10 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (req.method !== 'GET') return bad('方法不支持', 405);
     if (parts[1] === 'panel') return publicPanel(env, req);
     if (parts[1] === 'config') return publicConfig(env);
+    /* 节假日 / 调休上班日：前台日历画「休 / 班」角标用 */
+    if (parts[1] === 'cal-days') return publicCalDays(env);
+    /* 组件元数据：图标变体 + 功能开关定义，前台和后台组件管理页共用 */
+    if (parts[1] === 'widget-meta') return widgetMeta();
   }
 
   // ---------- 管理员 ----------
@@ -145,6 +149,11 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (m === 'GET' && a === 'groups') return admin.listGroups(env, req);
     if (m === 'GET' && a === 'icons') return admin.listIcons(env, req, new URL(req.url).searchParams);
     if (m === 'GET' && a === 'favicon') return admin.favicon(env, req);
+    /* 节假日：日历组件每年放假安排的读取与整年覆盖 */
+    if (a === 'cal-days') {
+      if (m === 'GET') return admin.getCalDays(env, req);
+      if (m === 'PUT') return admin.putCalDays(env, req);
+    }
     if (m === 'GET' && a === 'images') return admin.listImages(env, req);
     if (m === 'DELETE' && a === 'images' && parts[2] && parts[3] !== undefined) return admin.clearImage(env, req, parts[2], parts[3]);
     if (m === 'GET' && a === 'export') return admin.exportAll(env, req);
@@ -186,6 +195,11 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (m === 'POST' && a === 'icons') return admin.createIcon(env, req);
     if (m === 'PATCH' && a === 'icons' && id) return admin.patchIcon(env, req, id);
     if (m === 'DELETE' && a === 'icons' && id) return admin.deleteIcon(env, req, id);
+    /* 内置组件数据（备忘录 / 待办）：GET 读、PUT 整份覆盖 */
+    if (a === 'widgets' && id) {
+      if (m === 'GET') return admin.getWidgetData(env, req, id);
+      if (m === 'PUT') return admin.putWidgetData(env, req, id);
+    }
     if (m === 'DELETE' && a === 'logs') return admin.purgeLogs(env, req);
   }
 
@@ -216,6 +230,7 @@ const STORED: Array<{ key: string; label: string; color: string; text: string[];
   { key: 'users', label: '后台账户', color: '#a78bfa', text: ['username', 'display_name', 'pass_meta', 'role'], num: 5 },
   { key: 'panel', label: '面板数据', color: '#67c23a', text: ['key', 'value'], num: 3 },
   { key: 'user_config', label: '用户配置', color: '#909399', text: ['key', 'value'], num: 2 },
+  { key: 'cal_day', label: '节假日', color: '#8b5cf6', text: ['day', 'kind'], num: 1 },
   { key: 'schema_meta', label: '版本元数据', color: '#8492a6', text: ['key', 'value'], num: 0 },
 ];
 
