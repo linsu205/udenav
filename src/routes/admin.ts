@@ -4,7 +4,7 @@
 import { json, bad, q, num, numBody, readJson, httpErr } from '../lib/http';
 import { hashPassword, verifyPassword, signToken, verifyToken, setSessionCookie, clearSessionCookie, clearLegacyCookie, readSessionCookie, requireAccess, type Session, type Role, nowSec } from '../lib/auth';
 import { DEFAULT_CONFIG, type Env, type GroupRow, type IconRow, type IconType, type ConfigRow } from '../lib/schema';
-import { normWidgetCfg, stringifyWidgetCfg } from '../lib/widgets';
+import { normWidgetCfg, stringifyWidgetCfg, widgetMeta as widgetDef } from '../lib/widgets';
 import { getSecret } from '../lib/secret';
 
 const SESSION_HOURS = 24;
@@ -423,19 +423,82 @@ export async function createIcon(env: Env, req: Request): Promise<Response> {
   const s = await requireRole(req, env, 'editor');
   const body = await readJson(req);
   const gid = Number(body.group_id || 0);
-  const title = String(body.title || '').trim();
+  let title = String(body.title || '').trim();
+  let description = String(body.description || '');
+  const kind = normKind(body.kind);
+  /* 组件卡片没给名称/描述时，用「组件管理」里给这一类组件配的值：
+     配置是类型级的，先配好再放卡片也应当带着同样的名字，不然放上去还叫「未命名」 */
+  if (kind !== 'link' && (!title || !description)) {
+    const cfgRow = await env.DB
+      .prepare('SELECT title, description FROM widget_cfg WHERE kind = ?')
+      .bind(kind)
+      .first<{ title: string; description: string }>();
+    const meta = widgetDef(kind);
+    if (!title) title = cfgRow?.title || meta?.label || '';
+    if (!description) description = cfgRow?.description || meta?.desc || '';
+  }
   if (!gid) return bad('缺少分组');
   if (!title) return bad('名称不能为空');
   const g = await env.DB.prepare('SELECT id FROM item_icon_group WHERE id = ?').bind(gid).first();
   if (!g) return bad('分组不存在', 404);
   const next = await env.DB.prepare('SELECT COALESCE(MAX(sort), -10) AS n FROM item_icon WHERE group_id = ?').bind(gid).first<{ n: number }>();
   const icon_type: IconType = normIconType(body.icon_type);
-  const kind = normKind(body.kind);
   const res = await env.DB
     .prepare('INSERT INTO item_icon (group_id, title, url, lan_url, icon_type, icon_text, icon_name, icon_url, description, open_method, background_color, kind, sort, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(gid, title, String(body.url || ''), String(body.lan_url || ''), icon_type, String(body.icon_text || ''), String(body.icon_name || ''), String(body.icon_url || ''), String(body.description || ''), Number(body.open_method ?? 2), String(body.background_color ?? ''), kind, Number(next?.n ?? -10) + 10, s.sub)
+    .bind(gid, title, String(body.url || ''), String(body.lan_url || ''), icon_type, String(body.icon_text || ''), String(body.icon_name || ''), String(body.icon_url || ''), description, Number(body.open_method ?? 2), String(body.background_color ?? ''), kind, Number(next?.n ?? -10) + 10, s.sub)
     .run();
   return json({ ok: true, id: Number(res.meta.last_row_id), kind });
+}
+
+/* ---------------- 组件外观配置（按类型，与卡片无关） ----------------
+   为什么按类型存：配置挂在卡片上时，组件没放到页面上就没有那一行可写，
+   组件管理页只能显示「还没有添加组件」—— 等于「不放就不给管」。 */
+
+type WidgetCfgRow = { kind: string; title: string; description: string; cfg: string; updated_at: number };
+
+/** 三类组件的当前配置，以及它们各自被放到了几处（组件管理页据此标「已放置 / 未放置」） */
+export async function listWidgetCfgs(env: Env, req: Request): Promise<Response> {
+  await requireRole(req, env, 'editor');
+  const [rows, placed] = await Promise.all([
+    env.DB.prepare('SELECT kind, title, description, cfg, updated_at FROM widget_cfg').all<WidgetCfgRow>(),
+    env.DB
+      .prepare("SELECT id, kind, title, group_id FROM item_icon WHERE kind <> 'link' ORDER BY group_id, sort, id")
+      .all<{ id: number; kind: string; title: string; group_id: number }>(),
+  ]);
+  const cfgs: Record<string, { title: string; description: string; cfg: string }> = {};
+  for (const r of rows.results) {
+    cfgs[r.kind] = { title: r.title, description: r.description, cfg: r.cfg };
+  }
+  return json({
+    ok: true,
+    cfgs,
+    placed: placed.results.map((r) => ({ id: r.id, kind: r.kind, title: r.title, groupId: r.group_id })),
+  });
+}
+
+/** 保存某一类组件的外观 / 功能。名称与描述顺带刷到该类型的卡片上 ——
+ *  卡片标题是前台直接显示的，两处各改一次必然对不上，最后又是「后台改了前台没变」。 */
+export async function putWidgetCfg(env: Env, req: Request, kind: string): Promise<Response> {
+  await requireRole(req, env, 'editor');
+  const meta = widgetDef(kind);
+  if (!meta) return bad('不是内置组件', 404);
+  const body = await readJson(req);
+  const title = (String(body.title ?? '').trim() || meta.label).slice(0, 20);
+  const description = String(body.description ?? '').trim().slice(0, 40) || meta.desc;
+  /* 归一化后再存：颜色只收 #rgb/#rrggbb、未知图标与未知开关丢掉，
+     这个值会直接进前台的 style 与 <img src>，不能原样落库 */
+  const cfg = stringifyWidgetCfg(normWidgetCfg(kind, body.cfg));
+  if (cfg.length > 4096) return bad('组件配置过大');
+  const now = Date.now();
+  await env.DB
+    .prepare('INSERT INTO widget_cfg (kind, title, description, cfg, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(kind) DO UPDATE SET title = excluded.title, description = excluded.description, cfg = excluded.cfg, updated_at = excluded.updated_at')
+    .bind(kind, title, description, cfg, now)
+    .run();
+  await env.DB
+    .prepare('UPDATE item_icon SET title = ?, description = ?, updated_at = ? WHERE kind = ?')
+    .bind(title, description, now, kind)
+    .run();
+  return json({ ok: true, kind, title, description, cfg });
 }
 
 /* ---------------- 节假日（日历的「休 / 班」角标） ---------------- */
@@ -810,13 +873,16 @@ export async function purgeLogs(env: Env, req: Request): Promise<Response> {
 
 export async function exportAll(env: Env, req: Request): Promise<Response> {
   await requireRole(req, env, 'owner');
-  const [g, i, c, u, cd] = await Promise.all([
+  const [g, i, c, u, cd, wc] = await Promise.all([
     env.DB.prepare('SELECT * FROM item_icon_group ORDER BY sort, id').all<GroupRow>(),
     env.DB.prepare('SELECT * FROM item_icon ORDER BY group_id, sort, id').all<IconRow>(),
     env.DB.prepare('SELECT * FROM user_config').all<ConfigRow>(),
     env.DB.prepare('SELECT id, username, display_name, role, created_at FROM users').all(),
     /* 节假日也是「配置」而不是私人数据，一次导出手工录的放假安排不用重做 */
     env.DB.prepare('SELECT day, kind FROM cal_day ORDER BY day').all<{ day: string; kind: string }>(),
+    /* 组件的外观配置也是配置：图标 / 配色 / 开关，换机器导入后不用重新点一遍 */
+    env.DB.prepare('SELECT kind, title, description, cfg FROM widget_cfg ORDER BY kind')
+      .all<{ kind: string; title: string; description: string; cfg: string }>(),
   ]);
   return json({
     ok: true,
@@ -829,6 +895,7 @@ export async function exportAll(env: Env, req: Request): Promise<Response> {
     groups: g.results,
     icons: i.results,
     calDays: cd.results,
+    widgetCfgs: wc.results,
   });
 }
 
@@ -862,7 +929,19 @@ export async function applySnapshot(env: Env, body: any, sub: number): Promise<S
     stmts.push(env.DB.prepare('INSERT INTO item_icon (id, group_id, title, url, lan_url, icon_type, icon_text, icon_name, icon_url, description, open_method, background_color, kind, w_cfg, sort, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(Number(ic.id), Number(ic.group_id), String(ic.title), String(ic.url ?? ''), String(ic.lan_url ?? ''), ic.icon_type || 'color', String(ic.icon_text ?? ''), String(ic.icon_name ?? ''), String(ic.icon_url ?? ''), String(ic.description ?? ''), Number(ic.open_method ?? 2), String(ic.background_color ?? '#2a2a2a6b'), String(ic.kind || 'link'), String(ic.w_cfg ?? ''), Number(ic.sort ?? 0), sub, Number(ic.updated_at ?? Date.now())));
   }
-  /* 节假日：只在备份里确实带了这个字段时才覆盖。
+  /* 组件配置：新备份带 widgetCfgs，恢复后图标 / 配色 / 开关一起还原；
+     老备份没有这个字段就不动现有的 —— 和 calDays 同一个原则，宁可少还原，不要误清空 */
+  if (Array.isArray(body.widgetCfgs)) {
+    stmts.push(env.DB.prepare('DELETE FROM widget_cfg'));
+    for (const w of body.widgetCfgs) {
+      const kind = normKind(w?.kind);
+      if (kind === 'link') continue;
+      stmts.push(env.DB.prepare('INSERT INTO widget_cfg (kind, title, description, cfg, updated_at) VALUES (?, ?, ?, ?, ?)')
+        .bind(kind, String(w.title ?? '').slice(0, 20), String(w.description ?? '').slice(0, 40), String(w.cfg ?? ''), Date.now()));
+    }
+  }
+
+  /* 节假日：只在备份里确实带了这个字段时才动。
      老备份（1.5 及以前）没有 calDays，若照删不误，恢复一次就把手工录的放假安排清空了 */
   if (Array.isArray(body.calDays)) {
     stmts.push(env.DB.prepare('DELETE FROM cal_day'));

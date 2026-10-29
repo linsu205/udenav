@@ -154,6 +154,11 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
       if (m === 'GET') return admin.getCalDays(env, req);
       if (m === 'PUT') return admin.putCalDays(env, req);
     }
+    /* 组件外观配置：按组件类型（calendar/memo/todo）读写，与是否已放到页面无关 */
+    if (a === 'widget-cfgs') {
+      if (m === 'GET' && !parts[2]) return admin.listWidgetCfgs(env, req);
+      if (m === 'PUT' && parts[2]) return admin.putWidgetCfg(env, req, parts[2]);
+    }
     if (m === 'GET' && a === 'images') return admin.listImages(env, req);
     if (m === 'DELETE' && a === 'images' && parts[2] && parts[3] !== undefined) return admin.clearImage(env, req, parts[2], parts[3]);
     if (m === 'GET' && a === 'export') return admin.exportAll(env, req);
@@ -231,6 +236,7 @@ const STORED: Array<{ key: string; label: string; color: string; text: string[];
   { key: 'panel', label: '面板数据', color: '#67c23a', text: ['key', 'value'], num: 3 },
   { key: 'user_config', label: '用户配置', color: '#909399', text: ['key', 'value'], num: 2 },
   { key: 'cal_day', label: '节假日', color: '#8b5cf6', text: ['day', 'kind'], num: 1 },
+  { key: 'widget_cfg', label: '组件配置', color: '#409EFF', text: ['kind', 'title', 'cfg'], num: 1 },
   { key: 'schema_meta', label: '版本元数据', color: '#8492a6', text: ['key', 'value'], num: 0 },
 ];
 

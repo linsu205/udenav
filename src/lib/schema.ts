@@ -64,7 +64,7 @@ export interface ConfigRow {
 }
 
 /* 数据模型版本：后台「关于」页会展示实际库里的值，方便核对「代码升级了、库没升」 */
-export const SCHEMA_VERSION = '1.6';
+export const SCHEMA_VERSION = '1.7';
 
 /**
  * 节假日 / 调休上班的种子数据（2026 年，国办发明电〔2025〕7 号）。
@@ -198,6 +198,18 @@ CREATE TABLE IF NOT EXISTS widget_data (
   updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
 
+/* 内置组件的外观与功能配置，按「组件类型」存而不是按「卡片」存。
+   为什么不用 item_icon.w_cfg：配置挂在卡片上时，组件没放到页面上就没有那一行，
+   组件管理页只能显示「还没有添加组件」——等于「不放就不给管」。
+   日历 / 备忘录 / 待办各一行，放不放卡片都能在这里设置图标、主色、描述、开关。 */
+CREATE TABLE IF NOT EXISTS widget_cfg (
+  kind TEXT PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  cfg TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+
 /* 日历用到的法定节假日 / 调休上班日。一天一行，kind = off（休）| work（班）。
    单独建表而不是塞 user_config 大 JSON：后台是按年整年覆盖写的，
    用行记录可以直接 DELETE 掉某一年的全部再重插，不用先读-改-写一整坨。 */
@@ -274,6 +286,8 @@ export function ensureSchema(db: D1Database): Promise<void> {
     // 1.4 → 1.5：卡片新增 w_cfg（组件图标变体 / 主色 / 功能开关，JSON）
     // 1.5 → 1.6：新增 cal_day 表（日历的法定放假 / 调休上班），并把 2026 年安排
     //             作为初始数据写进去 —— 之后完全由后台「组件管理 → 日历」维护
+    // 1.6 → 1.7：新增 widget_cfg 表（组件外观/功能配置改为按类型存）。此前配置存在
+    //             item_icon.w_cfg 上，组件没放到页面上就无处可存，组件管理页只能空着
     // 新库建表时已有该列，ALTER 会报 duplicate column，catch 掉即可
     await db
       .prepare('ALTER TABLE item_icon_group ADD COLUMN public_show INTEGER NOT NULL DEFAULT 0')
@@ -293,6 +307,19 @@ export function ensureSchema(db: D1Database): Promise<void> {
       .catch(() => {});
     await db
       .prepare("ALTER TABLE item_icon ADD COLUMN w_cfg TEXT NOT NULL DEFAULT ''")
+      .run()
+      .catch(() => {});
+
+    /* 老配置搬家：以前每个组件的配置存在各自卡片的 w_cfg 上，现在统一到 widget_cfg。
+       同类型有多张卡片时取最近改过的那一份（ORDER BY updated_at DESC，先插的优先，
+       后面的主键冲突直接 IGNORE）。卡片上的 w_cfg 保留不删，前台仍拿它兜底。 */
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO widget_cfg (kind, title, description, cfg, updated_at)
+         SELECT kind, '', '', w_cfg, updated_at FROM item_icon
+         WHERE kind IN ('calendar','memo','todo') AND w_cfg <> ''
+         ORDER BY updated_at DESC`,
+      )
       .run()
       .catch(() => {});
 

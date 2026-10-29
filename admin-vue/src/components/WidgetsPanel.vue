@@ -2,9 +2,9 @@
 /**
  * 组件管理：内置组件（日历 / 备忘录 / 待办）的外观与功能设置。
  *
- * 组件的本体仍是「一张没有网址的卡片」（item_icon 一行，kind 非 link），
- * 所以分组、排序、拖拽、删除都还在「分组与卡片」页；本页只管那些
- * 卡片页管不到的东西：图标、主色、描述、功能开关。
+ * 配置按「组件类型」存（widget_cfg 表），不按卡片存：日历 / 备忘录 / 待办是内置的三种
+ * 能力，不管有没有放到页面上，都该能在这里改图标、主色、描述与功能开关。
+ * 卡片只是它们的「摆件」，位置、分组、拖拽、增删仍在「分组与卡片」页。
  *
  * 图标（内置三风格 / 在线 Iconify 名称）与开关的**可选值**来自 /api/public/widget-meta
  * —— 与前台渲染同一个源。页面上不硬编码任何图标路径，加一个预设只改 src/lib/widgets.ts。
@@ -12,8 +12,8 @@
 import { ref, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Refresh, RefreshLeft } from '@element-plus/icons-vue';
-import { useStore, type IconItem, type Group } from '../store';
-import { get, patch, put } from '../api';
+import { useStore } from '../store';
+import { get, put } from '../api';
 import { notifyHome } from '../lib/notify';
 import ModalShell from './ModalShell.vue';
 import IIcon from './IIcon.vue';
@@ -41,16 +41,42 @@ const PRESETS = ['#409EFF', '#18A058', '#E6A23C', '#F56C6C', '#8B5CF6', '#0EA5E9
 
 const defaultColor = computed(() => meta.value.defaultColor || FALLBACK_COLOR);
 
-type Row = { it: IconItem; group: Group };
+/* 类型级配置：/api/admin/widget-cfgs 返回三类组件各一份，与卡片是否存在无关 */
+type CfgRow = { title: string; description: string; cfg: string };
+type Placed = { id: number; kind: string; title: string; groupId: number };
+const cfgMap = ref<Record<string, CfgRow>>({});
+const placed = ref<Placed[]>([]);
+const cfgErr = ref(false);
 
-/* 只列组件；按分组顺序排（store.groups 本身已按 sort 排好） */
+type Row = { kind: string; label: string; title: string; desc: string; cfg: Cfg; count: number };
+
+/* 行的来源是组件定义（meta.kinds），不是卡片列表 ——
+   这就是「组件不管放不放都在这里管理」：没放到页面上的组件同样有三行。 */
 const rows = computed<Row[]>(() =>
-  store.groups.flatMap((g) =>
-    (g.items || [])
-      .filter((x) => x.kind && x.kind !== 'link')
-      .map((it) => ({ it, group: g })),
-  ),
+  meta.value.kinds.map((k) => {
+    const saved = cfgMap.value[k.kind];
+    return {
+      kind: k.kind,
+      label: k.label,
+      title: saved?.title || k.label,
+      desc: saved?.description || k.desc,
+      cfg: parseCfg(saved?.cfg),
+      count: placed.value.filter((x) => x.kind === k.kind).length,
+    };
+  }),
 );
+
+async function loadCfgs() {
+  try {
+    const r = await get<{ cfgs?: Record<string, CfgRow>; placed?: Placed[] }>('/api/admin/widget-cfgs');
+    cfgMap.value = r?.cfgs || {};
+    placed.value = r?.placed || [];
+    cfgErr.value = false;
+  } catch (e: any) {
+    cfgErr.value = true;
+    ElMessage.error('组件配置加载失败：' + (e?.message || '请重试'));
+  }
+}
 
 function kindMeta(kind?: string): KindMeta | undefined {
   return meta.value.kinds.find((k) => k.kind === kind);
@@ -99,8 +125,8 @@ function iconPath(kind: string | undefined, key: string | undefined, variant?: s
   return ic[normVariant(variant)];
 }
 
-function rowColor(it: IconItem): string {
-  return parseCfg(it.w_cfg).color || defaultColor.value;
+function rowColor(r: Row): string {
+  return r.cfg.color || defaultColor.value;
 }
 
 /* 组件色淡底：把 #rrggbb 转成 rgba，用于图标底板，避免写死一堆半透明色值 */
@@ -145,14 +171,17 @@ async function loadMeta() {
 async function refresh() {
   refreshing.value = true;
   try {
-    await store.loadAll();   // 卡片也可能在别的窗口里被改过，一并重拉
+    await Promise.all([store.loadAll(), loadCfgs()]);   // 卡片与配置都可能被别的窗口改过
     ElMessage.success('已刷新');
   } finally {
     refreshing.value = false;
   }
 }
 
-onMounted(loadMeta);
+onMounted(() => {
+  loadMeta();
+  loadCfgs();
+});
 
 /* ---------------- 节假日（只对日历组件显示） ----------------
    数据存在 D1 的 cal_day 表，前台日历据此画「休 / 班」角标。
@@ -250,7 +279,6 @@ function markDay(day: string) {
 /* ---------------- 编辑弹窗 ---------------- */
 
 type Draft = {
-  id: number;
   kind: string;
   title: string;
   desc: string;
@@ -283,13 +311,14 @@ function onIconInput(v: string) {
   if (isIconifyName(t)) draft.value.icon = t;     // 合法才落进配置，半成品先只留在缓冲
 }
 
-function openEdit(it: IconItem) {
-  const cfg = parseCfg(it.w_cfg);
+/* 按组件类型打开设置：行的来源是类型，不是某张卡片 */
+function openEdit(kind: string) {
+  const r = rows.value.find((x) => x.kind === kind);
+  const cfg = r?.cfg || parseCfg('');
   draft.value = {
-    id: it.id,
-    kind: String(it.kind || ''),
-    title: it.title || '',
-    desc: it.description || '',
+    kind,
+    title: r?.title || kindMeta(kind)?.label || '',
+    desc: r?.desc || '',
     icon: cfg.icon,
     variant: cfg.variant,
     color: cfg.color,
@@ -298,7 +327,7 @@ function openEdit(it: IconItem) {
   iconBuf.value = isIconifyName(cfg.icon) ? cfg.icon : '';
   /* 每次打开都从库里重拉节假日：别把上次未保存的涂改带进来 */
   resetHol();
-  if (String(it.kind) === 'calendar') ensureHol(holYear.value);
+  if (kind === 'calendar') ensureHol(holYear.value);
 }
 
 /* 关闭弹窗（取消/点 ×）：草稿和未提交的节假日改动一起丢弃 */
@@ -384,11 +413,12 @@ async function save() {
     if (!d.icon && !d.variant && !d.color && !hasOpts) return '';   // 全默认就存空串，前端省一层解析
     return JSON.stringify({ icon: d.icon, variant: d.variant, color: d.color, opts: d.opts });
   })();
+  const desc = d.desc.trim() || (draftMeta.value?.desc || '');
   try {
-    await patch('/api/admin/icons/' + d.id, {
+    await put('/api/admin/widget-cfgs/' + d.kind, {
       title,
       description: d.desc.trim(),
-      w_cfg: cfgStr,
+      cfg: cfgStr,
     });
     /* 节假日按年整份覆盖：只提交真的动过的年份 */
     if (holDirty.value.length) {
@@ -397,14 +427,15 @@ async function save() {
       }
       holDirty.value = [];
     }
-    /* 就地改 store 里那一行：本页和「分组与卡片」页读的是同一份数据，
-       重拉整个 store 会让列表闪一下、滚动位置也丢 */
+    cfgMap.value = { ...cfgMap.value, [d.kind]: { title, description: desc, cfg: cfgStr } };
+    /* 卡片标题/描述后端已一并更新；这里就地改 store，省一次重拉（重拉会让列表闪一下） */
     for (const g of store.groups) {
-      const hit = g.items?.find((x) => x.id === d.id);
-      if (hit) {
-        hit.title = title;
-        hit.description = d.desc.trim();
-        hit.w_cfg = cfgStr;
+      for (const it of (g.items || [])) {
+        if (it.kind === d.kind) {
+          it.title = title;
+          it.description = desc;
+          it.w_cfg = '';   // 配置改由类型级下发，卡片上那份老值不再使用
+        }
       }
     }
     notifyHome();   // 前台按新配置重渲染卡片与面板
@@ -424,7 +455,7 @@ async function save() {
       <div>
         <h2>组件管理</h2>
         <div class="sub">
-          内置组件的外观与功能 · 图标、主色、描述、功能开关都改这里，保存后前台即时生效
+          内置组件的外观与功能 · 与是否放到页面上无关，图标、主色、描述、开关都改这里，保存后前台即时生效
         </div>
       </div>
       <div class="head-right">
@@ -438,6 +469,10 @@ async function save() {
       v-if="metaErr" type="warning" :closable="false" show-icon class="meta-warn"
       title="组件定义没取到，图标预览与功能项可能不全（已保存的配置不会丢）"
     />
+    <el-alert
+      v-if="cfgErr" type="warning" :closable="false" show-icon class="meta-warn"
+      title="组件配置没取到，下面显示的是默认值；此时保存会覆盖已有配置，建议先点刷新"
+    />
 
     <div v-if="!rows.length" class="empty">
       <div class="empty-ic">
@@ -448,47 +483,45 @@ async function save() {
                 stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </div>
-      <p class="empty-t">还没有添加组件</p>
-      <p class="empty-s">到「分组与卡片」页，点添加 → 选择「添加组件」，即可放入日历、备忘录或待办。</p>
+      <p class="empty-t">组件定义没加载到</p>
+      <p class="empty-s">这是接口没回来的情况，不是「没有组件」；点右上角刷新重试。</p>
     </div>
 
     <div v-else class="wlist">
-      <div v-for="r in rows" :key="r.it.id" class="wrow">
-        <div
-          class="wic"
-          :style="{ background: tint(rowColor(r.it), 0.12), color: rowColor(r.it) }"
-        >
+      <div v-for="r in rows" :key="r.kind" class="wrow">
+        <div class="wic" :style="{ background: tint(rowColor(r), 0.12), color: rowColor(r) }">
           <!-- 内置图标：路径来自后端元数据（v-html 塞进 svg 内部）；在线图标：交给 IIcon 取原图 -->
-          <IIcon
-            v-if="isIconifyName(parseCfg(r.it.w_cfg).icon)"
-            :name="parseCfg(r.it.w_cfg).icon" :size="20"
-          />
+          <IIcon v-if="isIconifyName(r.cfg.icon)" :name="r.cfg.icon" :size="20" />
           <svg
             v-else viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
-            v-html="iconPath(r.it.kind, parseCfg(r.it.w_cfg).icon, parseCfg(r.it.w_cfg).variant)"
+            v-html="iconPath(r.kind, r.cfg.icon, r.cfg.variant)"
           />
         </div>
 
         <div class="wmain">
           <div class="wtitle">
-            <span class="wname">{{ r.it.title }}</span>
-            <span class="wkind">{{ kindMeta(r.it.kind)?.label || r.it.kind }}</span>
-            <span class="wgroup">{{ r.group.title }}</span>
+            <span class="wname">{{ r.title }}</span>
+            <!-- 名称没改过时它就等于类型名，再挂个类型标签等于写两遍 -->
+            <span v-if="r.title !== r.label" class="wkind">{{ r.label }}</span>
+            <!-- 放置状态：组件是「内置能力」，放不放到页面上都能在这里管理 -->
+            <span class="wstat" :class="{ off: !r.count }">
+              {{ r.count ? (r.count > 1 ? `已放置 ${r.count} 处` : '已放置') : '未放置' }}
+            </span>
           </div>
-          <div class="wdesc">
-            {{ r.it.description || kindMeta(r.it.kind)?.desc || '未填写描述' }}
-          </div>
+          <div class="wdesc">{{ r.desc || '未填写描述' }}</div>
         </div>
 
         <div class="wacts">
-          <el-button size="small" @click="openEdit(r.it)">设置</el-button>
+          <el-button size="small" @click="openEdit(r.kind)">设置</el-button>
         </div>
       </div>
     </div>
 
     <div class="tips">
-      <b>说明</b>：组件的位置与分组在「分组与卡片」里调整（支持拖拽）；删除组件也在那里，
-      删除会连带清空该组件里记录的内容（备忘录正文、待办清单）。
+      <b>说明</b>：这三类组件是内置能力，<b>不管有没有放到页面上，都可以在这里设置</b>；
+      配置按类型生效，保存后所有该类型的卡片一起变。
+      位置与分组在「分组与卡片」里调整（支持拖拽），添加 / 删除组件也在那里；
+      删除卡片会连带清空它记录的内容（备忘录正文、待办清单），但不会清掉这里的配置。
       日历的法定节假日与调休上班日在日历的「设置」里按年维护，保存后前台日历立刻显示「休 / 班」角标。
     </div>
 
@@ -659,7 +692,12 @@ async function save() {
     font-size: 11px; padding: 1px 7px; border-radius: 6px;
     color: var(--sp-dim); background: rgba(128, 128, 128, .12);
   }
-  .wgroup { font-size: 11.5px; color: var(--sp-dim); }
+  /* 放置状态：已放置走中性灰，「未放置」用淡蓝提示「还没放到页面上，但可以配」 */
+  .wstat {
+    font-size: 11px; padding: 1px 7px; border-radius: 6px;
+    color: var(--sp-accent); background: var(--sp-accent-soft);
+  }
+  .wstat.off { color: var(--sp-dim); background: rgba(128, 128, 128, .1); }
   .wdesc {
     margin-top: 4px; font-size: 12.5px; color: var(--sp-dim);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

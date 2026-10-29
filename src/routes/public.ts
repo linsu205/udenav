@@ -53,6 +53,11 @@ export async function publicPanel(env: Env, req: Request): Promise<Response> {
     icons = (await env.DB.prepare('SELECT * FROM item_icon WHERE group_id IN (' + ids.join(',') + ') ORDER BY sort, id').all<IconRow>()).results;
   }
 
+  /* 组件外观配置按类型存（widget_cfg），一张卡片一行的那份 w_cfg 只作老数据的兜底：
+     后台「组件管理」改的是类型级配置，放不放卡片都生效。 */
+  const wcRows = await env.DB.prepare('SELECT kind, cfg FROM widget_cfg').all<{ kind: string; cfg: string }>();
+  const cfgByKind = new Map(wcRows.results.map((r) => [r.kind, r.cfg || '']));
+
   const byGroup = new Map<number, typeof icons>();
   for (const ic of icons) {
     const arr = byGroup.get(ic.group_id) || [];
@@ -90,8 +95,9 @@ export async function publicPanel(env: Env, req: Request): Promise<Response> {
         openMethod: r.open_method,
         /* 内置组件标记：'link' 是普通卡片，其余（calendar/memo/todo）前台点开走组件面板 */
         kind: (r as { kind?: string }).kind || 'link',
-        /* 组件外观/功能配置（JSON 字符串，前台自己解析）。普通卡片恒为空串 */
-        wCfg: (r as { w_cfg?: string }).w_cfg || '',
+        /* 组件外观/功能配置（JSON 字符串，前台自己解析）。普通卡片恒为空串；
+           组件优先用类型级配置，取不到才回退这张卡自己存过的老配置 */
+        wCfg: cfgByKind.get((r as { kind?: string }).kind || '') || (r as { w_cfg?: string }).w_cfg || '',
         sort: r.sort,
       })),
     })),
