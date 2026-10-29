@@ -24,6 +24,9 @@ function leaveToNav() {
 }
 
 async function submit() {
+  /* 防重复提交：el-form 的 @submit 与密码框回车都会触发本函数，
+     不加守卫会在一次回车里连发两次登录请求，弹出两条「欢迎回来」。 */
+  if (loading.value) return;
   err.value = '';
   loading.value = true;
   try {
@@ -47,7 +50,7 @@ async function submit() {
           <el-input v-model="username" placeholder="3-20 位字母/数字/下划线" autocomplete="username" />
         </el-form-item>
         <el-form-item label="密码">
-          <el-input v-model="password" type="password" placeholder="至少 8 位" autocomplete="current-password" @keyup.enter="submit" />
+          <el-input v-model="password" type="password" placeholder="至少 8 位" autocomplete="current-password" />
         </el-form-item>
         <div v-if="err" class="err">{{ err }}</div>
         <el-button type="primary" native-type="submit" :loading="loading" style="width:100%;margin-top:4px">

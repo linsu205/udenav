@@ -38,8 +38,13 @@ export const useStore = defineStore('udenav', () => {
   /* 任何一个后台接口 401（会话过期 / 密码被改）都退回登录页，
      只提示一次，避免并发请求刷出一排相同 toast */
   let notifiedOut = false;
+  /* 刚登录成功后的极短时间内，后续首个请求可能因 cookie 尚未在请求里生效而瞬时 401。
+     这种 401 不是真的过期，若当成「登录已过期」会先弹「欢迎回来」又弹「登录已过期」，
+     把人踢回登录页 —— 这里窗口期内直接忽略，不重置会话、不弹提示。 */
+  let justLoggedIn = false;
   if (typeof window !== 'undefined') {
     window.addEventListener('udenav:unauthorized', () => {
+      if (justLoggedIn) return;
       user.value = null;
       if (notifiedOut) return;
       notifiedOut = true;
@@ -74,6 +79,8 @@ export const useStore = defineStore('udenav', () => {
     const r = await post<any>('/api/admin/login', { username, password });
     user.value = r;
     ElMessage.success(`欢迎回来，${r?.username || username}`);
+    justLoggedIn = true;
+    setTimeout(() => { justLoggedIn = false; }, 2500);
     refreshHome();
     return r;
   }

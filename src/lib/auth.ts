@@ -147,13 +147,35 @@ export function clearSessionCookie(): string[] {
 export function readSessionCookie(req: Request): string | null {
   const raw = req.headers.get('cookie');
   if (!raw) return null;
-  for (const part of raw.split(';')) {
-    const idx = part.indexOf('=');
-    if (idx < 0) continue;
-    const key = part.slice(0, idx).trim();
-    if (key === COOKIE_NAME || key === HOST_COOKIE) return part.slice(idx + 1).trim();
+  /* 旧版部署曾把会话写在 sp_session，新版在 https 上改用 __Host-sp_session。
+     浏览器可能同时带着两个名字的 cookie。若直接返回第一个匹配，可能命中已过期/失效的
+     legacy 令牌，让本该通过的请求误判 401（表现就是「登录成功却立刻登录已过期，一直登不进」）。
+     这里取「未过期」的那个，且同有效时优先 __Host- 标准名。 */
+  const valOf = (name: string): string | null => {
+    for (const part of raw.split(';')) {
+      const idx = part.indexOf('=');
+      if (idx < 0) continue;
+      if (part.slice(0, idx).trim() === name) return part.slice(idx + 1).trim();
+    }
+    return null;
+  };
+  const host = valOf(HOST_COOKIE);
+  const legacy = valOf(COOKIE_NAME);
+  if (host && tokenAlive(host)) return host;
+  if (legacy && tokenAlive(legacy)) return legacy;
+  return host || legacy; // 都没有有效令牌时退化为优先 Host，与旧行为一致
+}
+
+/** 不验签，只快速判断 JWT 是否仍在有效期内（用于 cookie 二选一，避免拿到失效遗留令牌） */
+function tokenAlive(token: string): boolean {
+  try {
+    const p = token.split('.')[1];
+    if (!p) return false;
+    const json = JSON.parse(unb64url(p)) as { exp?: number };
+    return typeof json.exp === 'number' && json.exp > Math.floor(Date.now() / 1000);
+  } catch {
+    return false;
   }
-  return null;
 }
 
 /* ---------------- Cloudflare Access 校验 ---------------- */
