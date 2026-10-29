@@ -50,7 +50,7 @@ async function submit() {
           <el-input v-model="username" placeholder="3-20 位字母/数字/下划线" autocomplete="username" />
         </el-form-item>
         <el-form-item label="密码">
-          <el-input v-model="password" type="password" placeholder="至少 8 位" autocomplete="current-password" />
+          <el-input v-model="password" type="password" placeholder="至少 4 位" autocomplete="current-password" />
         </el-form-item>
         <div v-if="err" class="err">{{ err }}</div>
         <el-button type="primary" native-type="submit" :loading="loading" style="width:100%;margin-top:4px">

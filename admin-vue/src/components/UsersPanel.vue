@@ -98,7 +98,7 @@ function edit(u: U) {
 
 const pwdErr = computed(() => {
   if (!f.password) return '';
-  if (f.password.length < 8) return '密码至少 8 位';
+  if (f.password.length < 4) return '密码至少 4 位';
   if (f.confirm && f.confirm !== f.password) return '两次输入不一致';
   return '';
 });
@@ -108,7 +108,7 @@ const initial = computed(() => (f.username || '').trim().charAt(0).toUpperCase()
 
 const canSave = computed(() => {
   if (!f.username.trim()) return false;
-  if (f.password && (f.password.length < 8 || f.confirm !== f.password)) return false;
+  if (f.password && (f.password.length < 4 || f.confirm !== f.password)) return false;
   return true;
 });
 
@@ -120,8 +120,8 @@ async function save() {
     ElMessage.error('用户名只能是 3-20 位字母 / 数字 / 下划线');
     return;
   }
-  if (f.password && f.password.length < 8) {
-    ElMessage.error('密码至少 8 位');
+  if (f.password && f.password.length < 4) {
+    ElMessage.error('密码至少 4 位');
     return;
   }
   if (f.password && f.password !== f.confirm) {
@@ -263,7 +263,7 @@ async function remove(u: U) {
             <label class="pwd-col">
               <span>新密码</span>
               <el-input v-model="f.password" type="password" show-password autocomplete="new-password"
-                        placeholder="至少 8 位" aria-label="新密码" />
+                        placeholder="至少 4 位" aria-label="新密码" />
             </label>
             <label class="pwd-col">
               <span>确认新密码</span>
