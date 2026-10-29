@@ -8,7 +8,7 @@
 //   2) 后台「立即备份」按钮 → runBackupNow()
 
 import { json, bad, readJson } from '../lib/http';
-import { requireRole, applySnapshot } from './admin';
+import { requireRole, applySnapshot, snapshotBackup, snapshotStats } from './admin';
 import { getSecret } from '../lib/secret';
 import type { Env, ConfigRow, GroupRow, IconRow } from '../lib/schema';
 
@@ -196,6 +196,9 @@ export async function buildSnapshot(env: Env) {
     users: u.results.map((r) => ({ ...r, password: '<请用 JSON 导入界面单独设置>' })),
     groups: g.results,
     icons: i.results,
+    /* 备份设置（WebDAV / S3 连接参数）一并写入，换机器恢复后不用重新配置；
+       凭据（pass / sk）在 snapshotBackup 内已剔除，只带非机密参数。 */
+    backup: await snapshotBackup(env),
   };
 }
 
@@ -459,19 +462,17 @@ export async function restoreBackup(env: Env, req: Request): Promise<Response> {
     return bad('这不是本系统导出的备份文件');
   }
 
-  const meta = {
-    file,
-    exported_at: Number(snap.exported_at || 0),
-    groups: snap.groups.length,
-    icons: Array.isArray(snap.icons) ? snap.icons.length : 0,
-    configs: Array.isArray(snap.config) ? snap.config.length : 0,
-  };
-  if (body.dry) return json({ ok: true, dry: true, ...meta });
+  /* 各模块的可导入数量与字节大小，干跑时回给面板供勾选模块、展示大小 */
+  const { counts, sizes } = snapshotStats(snap);
+  if (body.dry) {
+    return json({ ok: true, dry: true, file, exported_at: Number(snap.exported_at || 0), counts, sizes });
+  }
 
+  /* modules 为空数组时 applySnapshot 视为「全部恢复」，与老行为一致 */
   try {
-    await applySnapshot(env, snap, s.sub);
+    await applySnapshot(env, snap, s.sub, Array.isArray(body.modules) ? body.modules.map(String) : undefined);
   } catch (e: any) {
     return bad('恢复失败：' + (e?.message || '未知错误'));
   }
-  return json({ ok: true, ...meta });
+  return json({ ok: true, file, exported_at: Number(snap.exported_at || 0), ...counts });
 }

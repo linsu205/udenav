@@ -1,5 +1,5 @@
 /**
- * 内置组件（日历 / 备忘录 / 待办）的元数据。
+ * 内置组件（日历 / 备忘录 / 待办 / 换算器）的元数据。
  *
  * 为什么放在后端：图标、功能开关这些东西，前台（public/index.html 的
  * 纯 JS 渲染）和后台（admin-vue 的组件管理页）都要用；各写一份必然漂移
@@ -40,11 +40,13 @@ export type WidgetPreset =
   | { type: 'iconify'; name: string; label: string };
 
 export type WidgetKindMeta = {
-  kind: 'calendar' | 'memo' | 'todo';
+  kind: 'calendar' | 'memo' | 'todo' | 'conv';
   label: string;
   desc: string;
-  /** 该组件默认用的图标库 key（用户可在组件管理里换成别的） */
+  /** 该组件默认用的图标：图标库 key（cal/memo/todo）或 Iconify 名称（带冒号），用户可在组件管理里换成别的 */
   icon: string;
+  /** 默认风格：不指定时按这个画（如待办默认实心）。不写回退 dual */
+  defVariant?: 'dual' | 'line' | 'solid';
   /** 该组件的预设图标：内置三种风格 + 一个彩色在线图标 */
   presets: WidgetPreset[];
   toggles: WidgetToggle[];
@@ -115,6 +117,23 @@ export const ICON_LIBRARY: LibIcon[] = [
       '<rect x="3" y="3.3" width="18" height="17.4" rx="4.4"/>' +
       `<path d="M7.4 12 10.8 15.4 17.1 8.9" fill="none" stroke="${ON_SOLID}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`,
   },
+  {
+    key: 'conv', label: '换算器',
+    /* 双向箭头（上→右、下→左）：单位换算的通用符号，比天平/计算器都更贴「换算」本身 */
+    dual:
+      '<rect x="3" y="3.3" width="18" height="17.4" rx="4.4" fill-opacity=".2"/>' +
+      `<rect x="3" y="3.3" width="18" height="17.4" rx="4.4" ${FRAME}/>` +
+      '<path d="M6.8 9h9.9m0 0-2.6-2.6M16.7 9l-2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M17.2 15H7.3m0 0 2.6-2.6M7.3 15l2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>',
+    line:
+      `<rect x="3" y="3.3" width="18" height="17.4" rx="4.4" ${FRAME}/>` +
+      '<path d="M6.8 9h9.9m0 0-2.6-2.6M16.7 9l-2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M17.2 15H7.3m0 0 2.6-2.6M7.3 15l2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>',
+    solid:
+      '<rect x="3" y="3.3" width="18" height="17.4" rx="4.4"/>' +
+      `<path d="M6.8 9h9.9m0 0-2.6-2.6M16.7 9l-2.6 2.6" fill="none" stroke="${ON_SOLID}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<path d="M17.2 15H7.3m0 0 2.6-2.6M7.3 15l2.6 2.6" fill="none" stroke="${ON_SOLID}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>`,
+  },
 ];
 
 export const WIDGET_VARIANTS: WidgetVariant[] = [
@@ -143,7 +162,7 @@ export const WIDGET_KINDS: WidgetKindMeta[] = [
     kind: 'calendar',
     label: '日历',
     desc: '公历 + 农历 + 二十四节气，可翻月',
-    icon: 'cal',
+    icon: 'flat-color-icons:calendar',
     presets: [
       { type: 'builtin', variant: 'dual', label: '双色调' },
       { type: 'builtin', variant: 'line', label: '线框' },
@@ -159,7 +178,7 @@ export const WIDGET_KINDS: WidgetKindMeta[] = [
     kind: 'memo',
     label: '备忘录',
     desc: '左侧列表 + 右侧编辑，边写边存',
-    icon: 'memo',
+    icon: 'twemoji:memo',
     presets: [
       { type: 'builtin', variant: 'dual', label: '双色调' },
       { type: 'builtin', variant: 'line', label: '线框' },
@@ -175,7 +194,9 @@ export const WIDGET_KINDS: WidgetKindMeta[] = [
     kind: 'todo',
     label: '待办',
     desc: '按今天 / 所有 / 待办事项归类，可勾选完成',
-    icon: 'todo',
+    /* 默认就是彩色图标（用户不用设置）：切回内置图标时风格走实心 */
+    icon: 'thesvg-color:microsoft-todo',
+    defVariant: 'solid',
     presets: [
       { type: 'builtin', variant: 'dual', label: '双色调' },
       { type: 'builtin', variant: 'line', label: '线框' },
@@ -183,9 +204,26 @@ export const WIDGET_KINDS: WidgetKindMeta[] = [
       { type: 'iconify', name: 'thesvg-color:microsoft-todo', label: '彩色' },
     ],
     toggles: [
-      { key: 'showWhen', label: '显示日期', hint: '每条任务右侧显示创建日期', def: 1 },
+      { key: 'showWhen', label: '显示日期', hint: '每条任务右侧显示任务日期', def: 1 },
+      { key: 'showCreated', label: '显示创建时间', hint: '每条任务下方显示创建时间', def: 1 },
       { key: 'doneToday', label: '「今天」含已完成', hint: '关闭后，今天视图只列未完成的任务', def: 0 },
     ],
+  },
+  {
+    kind: 'conv',
+    label: '换算器',
+    desc: '计算器（含历史记录）+ 常用单位换算',
+    icon: 'conv',
+    /* 默认实心（蓝色方块 + 白色箭头，即用户习惯的样子） */
+    defVariant: 'solid',
+    presets: [
+      { type: 'builtin', variant: 'dual', label: '双色调' },
+      { type: 'builtin', variant: 'line', label: '线框' },
+      { type: 'builtin', variant: 'solid', label: '实心' },
+      { type: 'iconify', name: 'twemoji:scales', label: '彩色' },
+    ],
+    /* 换算器没有功能开关：分类/单位是数学常量，没有可配的行为 */
+    toggles: [],
   },
 ];
 

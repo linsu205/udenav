@@ -412,7 +412,7 @@ export async function listIcons(env: Env, req: Request, params: URLSearchParams)
 /* 内置组件类型。组件本质就是「没有网址的特殊卡片」——仍是 item_icon 一行，
    所以分组、排序、拖拽、备份全部复用卡片那套，不必另建体系；
    真正的实例数据（备忘录正文、待办清单）存 widget_data 表。 */
-const WIDGET_KINDS = ['calendar', 'memo', 'todo'] as const;
+const WIDGET_KINDS = ['calendar', 'memo', 'todo', 'conv'] as const;
 type WidgetKind = (typeof WIDGET_KINDS)[number];
 function normKind(v: unknown): string {
   const s = String(v ?? '').trim();
@@ -896,6 +896,9 @@ export async function exportAll(env: Env, req: Request): Promise<Response> {
     icons: i.results,
     calDays: cd.results,
     widgetCfgs: wc.results,
+    /* 备份设置（WebDAV / S3 连接参数）也一起导出，换机器恢复后不用重新配一遍。
+       pass / sk 等凭据绝不进备份文件（见 snapshotBackup），恢复时沿用目标实例已有的。 */
+    backup: await snapshotBackup(env),
   });
 }
 
@@ -903,35 +906,130 @@ function safeParse(v: string): unknown {
   try { return JSON.parse(v); } catch { return v; }
 }
 
-export interface SnapshotCounts { groups: number; icons: number; configs: number }
+/** 把备份设置（WebDAV / S3 配置）读出来，但剔除凭据（pass / sk）与运行态字段
+   （last_at / last_ok / last_msg），只留「设置参数」。凭据不进备份文件，否则备份一旦
+   外泄就等于把备份盘账号交出去 —— 这是系统既有的安全底线，这里同样遵守。 */
+export async function snapshotBackup(env: Env): Promise<Record<string, any>> {
+  const out: Record<string, any> = {};
+  for (const k of ['backup_webdav', 'backup_s3']) {
+    const row = await env.DB.prepare('SELECT value FROM app_setting WHERE key = ?').bind(k).first<{ value: string }>();
+    if (!row?.value) continue;
+    try {
+      const cfg = JSON.parse(row.value);
+      const { pass, sk, last_at, last_ok, last_msg, has_pass, has_sk, ...rest } = cfg;
+      out[k] = rest;
+    } catch { /* 损坏的行跳过，不影响其余模块导出 */ }
+  }
+  return out;
+}
 
-/** 把一份快照写进库。导入 JSON 和「从 WebDAV 恢复」共用这一份逻辑，
-    免得两边各写一遍 DELETE/INSERT，改表结构时漏掉一边。 */
-export async function applySnapshot(env: Env, body: any, sub: number): Promise<SnapshotCounts> {
+/** 还原备份设置模块：只覆盖非机密参数（地址 / 账号 / 目录 / 频率 / 保留份数 / 桶名 / Endpoint 等），
+   pass / sk 凭据沿用目标实例已存的；即使备份里意外带了凭据也丢弃，避免覆盖进解不开的别人家密文。 */
+async function applyBackupModule(env: Env, backup: any): Promise<void> {
+  const keys = ['backup_webdav', 'backup_s3'];
+  for (const k of keys) {
+    const src = backup?.[k];
+    if (!src || typeof src !== 'object') continue;
+    const row = await env.DB.prepare('SELECT value FROM app_setting WHERE key = ?').bind(k).first<{ value: string }>();
+    let cur: any = {};
+    if (row?.value) { try { cur = JSON.parse(row.value); } catch { cur = {}; } }
+    const merged: any = { ...cur, ...src };
+    if (cur.pass) merged.pass = cur.pass; else delete merged.pass;
+    if (k === 'backup_s3') { if (cur.sk) merged.sk = cur.sk; else delete merged.sk; }
+    await env.DB.prepare('INSERT INTO app_setting (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+      .bind(k, JSON.stringify(merged)).run();
+  }
+}
+
+export interface SnapshotCounts {
+  groups: number;
+  icons: number;
+  configs: number;
+  users?: number;
+  caldays?: number;
+  widgetcfgs?: number;
+  backup?: number;
+}
+
+/** 干跑统计：从一份快照里算出各模块的可导入数量（counts）与数据字节大小（sizes）。
+    sizes 按 UTF-8 编码计（与导出文件里那段 JSON 的实际体积一致），面板在模块勾选
+    弹窗里把大小展示给用户参考。items 的大小 = 分组 + 卡片两段之和。 */
+export function snapshotStats(snap: any): {
+  counts: Record<string, number>;
+  sizes: Record<string, number>;
+} {
+  const enc = new TextEncoder();
+  const b = (v: any) => (v === undefined || v === null) ? 0 : enc.encode(JSON.stringify(v)).length;
+  return {
+    counts: {
+      config: Array.isArray(snap.config) ? snap.config.length : 0,
+      items: Array.isArray(snap.groups) ? snap.groups.length : 0,
+      icons: Array.isArray(snap.icons) ? snap.icons.length : 0,
+      users: Array.isArray(snap.users) ? snap.users.length : 0,
+      caldays: Array.isArray(snap.calDays) ? snap.calDays.length : 0,
+      widgetcfgs: Array.isArray(snap.widgetCfgs) ? snap.widgetCfgs.length : 0,
+      backup: snap.backup ? Object.keys(snap.backup).length : 0,
+    },
+    sizes: {
+      config: b(snap.config),
+      items: b(snap.groups) + b(snap.icons),
+      users: b(snap.users),
+      caldays: b(snap.calDays),
+      widgetcfgs: b(snap.widgetCfgs),
+      backup: b(snap.backup),
+    },
+  };
+}
+
+/** 把一份快照写进库。导入 JSON 和「从 WebDAV / S3 恢复」共用这一份逻辑，
+    免得两边各写一遍 DELETE/INSERT，改表结构时漏掉一边。
+
+    modules 控制「只导入哪些模块」，不传或传空数组 = 全部导入（兼容 cron 自动恢复等老调用方）：
+      - config      配置（user_config）
+      - items       分组 + 卡片（两者强绑定，永远一起动，避免孤儿图标）
+      - users       用户
+      - caldays     节假日
+      - widgetcfgs  组件外观配置
+      - backup      备份设置（只还原非机密参数，凭据沿用目标实例） */
+export async function applySnapshot(env: Env, body: any, sub: number, modules?: string[]): Promise<SnapshotCounts> {
   if (!body || !Array.isArray(body.groups)) throw new Error('导入内容缺少 groups 数组');
+
+  const wantAll = !modules || modules.length === 0;
+  const has = (m: string) => wantAll || modules!.includes(m);
 
   const cfg = body.config || [];
   const groups = body.groups || [];
   const icons = body.icons || [];
+  const stmts: D1PreparedStatement[] = [];
 
-  /* widget_data 也要清：备份里不含组件内容（备忘录正文属于私人数据，不导出），
-     卡片全删重建后旧 payload 会挂在已不存在的 icon_id 上；更糟的是新建组件
-     复用同一个自增 id 时会「继承」别人的备忘录内容。 */
-  const stmts: D1PreparedStatement[] = [env.DB.prepare('DELETE FROM item_icon'), env.DB.prepare('DELETE FROM item_icon_group'), env.DB.prepare('DELETE FROM user_config'), env.DB.prepare('DELETE FROM widget_data')];
-  for (const c of cfg) stmts.push(env.DB.prepare('INSERT INTO user_config (key, value) VALUES (?, ?)').bind(String(c.key), JSON.stringify(c.value ?? '')));
-  for (const g of groups) {
-    stmts.push(env.DB.prepare('INSERT INTO item_icon_group (id, title, description, icon_type, icon_name, icon_url, sort, public_hide, public_show, card_style, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(Number(g.id), String(g.title), String(g.description ?? ''), g.icon_type || 'iconify', String(g.icon_name ?? ''), String(g.icon_url ?? ''), Number(g.sort ?? 0), g.public_hide ? 1 : 0, g.public_show ? 1 : 0, g.card_style || 'info', sub));
+  /* 分组 / 卡片 / 组件内容是一体的：图标按 group_id 引用分组，单独导入任一方都会留下孤儿，
+     所以「分组与卡片」做成一个整体模块，选中才一起清一起写。
+     widget_data（备忘录正文等私人内容，从不进备份）也只在动卡片时清掉重建，
+     避免旧 payload 挂到已不存在 / 被复用的 icon_id 上。 */
+  if (has('items')) {
+    stmts.push(env.DB.prepare('DELETE FROM item_icon_group'));
+    stmts.push(env.DB.prepare('DELETE FROM item_icon'));
+    stmts.push(env.DB.prepare('DELETE FROM widget_data'));
   }
-  for (const ic of icons) {
-    /* kind / w_cfg 必须一起写入：老版本导入时漏了 kind，导入后组件卡片全变成
-       「没有网址的普通卡片」（点不开、还要求填网址），配置更要一起还原 */
-    stmts.push(env.DB.prepare('INSERT INTO item_icon (id, group_id, title, url, lan_url, icon_type, icon_text, icon_name, icon_url, description, open_method, background_color, kind, w_cfg, sort, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(Number(ic.id), Number(ic.group_id), String(ic.title), String(ic.url ?? ''), String(ic.lan_url ?? ''), ic.icon_type || 'color', String(ic.icon_text ?? ''), String(ic.icon_name ?? ''), String(ic.icon_url ?? ''), String(ic.description ?? ''), Number(ic.open_method ?? 2), String(ic.background_color ?? '#2a2a2a6b'), String(ic.kind || 'link'), String(ic.w_cfg ?? ''), Number(ic.sort ?? 0), sub, Number(ic.updated_at ?? Date.now())));
+  if (has('config')) {
+    stmts.push(env.DB.prepare('DELETE FROM user_config'));
+    for (const c of cfg) stmts.push(env.DB.prepare('INSERT INTO user_config (key, value) VALUES (?, ?)').bind(String(c.key), JSON.stringify(c.value ?? '')));
+  }
+  if (has('items')) {
+    for (const g of groups) {
+      stmts.push(env.DB.prepare('INSERT INTO item_icon_group (id, title, description, icon_type, icon_name, icon_url, sort, public_hide, public_show, card_style, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(Number(g.id), String(g.title), String(g.description ?? ''), g.icon_type || 'iconify', String(g.icon_name ?? ''), String(g.icon_url ?? ''), Number(g.sort ?? 0), g.public_hide ? 1 : 0, g.public_show ? 1 : 0, g.card_style || 'info', sub));
+    }
+    for (const ic of icons) {
+      /* kind / w_cfg 必须一起写入：老版本导入时漏了 kind，导入后组件卡片全变成
+         「没有网址的普通卡片」（点不开、还要求填网址），配置更要一起还原 */
+      stmts.push(env.DB.prepare('INSERT INTO item_icon (id, group_id, title, url, lan_url, icon_type, icon_text, icon_name, icon_url, description, open_method, background_color, kind, w_cfg, sort, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(Number(ic.id), Number(ic.group_id), String(ic.title), String(ic.url ?? ''), String(ic.lan_url ?? ''), ic.icon_type || 'color', String(ic.icon_text ?? ''), String(ic.icon_name ?? ''), String(ic.icon_url ?? ''), String(ic.description ?? ''), Number(ic.open_method ?? 2), String(ic.background_color ?? '#2a2a2a6b'), String(ic.kind || 'link'), String(ic.w_cfg ?? ''), Number(ic.sort ?? 0), sub, Number(ic.updated_at ?? Date.now())));
+    }
   }
   /* 组件配置：新备份带 widgetCfgs，恢复后图标 / 配色 / 开关一起还原；
      老备份没有这个字段就不动现有的 —— 和 calDays 同一个原则，宁可少还原，不要误清空 */
-  if (Array.isArray(body.widgetCfgs)) {
+  if (has('widgetcfgs') && Array.isArray(body.widgetCfgs)) {
     stmts.push(env.DB.prepare('DELETE FROM widget_cfg'));
     for (const w of body.widgetCfgs) {
       const kind = normKind(w?.kind);
@@ -943,7 +1041,7 @@ export async function applySnapshot(env: Env, body: any, sub: number): Promise<S
 
   /* 节假日：只在备份里确实带了这个字段时才动。
      老备份（1.5 及以前）没有 calDays，若照删不误，恢复一次就把手工录的放假安排清空了 */
-  if (Array.isArray(body.calDays)) {
+  if (has('caldays') && Array.isArray(body.calDays)) {
     stmts.push(env.DB.prepare('DELETE FROM cal_day'));
     for (const d of body.calDays) {
       const day = String(d?.day ?? '');
@@ -954,16 +1052,16 @@ export async function applySnapshot(env: Env, body: any, sub: number): Promise<S
   }
 
   /* D1 的 batch 是单个事务：全部成功或全部回滚。
-     以前分 4 次 batch（清空 / 配置 / 分组 / 卡片），一旦后面失败，
-     前面的 DELETE 已经生效——旧数据没了、新数据只进来一半。
      500 条以内一次事务完成；超大备份才退化成分批（batch 语句数有上限）。 */
-  if (stmts.length <= 500) {
-    await env.DB.batch(stmts);
-  } else {
-    for (let i = 0; i < stmts.length; i += 500) await env.DB.batch(stmts.slice(i, i + 500));
+  if (stmts.length) {
+    if (stmts.length <= 500) {
+      await env.DB.batch(stmts);
+    } else {
+      for (let i = 0; i < stmts.length; i += 500) await env.DB.batch(stmts.slice(i, i + 500));
+    }
   }
 
-  if (body.users && Array.isArray(body.users)) {
+  if (has('users') && body.users && Array.isArray(body.users)) {
     for (const u of body.users) {
       /* 导出时密码被替换成占位符「<请用 JSON 导入界面单独设置>」，
          必须跳过——不跳过就会把占位符当成真密码写进库，导入一次全体账号都登不上。 */
@@ -975,7 +1073,21 @@ export async function applySnapshot(env: Env, body: any, sub: number): Promise<S
     }
   }
 
-  return { groups: groups.length, icons: icons.length, configs: cfg.length };
+  let backupRestored = 0;
+  if (has('backup') && body.backup && typeof body.backup === 'object') {
+    await applyBackupModule(env, body.backup);
+    backupRestored = 1;
+  }
+
+  return {
+    groups: has('items') ? groups.length : 0,
+    icons: has('items') ? icons.length : 0,
+    configs: has('config') ? cfg.length : 0,
+    users: has('users') ? (body.users?.length || 0) : 0,
+    caldays: has('caldays') ? (body.calDays?.length || 0) : 0,
+    widgetcfgs: has('widgetcfgs') ? (body.widgetCfgs?.length || 0) : 0,
+    backup: backupRestored,
+  };
 }
 
 export async function importAll(env: Env, req: Request): Promise<Response> {
@@ -983,10 +1095,12 @@ export async function importAll(env: Env, req: Request): Promise<Response> {
   const body = await readJson(req) as any;
   if (!body || !Array.isArray(body.groups)) return bad('导入内容缺少 groups 数组');
   const confirm = String(body.confirm || '') === 'restore';
+  /* modules 为空数组时 applySnapshot 视为「全部导入」；前端只传用户勾选的模块 */
+  const modules = Array.isArray(body.modules) ? body.modules.map(String) : undefined;
 
   let counts: SnapshotCounts;
   try {
-    counts = await applySnapshot(env, body, s.sub);
+    counts = await applySnapshot(env, body, s.sub, modules);
   } catch (e: any) {
     return bad(e?.message || '导入失败');
   }

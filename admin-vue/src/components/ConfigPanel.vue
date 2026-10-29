@@ -11,7 +11,7 @@ const store = useStore();
 const f = reactive({
   logo_text: '', favicon: '', theme: 'light', background_image: '', backgrounds: [] as string[], background_rotate: 0, background_rotate_min: 5, background_blur: 2, background_mask: 0.2,
   margin_top: 14, icon_style: 'info', footer: '', search_box_show: 1, show_clock: 1, content_max_width: 1200,
-  content_width_auto: 0, group_margin_top: 30,
+  content_width_auto: 0, group_margin_top: 30, login_state_color: 1,
   search_engines: [] as any[],
 });
 const saving = ref(false);
@@ -419,6 +419,16 @@ const favMeta = computed(() => {
                   <el-input-number v-if="f.background_rotate === 1" v-model="f.background_rotate_min" :min="1" :max="60" :step="1" style="width:110px" />
                   <span v-if="f.background_rotate === 1" class="rotate-unit">分钟</span>
                 </div>
+              </el-form-item></div>
+              <!-- 登录状态：控制前台顶栏「管理后台」按钮是否用颜色表示登录状态。
+                   开 = 已登录时图标染品牌蓝、未登录白色；关 = 不区分状态，始终是原来的白色 -->
+              <div class="ctl-cell"><el-form-item>
+                <template #label>
+                  <el-tooltip content="开启后，前台顶栏的管理后台按钮会在已登录时变成蓝色、未登录时保持白色；关闭则不做颜色区分，按钮始终是原来的颜色" placement="top" popper-class="sp-tip-wrap">
+                    <span class="lbl-tip">登录状态 <el-icon><InfoFilled /></el-icon></span>
+                  </el-tooltip>
+                </template>
+                <el-switch v-model="f.login_state_color" :active-value="1" :inactive-value="0" inline-prompt active-text="开" inactive-text="关" />
               </el-form-item></div>
             </div>
           </div>

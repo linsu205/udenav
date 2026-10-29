@@ -10,6 +10,8 @@ export interface ConfigRow {
   /* 壁纸库 / 上传策略：老库可能没有这些键，一律可选，用前兜底 */
   backgrounds?: string[]; background_rotate?: number; background_rotate_min?: number; background_rotate_sec?: number;
   content_max_width?: number; content_width_auto?: number; group_margin_top?: number;
+  /* 顶栏登录状态指示：1=已登录时管理后台按钮染品牌蓝；0=不区分状态（老库无此键，按 1 处理） */
+  login_state_color?: number;
   image_allow_types?: string[]; image_max_kb?: number; image_quota_mb?: number;
   search_engines: Array<{ name: string; url: string; icon?: string }>;
 }
@@ -22,7 +24,7 @@ export interface IconItem {
   id: number; group_id: number; title: string; url: string; lan_url: string;
   icon_type: string; icon_text: string; icon_url: string; description: string;
   open_method: number; background_color: string; sort: number;
-  /** 'link' 普通卡片（默认）| 'calendar' | 'memo' | 'todo' 内置组件 */
+  /** 'link' 普通卡片（默认）| 'calendar' | 'memo' | 'todo' | 'conv' 内置组件 */
   kind?: string;
   /** 组件外观/功能配置（JSON 字符串）：{ icon, color, opts }，见后台「组件管理」。
       注意这里是**数据库列名**口径（管理接口直接回 SELECT * 的行），

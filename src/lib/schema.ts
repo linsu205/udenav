@@ -46,7 +46,7 @@ export interface IconRow {
   description: string;
   open_method: number;
   background_color: string;
-  /** 'link' 普通卡片（默认）| 'calendar' | 'memo' | 'todo' 内置组件 */
+  /** 'link' 普通卡片（默认）| 'calendar' | 'memo' | 'todo' | 'conv' 内置组件 */
   kind: string;
   /** 组件外观/功能配置（JSON）：{ icon, color, opts }。见 lib/widgets.ts；空串 = 全用默认 */
   w_cfg: string;
@@ -67,11 +67,12 @@ export interface ConfigRow {
 export const SCHEMA_VERSION = '1.7';
 
 /**
- * 节假日 / 调休上班的种子数据（2026 年，国办发明电〔2025〕7 号）。
+ * 节假日 / 调休上班的种子数据（2026 年法定节假日 + 周末统一休息）。
  *
  * 只用来初始化新库，之后完全由后台「组件管理 → 日历 → 节假日」维护 ——
  * 前台不再硬编码任何一年的安排，否则每年通知一发就要改代码、发版本。
- * off = 法定放假（画「休」角标），work = 调休上班（画「班」，覆盖周末红字）。
+ * off = 放假（画「休」角标），work = 调休上班（画「班」，覆盖周末红字，手动设置用）。
+ * 默认周末一律算休息（不按国家调休），如需某周末补班，可在后台手动把那天标成「班」。
  */
 const SEED_CAL_DAYS: Array<[string, string]> = (() => {
   const out: Array<[string, string]> = [];
@@ -80,6 +81,17 @@ const SEED_CAL_DAYS: Array<[string, string]> = (() => {
     const t = new Date(from + 'T00:00:00'), end = new Date(to + 'T00:00:00');
     for (; t <= end; t.setDate(t.getDate() + 1)) out.push([ymd(t), kind]);
   };
+  /* 周末统一算休息日：不按国家调休，周六周日一律休（不再标「班」覆盖）。
+     按「当前年份前后几年」滚动生成，不写死某一年，避免每年都要改代码。
+     后台「组件管理 → 日历 → 节假日」仍可逐日调整，覆盖本种子。 */
+  const y0 = new Date().getFullYear() - 1;
+  for (let y = y0; y <= y0 + 6; y++) {
+    const t = new Date(y, 0, 1), end = new Date(y, 11, 31);
+    for (; t <= end; t.setDate(t.getDate() + 1)) {
+      const wd = t.getDay();
+      if (wd === 0 || wd === 6) out.push([ymd(t), 'off']);
+    }
+  }
   span('off', '2026-01-01', '2026-01-03');   // 元旦
   span('off', '2026-02-15', '2026-02-23');   // 春节
   span('off', '2026-04-04', '2026-04-06');   // 清明
@@ -87,8 +99,6 @@ const SEED_CAL_DAYS: Array<[string, string]> = (() => {
   span('off', '2026-06-19', '2026-06-21');   // 端午
   span('off', '2026-09-25', '2026-09-27');   // 中秋
   span('off', '2026-10-01', '2026-10-07');   // 国庆
-  ['2026-01-04', '2026-02-14', '2026-02-28', '2026-05-09', '2026-09-20', '2026-10-10']
-    .forEach((d) => span('work', d));
   return out;
 })();
 
@@ -107,6 +117,10 @@ export const DEFAULT_CONFIG = {
   background_mask: 0.2,
   margin_top: 14,
   margin_bottom: 6,
+  /* 前台顶栏「管理后台」按钮的登录状态指示：1=已登录时图标染品牌蓝、未登录保持白色；
+     0=不做状态区分，按钮始终是原来的白色（后台「个性化 → 登录状态」开关控制）。
+     缺省按 1 处理，老数据没有这个键也能正常显示。 */
+  login_state_color: 1,
   icon_style: 'info',
   search_box_show: 1,
   show_clock: 1,

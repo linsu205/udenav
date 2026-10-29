@@ -20,7 +20,7 @@ const isAdd = computed(() => !props.modelValue.it);
 const f = reactive({
   title: '', url: '', lan_url: '', description: '', icon_type: 'color',
   icon_url: '', icon_name: '', icon_text: '', background_color: '', open_method: 2, sort: 0, group_id: 0,
-  /* 'link' 普通卡片 | 'calendar' | 'memo' | 'todo' 内置组件 */
+  /* 'link' 普通卡片 | 'calendar' | 'memo' | 'todo' | 'conv' 内置组件 */
   kind: 'link',
 });
 
@@ -33,9 +33,10 @@ const showCardPane = computed(() => !isAdd.value || tab.value === 'card');
 
 /* 可添加的内置组件清单。图标用 Remix Icon（项目图标库已在用同一套命名） */
 const WIDGET_DEFS = [
-  { kind: 'calendar', title: '日历', desc: '月视图 · 农历节气', icon: 'ri:calendar-line' },
-  { kind: 'memo', title: '备忘录', desc: '随手记 · 实时保存', icon: 'ri:sticky-note-line' },
-  { kind: 'todo', title: '待办', desc: '任务清单 · 勾选完成', icon: 'ri:checkbox-multiple-line' },
+  { kind: 'calendar', title: '日历', desc: '月视图 · 农历节气', icon: 'flat-color-icons:calendar' },
+  { kind: 'memo', title: '备忘录', desc: '随手记 · 实时保存', icon: 'twemoji:memo' },
+  { kind: 'todo', title: '待办', desc: '任务清单 · 勾选完成', icon: 'thesvg-color:microsoft-todo' },
+  { kind: 'conv', title: '换算器', desc: '计算器 · 单位换算', icon: 'ri:scales-3-line' },
 ] as const;
 
 /* 预览图标地址：data 用上传/粘贴的 icon_url；iconify 走后台 /api/icon 代理取 SVG（与前台一致）。
@@ -286,9 +287,20 @@ function chooseImg(it: PickImg) {
     <!-- 顶部页签：只在「新建」时出现 —— 编辑已有卡片是「编辑」语义，不需要再切类型 -->
     <template v-if="isAdd" #head>
       <div class="ed-tabs">
-        <button type="button" class="ed-tab" :class="{ on: tab === 'card' }" @click="tab = 'card'">添加卡片</button>
-        <button type="button" class="ed-tab" :class="{ on: tab === 'widget' }" @click="tab = 'widget'">添加组件</button>
+        <button type="button" class="ed-tab" :class="{ on: tab === 'card' }" @click="tab = 'card'">
+          <IIcon name="ri:file-add-line" :size="16" />添加卡片
+        </button>
+        <button type="button" class="ed-tab" :class="{ on: tab === 'widget' }" @click="tab = 'widget'">
+          <IIcon name="ri:layout-masonry-line" :size="16" />添加组件
+        </button>
       </div>
+    </template>
+    <!-- 编辑态的标题：编辑组件用组件图标，编辑卡片用编辑笔，与页签同款式（图标 16px + 5px 间距） -->
+    <template v-else #head>
+      <span class="ce-title ed-head">
+        <IIcon :name="isWidgetEdit ? 'ri:layout-masonry-line' : 'ri:edit-line'" :size="18" />
+        {{ isWidgetEdit ? '编辑组件' : '编辑卡片' }}
+      </span>
     </template>
 
     <!-- ========== 卡片页：效果预览 + 卡片表单 ========== -->
@@ -923,11 +935,14 @@ function chooseImg(it: PickImg) {
   text-shadow: 0 1px 8px rgba(0, 0, 0, .42), 0 2px 20px rgba(0, 0, 0, .28);
 }
 
-/* ---------- 顶部页签（添加卡片 / 添加组件）---------- */
+/* ---------- 顶部页签（添加卡片 / 添加组件）：扁平文字页签 ---------- */
 .ed-tabs { display: flex; align-items: center; gap: 4px; }
+/* 编辑态标题带图标：图标与文字基线对齐，颜色跟随标题文字 */
+.ed-head { display: inline-flex; align-items: center; gap: 6px; }
 .ed-tab {
   position: relative; padding: 4px 2px 8px; margin-right: 18px;
   border: 0; background: none; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
   font-size: 16px; font-weight: 600; line-height: 1.4;
   color: var(--el-text-color-secondary, #6b7480);
   transition: color .15s;

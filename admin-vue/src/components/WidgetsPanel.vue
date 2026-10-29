@@ -24,6 +24,8 @@ type Toggle = { key: string; label: string; hint: string; def: 0 | 1 };
 type Preset = { type: 'builtin' | 'iconify'; variant?: string; name?: string; label: string };
 type KindMeta = {
   kind: string; label: string; desc: string; icon: string;
+  /** 默认风格：内置图标没配风格时用它（如换算器实心）。缺省 dual */
+  defVariant?: string;
   presets: Preset[]; toggles: Toggle[];
 };
 
@@ -117,12 +119,19 @@ function libOf(name?: string): LibIcon | undefined {
 const ICONIFY_RE = /^[a-z0-9-]+:[a-z0-9-]+$/;
 const isIconifyName = (v?: string) => ICONIFY_RE.test(String(v || '').trim());
 
+/* 有效图标：没配过（空串）→ 元数据里的默认图标。calendar/memo/todo 的默认
+   都是彩色 Iconify 图标（用户不设置就是这个样子），conv 默认是内置 key */
+function effIcon(kind: string | undefined, icon: string | undefined): string {
+  return (icon || '').trim() || kindMeta(kind)?.icon || '';
+}
+
 /* 预览/列表要画的图标：在线图标返回空串（改由 <IIcon> 渲染），内置图标返回 SVG 内部标记 */
 function iconPath(kind: string | undefined, key: string | undefined, variant?: string): string {
-  if (isIconifyName(key)) return '';
-  const ic = libOf(key || kindMeta(kind)?.icon);
+  const eff = effIcon(kind, key);
+  if (isIconifyName(eff)) return '';
+  const ic = libOf(eff);
   if (!ic) return '';
-  return ic[normVariant(variant)];
+  return ic[normVariant(variant || kindMeta(kind)?.defVariant)];
 }
 
 function rowColor(r: Row): string {
@@ -292,8 +301,8 @@ const draft = ref<Draft | null>(null);
 const saving = ref(false);
 const editing = computed(() => !!draft.value);
 const draftMeta = computed(() => kindMeta(draft.value?.kind));
-/* 弹窗里实际预览用的风格：空值按默认（dual）处理 */
-const draftVariant = computed(() => normVariant(draft.value?.variant));
+/* 弹窗里实际预览用的风格：空值按该组件默认风格（如换算器实心）处理 */
+const draftVariant = computed(() => normVariant(draft.value?.variant || draftMeta.value?.defVariant));
 
 /* 图标输入框的本地缓冲。为什么不直接绑 draft.icon：
    draft.icon 同时承载「内置图标 key」和「在线图标名」两种值，而输入框只该显示后者；
@@ -338,8 +347,8 @@ function closeEdit() {
 }
 
 /* 点预设图标：
-   - 内置三风格 → icon 存空串（= 跟随该组件默认形状）、variant 存风格，
-     这样以后默认图标改了，没特意换过的组件会自动跟着变；
+   - 内置三风格 → icon 存空串（= 跟随该组件默认图标）、variant 存风格；
+     与默认风格相同的存空串（继续跟随默认），不同的显式存下来。
    - 在线图标 → icon 存 Iconify 名称，variant 保留但不再生效（彩色图标不套风格）。 */
 function pickPreset(p: Preset) {
   const d = draft.value;
@@ -350,14 +359,15 @@ function pickPreset(p: Preset) {
     return;
   }
   d.icon = '';
-  d.variant = (p.variant && p.variant !== 'dual') ? p.variant : '';
+  d.variant = p.variant && p.variant !== (draftMeta.value?.defVariant || 'dual') ? p.variant : '';
   iconBuf.value = '';
 }
 function presetOn(p: Preset): boolean {
   const d = draft.value;
   if (!d) return false;
-  if (p.type === 'iconify') return d.icon === p.name;
-  return !isIconifyName(d.icon) && draftVariant.value === normVariant(p.variant);
+  /* 彩色预设：配过看配的值；没配过时默认图标恰好就是它也算选中（比如日历默认彩色） */
+  if (p.type === 'iconify') return d.icon ? d.icon === p.name : effIcon(d.kind) === p.name;
+  return !isIconifyName(effIcon(d.kind, d.icon)) && draftVariant.value === normVariant(p.variant);
 }
 /* 弹窗里那把「恢复默认」小刷子：只重置图标与风格（主色、开关不动） */
 function resetIcon() {
@@ -455,7 +465,7 @@ async function save() {
       <div>
         <h2>组件管理</h2>
         <div class="sub">
-          内置组件的外观与功能 · 与是否放到页面上无关，图标、主色、描述、开关都改这里，保存后前台即时生效
+          内置组件的外观与功能
         </div>
       </div>
       <div class="head-right">
@@ -490,8 +500,8 @@ async function save() {
     <div v-else class="wlist">
       <div v-for="r in rows" :key="r.kind" class="wrow">
         <div class="wic" :style="{ background: tint(rowColor(r), 0.12), color: rowColor(r) }">
-          <!-- 内置图标：路径来自后端元数据（v-html 塞进 svg 内部）；在线图标：交给 IIcon 取原图 -->
-          <IIcon v-if="isIconifyName(r.cfg.icon)" :name="r.cfg.icon" :size="20" />
+          <!-- 内置图标：路径来自后端元数据（v-html 塞进 svg 内部）；在线图标（含默认的彩色图标）：交给 IIcon 取原图 -->
+          <IIcon v-if="isIconifyName(effIcon(r.kind, r.cfg.icon))" :name="effIcon(r.kind, r.cfg.icon)" :size="20" />
           <svg
             v-else viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
             v-html="iconPath(r.kind, r.cfg.icon, r.cfg.variant)"
@@ -515,14 +525,6 @@ async function save() {
           <el-button size="small" @click="openEdit(r.kind)">设置</el-button>
         </div>
       </div>
-    </div>
-
-    <div class="tips">
-      <b>说明</b>：这三类组件是内置能力，<b>不管有没有放到页面上，都可以在这里设置</b>；
-      配置按类型生效，保存后所有该类型的卡片一起变。
-      位置与分组在「分组与卡片」里调整（支持拖拽），添加 / 删除组件也在那里；
-      删除卡片会连带清空它记录的内容（备忘录正文、待办清单），但不会清掉这里的配置。
-      日历的法定节假日与调休上班日在日历的「设置」里按年维护，保存后前台日历立刻显示「休 / 班」角标。
     </div>
 
     <!-- 设置弹窗 -->
@@ -550,6 +552,10 @@ async function save() {
             <div class="wico">
               <div class="wico-box" :class="{ bad: iconBufBad }" :style="{ '--c': draft.color || defaultColor }">
                 <IIcon v-if="iconBufOk" :name="iconBuf.trim()" :size="20" />
+                <IIcon
+                  v-else-if="isIconifyName(effIcon(draft.kind, draft.icon))"
+                  :name="effIcon(draft.kind, draft.icon)" :size="20"
+                />
                 <svg
                   v-else viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
                   v-html="iconPath(draft.kind, draft.icon, draft.variant)"
@@ -703,9 +709,6 @@ async function save() {
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .wacts { flex: 0 0 auto; }
-
-  .tips { margin-top: 18px; font-size: 12.5px; line-height: 1.9; color: var(--sp-dim); }
-  .tips b { color: var(--sp-text); font-weight: 600; }
 
   /* 空态 */
   .empty {

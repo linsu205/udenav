@@ -23,6 +23,73 @@ function pickFile() {
   document.getElementById('impFile')?.click();
 }
 
+/* 导入 / 恢复时可选的模块清单（顺序即展示顺序）。
+   items = 分组 + 卡片，两者强绑定，永远一起导入；其余模块各自独立。
+   desc 是勾选弹窗里每项的一句说明，让用户清楚这项到底覆盖什么。 */
+const MODULES = [
+  { key: 'config', label: '配置', desc: '主题、壁纸、搜索引擎等全局设置', mode: 'num', ckey: 'config' },
+  { key: 'items', label: '分组与卡片', desc: '分组结构和全部链接、内置组件卡片', mode: 'pair', ckey: 'items', ckey2: 'icons' },
+  { key: 'users', label: '用户', desc: '登录账号、密码与角色权限', mode: 'num', ckey: 'users' },
+  { key: 'caldays', label: '节假日', desc: '日历组件的节假日与调休安排', mode: 'num', ckey: 'caldays' },
+  { key: 'widgetcfgs', label: '组件设置', desc: '备忘录、待办等组件的内容数据', mode: 'num', ckey: 'widgetcfgs' },
+  { key: 'backup', label: '备份设置', desc: 'WebDAV / S3 参数（不含密码密钥）', mode: 'flag', ckey: 'backup' },
+] as const;
+
+/** 模块在备份里有没有可导入的内容（无内容的模块禁勾并默认不勾） */
+function moduleAvailable(counts: Record<string, number>, m: typeof MODULES[number]): boolean {
+  if (m.mode === 'pair') return (counts[m.ckey] || 0) + (counts[m.ckey2!] || 0) > 0;
+  return (counts[m.ckey] || 0) > 0;
+}
+/** 模块右侧展示的数量文案 */
+function moduleLabel(counts: Record<string, number>, m: typeof MODULES[number]): string {
+  if (m.mode === 'num') return `${counts[m.ckey] || 0} 项`;
+  if (m.mode === 'pair') return `${counts[m.ckey] || 0} 组 / ${counts[m.ckey2!] || 0} 张`;
+  return counts[m.ckey] ? '含配置' : '无';
+}
+/** 从已解析的本地 JSON 算出各模块数量（云端走后端 dry 返回的 counts，形状一致） */
+function countsFromObj(o: any): Record<string, number> {
+  return {
+    config: Array.isArray(o.config) ? o.config.length : 0,
+    items: Array.isArray(o.groups) ? o.groups.length : 0,
+    icons: Array.isArray(o.icons) ? o.icons.length : 0,
+    users: Array.isArray(o.users) ? o.users.length : 0,
+    caldays: Array.isArray(o.calDays) ? o.calDays.length : 0,
+    widgetcfgs: Array.isArray(o.widgetCfgs) ? o.widgetCfgs.length : 0,
+    backup: o.backup ? Object.keys(o.backup).length : 0,
+  };
+}
+/** 从已解析的本地 JSON 算出各模块的字节大小（与后端 snapshotStats 同口径，
+    按 UTF-8 计，即这些数据写进导出文件的实际体积；items = 分组 + 卡片之和） */
+function sizesFromObj(o: any): Record<string, number> {
+  const enc = new TextEncoder();
+  const b = (v: any) => (v === undefined || v === null) ? 0 : enc.encode(JSON.stringify(v)).length;
+  return {
+    config: b(o.config),
+    items: b(o.groups) + b(o.icons),
+    users: b(o.users),
+    caldays: b(o.calDays),
+    widgetcfgs: b(o.widgetCfgs),
+    backup: b(o.backup),
+  };
+}
+/** 模块勾选行右侧展示的大小文案（本地导入从 obj 算，云端用 dry 返回的 sizes） */
+function moduleSize(sizes: Record<string, number> | undefined, m: typeof MODULES[number]): string {
+  const n = sizes?.[m.key] || 0;
+  return n ? fmtSize(n) : '';
+}
+/** 把返回的各模块计数拼成一句可读的导入结果 */
+function summarizeImport(c: any): string {
+  const parts: string[] = [];
+  if (c.groups) parts.push(`${c.groups} 组`);
+  if (c.icons) parts.push(`${c.icons} 张`);
+  if (c.configs) parts.push(`${c.configs} 项配置`);
+  if (c.users) parts.push(`${c.users} 个用户`);
+  if (c.caldays) parts.push(`${c.caldays} 个节假日`);
+  if (c.widgetcfgs) parts.push(`${c.widgetcfgs} 项组件设置`);
+  if (c.backup) parts.push('备份设置');
+  return parts.length ? `已导入 ${parts.join(' / ')}，前台已同步` : '未选择任何模块，未导入任何数据';
+}
+
 async function importFile(e: Event) {
   const f = (e.target as HTMLInputElement).files?.[0];
   if (!f) return;
@@ -36,14 +103,47 @@ async function importFile(e: Event) {
     if (!obj || obj.app !== 'udenav' || !Array.isArray(obj.groups)) {
       throw new Error('这不是本系统导出的备份文件（缺少 UDeNav 标识或分组数据）');
     }
-    const r = await post<any>('/api/admin/import', { ...obj, confirm: 'restore' });
-    ElMessage.success(`已导入 ${r.groups} 组 / ${r.icons} 张卡片，前台已同步`);
-    notifyHome();
+    /* 先解析、再让用户勾选要导入哪些模块，而不是直接全量覆盖 */
+    im.obj = obj;
+    im.counts = countsFromObj(obj);
+    im.sizes = sizesFromObj(obj);
+    MODULES.forEach((m) => { im.sel[m.key] = moduleAvailable(im.counts, m); });
+    im.open = true;
   } catch (err: any) {
     /* 错误提示保留 8 秒：太短的话还没看清就消失了 */
-    ElMessage.error({ message: '导入失败：' + (err?.message || '未知错误'), duration: 8000, showClose: true });
+    ElMessage.error({ message: '读取失败：' + (err?.message || '未知错误'), duration: 8000, showClose: true });
   }
   (e.target as HTMLInputElement).value = '';
+}
+
+/* ---------------- 本地导入：模块勾选弹窗 ---------------- */
+const im = reactive({
+  open: false,
+  loading: false,
+  obj: null as any,
+  counts: {} as Record<string, number>,
+  sizes: {} as Record<string, number>,
+  sel: {} as Record<string, boolean>,
+});
+const hasSelectedModulesIm = computed(() => MODULES.some((m) => im.sel[m.key]));
+function selectAllModulesIm(v: boolean) {
+  MODULES.forEach((m) => { if (moduleAvailable(im.counts, m)) im.sel[m.key] = v; });
+}
+async function confirmImport() {
+  const selArr = MODULES.filter((m) => im.sel[m.key]).map((m) => m.key);
+  if (!selArr.length) { ElMessage.warning('请至少选择一个模块'); return; }
+  im.loading = true;
+  try {
+    const r = await post<any>('/api/admin/import', { ...im.obj, confirm: 'restore', modules: selArr });
+    im.open = false;
+    await store.loadAll();
+    notifyHome();
+    ElMessage.success(summarizeImport(r));
+  } catch (e: any) {
+    ElMessage.error({ message: '导入失败：' + (e?.message || '未知错误'), duration: 8000, showClose: true });
+  } finally {
+    im.loading = false;
+  }
 }
 
 /* ---------------- 定期备份到 WebDAV ----------------
@@ -232,9 +332,9 @@ const freqText = computed(() => {
 });
 
 /* ---------------- 从云端恢复 ----------------
-   反向操作：把 WebDAV 上的一份备份读回来覆盖当前库。
-   面板打开时先 dry run，让用户看清这份备份里到底有多少组/多少卡片再决定覆盖 ——
-   恢复会 DELETE 现有的分组、卡片、配置，没有撤销。 */
+   反向操作：把 WebDAV / 对象存储上的一份备份读回来覆盖当前库。
+   两步：先选文件 → 干跑拿到各模块数量 → 勾选要恢复的模块 → 二次确认再写库。
+   恢复会 DELETE 选中模块的现有数据，没有撤销。 */
 const store = useStore();
 const rv = reactive({
   open: false,
@@ -244,6 +344,11 @@ const rv = reactive({
   src: 'dav' as 'dav' | 's3',
   dir: '',
   pick: '',
+  phase: 'pick' as 'pick' | 'modules',
+  exportedAt: 0,
+  counts: {} as Record<string, number>,
+  sizes: {} as Record<string, number>,
+  sel: {} as Record<string, boolean>,
   files: [] as Array<{ name: string; size: number; mtime: number }>,
 });
 
@@ -256,12 +361,21 @@ function fmtSize(n: number): string {
   return (n / 1024 / 1024).toFixed(2) + ' MB';
 }
 
+const hasSelectedModules = computed(() => MODULES.some((m) => rv.sel[m.key]));
+function selectAllModules(v: boolean) {
+  MODULES.forEach((m) => { if (moduleAvailable(rv.counts, m)) rv.sel[m.key] = v; });
+}
+
 async function openRestore(src: 'dav' | 's3' = 'dav') {
   rv.src = src;
   rv.open = true;
   rv.loading = true;
+  rv.phase = 'pick';
   rv.files = [];
   rv.pick = '';
+  rv.counts = {};
+  rv.sizes = {};
+  rv.sel = {};
   try {
     const r = await get<any>(`${rvApi()}/list`);
     rv.dir = r.dir || '';
@@ -276,31 +390,47 @@ async function openRestore(src: 'dav' | 's3' = 'dav') {
   }
 }
 
-async function doRestore() {
+/* 第一步确认后：干跑一次，只下载解析、不写库，拿到各模块数量供勾选 */
+async function prepareRestore() {
   if (!rv.pick) return;
+  rv.loading = true;
+  try {
+    const p = await post<any>(`${rvApi()}/restore`, { file: rv.pick, dry: true });
+    rv.counts = p.counts || {};
+    rv.sizes = p.sizes || {};
+    rv.exportedAt = Number(p.exported_at) || 0;
+    MODULES.forEach((m) => { rv.sel[m.key] = moduleAvailable(rv.counts, m); });
+    rv.phase = 'modules';
+  } catch (e: any) {
+    ElMessage.error({ message: '读取备份内容失败：' + (e?.message || '未知错误'), duration: 8000, showClose: true });
+  } finally {
+    rv.loading = false;
+  }
+}
+
+/* 第二步：二次确认后真正写库，只恢复勾选的模块 */
+async function confirmRestore() {
+  const selArr = MODULES.filter((m) => rv.sel[m.key]).map((m) => m.key);
+  if (!selArr.length) { ElMessage.warning('请至少选择一个模块'); return; }
+  try {
+    await ElMessageBox.confirm(
+      `<div style="line-height:1.9">将用 <b>${rv.pick}</b> 覆盖当前选中的模块。</div>` +
+      `<div style="line-height:1.9">备份时间：${fmtTime(rv.exportedAt)}<br>` +
+      `将恢复：${selArr.map((k) => MODULES.find((m) => m.key === k)?.label).join('、')}</div>` +
+      `<div style="line-height:1.9;color:#e6a23c;margin-top:6px">这些模块当前的数据会被清空后替换，操作不可撤销。</div>`,
+      '确认恢复备份',
+      { type: 'warning', confirmButtonText: '覆盖并恢复', cancelButtonText: '取消', dangerouslyUseHTMLString: true }
+    );
+  } catch {
+    return;   // 用户点了取消
+  }
   rv.running = true;
   try {
-    /* 先干跑一次：只下载并解析，不写库，拿这份备份的真实内容去问用户 */
-    const p = await post<any>(`${rvApi()}/restore`, { file: rv.pick, dry: true });
-    try {
-      await ElMessageBox.confirm(
-        `<div style="line-height:1.9">将用 <b>${p.file}</b> 覆盖当前数据。</div>` +
-        `<div style="line-height:1.9">备份时间：${fmtTime(p.exported_at)}<br>` +
-        `内容：${p.groups} 个分组 / ${p.icons} 张卡片 / ${p.configs} 项配置</div>` +
-        `<div style="line-height:1.9;color:#e6a23c;margin-top:6px">当前的分组、卡片和配置会被清空后替换，操作不可撤销。</div>`,
-        '确认恢复备份',
-        { type: 'warning', confirmButtonText: '覆盖并恢复', cancelButtonText: '取消', dangerouslyUseHTMLString: true }
-      );
-    } catch {
-      rv.running = false;
-      return;   // 用户点了取消
-    }
-
-    const r = await post<any>(`${rvApi()}/restore`, { file: rv.pick });
+    const r = await post<any>(`${rvApi()}/restore`, { file: rv.pick, modules: selArr });
     rv.open = false;
     await store.loadAll();
     notifyHome();
-    ElMessage.success(`已恢复 ${r.groups} 组 / ${r.icons} 张卡片，前台已同步`);
+    ElMessage.success(summarizeImport(r));
   } catch (e: any) {
     ElMessage.error({ message: '恢复失败：' + (e?.message || '未知错误'), duration: 8000, showClose: true });
   } finally {
@@ -564,26 +694,84 @@ async function doRestore() {
     </div>
 
     <!-- 从云端恢复：默认选中最新一版，也可以往回收历史版本 -->
-    <el-dialog v-model="rv.open" :title="rv.src === 's3' ? '从对象存储恢复' : '从云端恢复'" width="540px" append-to-body>
+    <el-dialog v-model="rv.open" :title="rv.src === 's3' ? '从对象存储恢复' : '从云端恢复'" width="560px" append-to-body>
       <div v-loading="rv.loading" class="rv-body">
-        <div class="rv-tip">
-          <template v-if="rv.src === 's3'">桶内目录</template><template v-else>备份目录</template>
-          <code>{{ rv.dir || (rv.src === 's3' ? s3.prefix : wd.dir) }}</code> 下共 <b>{{ rv.files.length }}</b> 份，
-          已默认选中最新的一版。
-        </div>
-        <div v-if="!rv.loading && !rv.files.length" class="rv-empty">云端还没有备份文件，先点「立即备份」</div>
-        <div class="rv-list">
-          <label v-for="(f, i) in rv.files" :key="f.name" class="rv-row" :class="{ on: rv.pick === f.name }">
-            <input v-model="rv.pick" type="radio" :value="f.name" />
-            <span class="rv-name">{{ f.name }}</span>
-            <span v-if="i === 0" class="rv-new">最新</span>
-            <span class="rv-meta">{{ f.mtime ? fmtTime(f.mtime) : '' }}{{ f.size ? ' · ' + fmtSize(f.size) : '' }}</span>
-          </label>
-        </div>
+        <!-- 第一步：选文件 -->
+        <template v-if="rv.phase === 'pick'">
+          <div class="rv-tip">
+            <template v-if="rv.src === 's3'">桶内目录</template><template v-else>备份目录</template>
+            <code>{{ rv.dir || (rv.src === 's3' ? s3.prefix : wd.dir) }}</code> 下共 <b>{{ rv.files.length }}</b> 份，
+            已默认选中最新的一版。
+          </div>
+          <div v-if="!rv.loading && !rv.files.length" class="rv-empty">云端还没有备份文件，先点「立即备份」</div>
+          <div class="rv-list">
+            <label v-for="(f, i) in rv.files" :key="f.name" class="rv-row" :class="{ on: rv.pick === f.name }">
+              <input v-model="rv.pick" type="radio" :value="f.name" />
+              <span class="rv-name">{{ f.name }}</span>
+              <span v-if="i === 0" class="rv-new">最新</span>
+              <span class="rv-meta">{{ f.mtime ? fmtTime(f.mtime) : '' }}{{ f.size ? ' · ' + fmtSize(f.size) : '' }}</span>
+            </label>
+          </div>
+        </template>
+        <!-- 第二步：勾选要恢复的模块 -->
+        <template v-else>
+          <div class="rv-tip">
+            备份时间 <b>{{ fmtTime(rv.exportedAt) }}</b>，请勾选要恢复的模块（未勾选的模块保留当前数据不变）：
+          </div>
+          <div class="rv-mods">
+            <label v-for="m in MODULES" :key="m.key" class="rv-mod" :class="{ on: rv.sel[m.key], off: !moduleAvailable(rv.counts, m) }">
+              <input type="checkbox" v-model="rv.sel[m.key]" :disabled="!moduleAvailable(rv.counts, m)" />
+              <span class="rv-mod-main">
+                <span class="rv-mod-label">{{ m.label }}</span>
+                <span class="rv-mod-desc">{{ m.desc }}</span>
+              </span>
+              <span class="rv-mod-side">
+                <span class="rv-mod-count">{{ moduleLabel(rv.counts, m) }}</span>
+                <span class="rv-mod-size">{{ moduleSize(rv.sizes, m) }}</span>
+              </span>
+            </label>
+          </div>
+          <div class="rv-mods-actions">
+            <el-button size="small" text @click="rv.phase = 'pick'; rv.pick = ''">重选文件</el-button>
+            <span class="rv-spacer" />
+            <el-button size="small" @click="selectAllModules(true)">全选</el-button>
+            <el-button size="small" @click="selectAllModules(false)">全不选</el-button>
+          </div>
+        </template>
       </div>
       <template #footer>
         <el-button @click="rv.open = false">取消</el-button>
-        <el-button type="danger" :loading="rv.running" :disabled="!rv.pick" @click="doRestore">恢复这一版</el-button>
+        <el-button v-if="rv.phase === 'pick'" type="primary" :loading="rv.running" :disabled="!rv.pick" @click="prepareRestore">下一步：选择恢复内容</el-button>
+        <el-button v-else type="danger" :loading="rv.running" :disabled="!hasSelectedModules" @click="confirmRestore">恢复选中内容</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 本地导入：勾选要导入的模块 -->
+    <el-dialog v-model="im.open" title="选择要导入的内容" width="560px" append-to-body>
+      <div v-loading="im.loading" class="rv-body">
+        <div class="rv-tip">备份文件中包含以下模块，请勾选要导入的项（未勾选的模块保留当前数据不变）：</div>
+        <div class="rv-mods">
+          <label v-for="m in MODULES" :key="m.key" class="rv-mod" :class="{ on: im.sel[m.key], off: !moduleAvailable(im.counts, m) }">
+            <input type="checkbox" v-model="im.sel[m.key]" :disabled="!moduleAvailable(im.counts, m)" />
+            <span class="rv-mod-main">
+              <span class="rv-mod-label">{{ m.label }}</span>
+              <span class="rv-mod-desc">{{ m.desc }}</span>
+            </span>
+            <span class="rv-mod-side">
+              <span class="rv-mod-count">{{ moduleLabel(im.counts, m) }}</span>
+              <span class="rv-mod-size">{{ moduleSize(im.sizes, m) }}</span>
+            </span>
+          </label>
+        </div>
+        <div class="rv-mods-actions">
+          <span class="rv-spacer" />
+          <el-button size="small" @click="selectAllModulesIm(true)">全选</el-button>
+          <el-button size="small" @click="selectAllModulesIm(false)">全不选</el-button>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="im.open = false">取消</el-button>
+        <el-button type="primary" :loading="im.loading" :disabled="!hasSelectedModulesIm" @click="confirmImport">确认导入</el-button>
       </template>
     </el-dialog>
   </div>
@@ -598,6 +786,30 @@ async function doRestore() {
   }
   .rv-empty { font-size: 13px; color: var(--sp-dim); padding: 28px 0; text-align: center; }
   .rv-list { max-height: 322px; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
+
+  /* ---- 模块勾选清单（本地导入 / 云端恢复共用）---- */
+  .rv-mods { display: flex; flex-direction: column; gap: 6px; }
+  .rv-mod {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border: 1px solid var(--sp-card-border); border-radius: 9px;
+    cursor: pointer; transition: background .15s, border-color .15s;
+  }
+  .rv-mod:hover { background: var(--sp-hover); }
+  .rv-mod.on { border-color: var(--sp-accent); background: rgba(var(--sp-accent-rgb), .08); }
+  .rv-mod.off { opacity: .5; cursor: not-allowed; }
+  .rv-mod input { flex: none; margin: 0; accent-color: var(--sp-accent); cursor: pointer; }
+  .rv-mod.off input { cursor: not-allowed; }
+  /* 中列：名称 + 一句说明 */
+  .rv-mod-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .rv-mod-label { font-size: 13px; color: var(--sp-text); line-height: 1.35; }
+  .rv-mod-desc { font-size: 11.5px; color: var(--sp-dim); line-height: 1.35; }
+  .rv-mod.off .rv-mod-desc { opacity: .75; }
+  /* 右列：数量 + 占用大小，右对齐 */
+  .rv-mod-side { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+  .rv-mod-count { font-size: 11.5px; color: var(--sp-dim); font-variant-numeric: tabular-nums; }
+  .rv-mod-size { font-size: 11px; color: var(--sp-faint, var(--sp-dim)); font-variant-numeric: tabular-nums; min-height: 13px; }
+  .rv-mods-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .rv-spacer { flex: 1; }
   .rv-row {
     display: flex; align-items: center; gap: 8px;
     padding: 9px 11px; border: 1px solid var(--sp-card-border); border-radius: 9px;

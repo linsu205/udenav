@@ -13,7 +13,7 @@
 //   2) 后台「立即备份」按钮
 
 import { json, bad, readJson } from '../lib/http';
-import { requireRole, applySnapshot } from './admin';
+import { requireRole, applySnapshot, snapshotStats } from './admin';
 import { getSecret } from '../lib/secret';
 import { buildSnapshot, stamp, encryptSecret, decryptSecret, type RunResult } from './webdav';
 import type { Env } from '../lib/schema';
@@ -385,21 +385,17 @@ export async function restoreS3Backup(env: Env, req: Request): Promise<Response>
   }
   if (!snap || snap.app !== 'udenav' || !Array.isArray(snap.groups)) return bad('这不是本系统导出的备份文件');
 
-  const meta = {
-    file,
-    exported_at: Number(snap.exported_at || 0),
-    groups: snap.groups.length,
-    icons: Array.isArray(snap.icons) ? snap.icons.length : 0,
-    configs: Array.isArray(snap.config) ? snap.config.length : 0,
-  };
-  if (body.dry) return json({ ok: true, dry: true, ...meta });
+  const { counts, sizes } = snapshotStats(snap);
+  if (body.dry) {
+    return json({ ok: true, dry: true, file, exported_at: Number(snap.exported_at || 0), counts, sizes });
+  }
 
   try {
-    await applySnapshot(env, snap, s.sub);
+    await applySnapshot(env, snap, s.sub, Array.isArray(body.modules) ? body.modules.map(String) : undefined);
   } catch (e: any) {
     return bad('恢复失败：' + (e?.message || '未知错误'));
   }
-  return json({ ok: true, ...meta });
+  return json({ ok: true, file, exported_at: Number(snap.exported_at || 0), ...counts });
 }
 
 /** Cron 入口：和 WebDAV 版并行，谁启用跑谁，互不影响 */
