@@ -10,6 +10,14 @@ const SESSION_HOURS = 24;
 const LOGIN_MAX_FAILS = 5;
 const LOCK_SEC = 1800;
 
+/* 登录有效期选项（小时）。仅 login 支持手动选择；register / 改名沿用默认 SESSION_HOURS。
+   day=一天, week=一周, long=长期（一年）。个人站点无敏感数据，允许长效会话。 */
+const LOGIN_DURATION_HOURS: Record<string, number> = {
+  day: 24,
+  week: 24 * 7,
+  long: 24 * 365,
+};
+
 /* ---------------- 鉴权 ---------------- */
 
 export async function getSession(env: Env, req: Request): Promise<Session | null> {
@@ -110,7 +118,7 @@ function sessionCookies(token: string, maxAgeSec: number, secure: boolean): stri
 }
 
 export async function login(env: Env, req: Request): Promise<Response> {
-  const body = await readJson(req) as { username?: string; password?: string };
+  const body = await readJson(req) as { username?: string; password?: string; duration?: string };
   const username = String(body.username || '').trim();
   const password = String(body.password || '');
 
@@ -133,9 +141,10 @@ export async function login(env: Env, req: Request): Promise<Response> {
   }
 
   await env.DB.prepare('UPDATE users SET failed_login = 0, lock_until = 0 WHERE id = ?').bind(user.id).run();
-  const token = await signToken({ sub: user.id, username: user.username, role: user.role, exp: nowSec() + SESSION_HOURS * 3600 }, await getSecret(env));
+  const hours = body.duration && body.duration in LOGIN_DURATION_HOURS ? LOGIN_DURATION_HOURS[body.duration] : SESSION_HOURS;
+  const token = await signToken({ sub: user.id, username: user.username, role: user.role, exp: nowSec() + hours * 3600 }, await getSecret(env));
   const secure = req.url.startsWith('https://');
-  return withSetCookie(json({ ok: true, username: user.username, role: user.role, avatar: user.avatar || '' }), sessionCookies(token, SESSION_HOURS * 3600, secure));
+  return withSetCookie(json({ ok: true, username: user.username, role: user.role, avatar: user.avatar || '' }), sessionCookies(token, hours * 3600, secure));
 }
 
 export async function logout(): Promise<Response> {

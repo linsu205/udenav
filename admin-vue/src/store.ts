@@ -75,8 +75,8 @@ export const useStore = defineStore('udenav', () => {
     if (typeof window.__udenavHome === 'function') window.__udenavHome('panel');
   }
 
-  async function login(username: string, password: string) {
-    const r = await post<any>('/api/admin/login', { username, password });
+  async function login(username: string, password: string, duration = 'day') {
+    const r = await post<any>('/api/admin/login', { username, password, duration });
     user.value = r;
     ElMessage.success(`欢迎回来，${r?.username || username}`);
     justLoggedIn = true;
