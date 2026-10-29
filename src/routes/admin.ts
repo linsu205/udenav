@@ -2,7 +2,7 @@
 // 全部要求 owner 或 editor 会话；写操作限流。
 
 import { json, bad, q, num, numBody, readJson, httpErr } from '../lib/http';
-import { hashPassword, verifyPassword, signToken, verifyToken, setSessionCookie, clearSessionCookie, readSessionCookie, requireAccess, type Session, type Role, nowSec } from '../lib/auth';
+import { hashPassword, verifyPassword, signToken, verifyToken, setSessionCookie, clearSessionCookie, clearLegacyCookie, readSessionCookie, requireAccess, type Session, type Role, nowSec } from '../lib/auth';
 import { DEFAULT_CONFIG, type Env, type GroupRow, type IconRow, type IconType, type ConfigRow } from '../lib/schema';
 import { getSecret } from '../lib/secret';
 
@@ -85,7 +85,8 @@ export async function register(env: Env, req: Request): Promise<Response> {
     .run();
   if (!res.success) return bad('用户名已被占用', 409);
   const token = await signToken({ sub: Number(res.meta.last_row_id), username, role: 'owner', exp: nowSec() + SESSION_HOURS * 3600 }, await getSecret(env));
-  return json({ ok: true, username, role: 'owner' }, { headers: { 'set-cookie': setSessionCookie(token, SESSION_HOURS * 3600, req.url.startsWith('https://')) } });
+  const secure = req.url.startsWith('https://');
+  return withSetCookie(json({ ok: true, username, role: 'owner' }), sessionCookies(token, SESSION_HOURS * 3600, secure));
 }
 
 function randomSalt(): string {
@@ -93,6 +94,19 @@ function randomSalt(): string {
   let out = '';
   for (const x of b) out += x.toString(16).padStart(2, '0');
   return out;
+}
+
+/**
+ * 登录/注册/改名时一并下发的 Cookie 列表。
+ * 仅 https（会话名是 __Host-sp_session）时附上「清掉旧版 sp_session」指令，
+ * 把历史部署残留的失效 sp_session 清掉，避免 readSessionCookie 命中失效遗留令牌。
+ * 注意：http 下会话本身就叫 sp_session，若再发一条清 sp_session 的指令会把自己刚签发的
+ * 会话冲掉，所以仅在 secure 时清遗留名。
+ */
+function sessionCookies(token: string, maxAgeSec: number, secure: boolean): string[] {
+  const arr = [setSessionCookie(token, maxAgeSec, secure)];
+  if (secure) arr.push(clearLegacyCookie());
+  return arr;
 }
 
 export async function login(env: Env, req: Request): Promise<Response> {
@@ -120,7 +134,8 @@ export async function login(env: Env, req: Request): Promise<Response> {
 
   await env.DB.prepare('UPDATE users SET failed_login = 0, lock_until = 0 WHERE id = ?').bind(user.id).run();
   const token = await signToken({ sub: user.id, username: user.username, role: user.role, exp: nowSec() + SESSION_HOURS * 3600 }, await getSecret(env));
-  return json({ ok: true, username: user.username, role: user.role, avatar: user.avatar || '' }, { headers: { 'set-cookie': setSessionCookie(token, SESSION_HOURS * 3600, req.url.startsWith('https://')) } });
+  const secure = req.url.startsWith('https://');
+  return withSetCookie(json({ ok: true, username: user.username, role: user.role, avatar: user.avatar || '' }), sessionCookies(token, SESSION_HOURS * 3600, secure));
 }
 
 export async function logout(): Promise<Response> {
@@ -255,9 +270,8 @@ export async function patchUser(env: Env, req: Request, id: number): Promise<Res
       { sub: id, username: renamed, role: cur.role, exp: nowSec() + SESSION_HOURS * 3600 },
       await getSecret(env),
     );
-    return json(out, {
-      headers: { 'set-cookie': setSessionCookie(token, SESSION_HOURS * 3600, req.url.startsWith('https://')) },
-    });
+    const secure = req.url.startsWith('https://');
+    return withSetCookie(json(out), sessionCookies(token, SESSION_HOURS * 3600, secure));
   }
   return json(out);
 }

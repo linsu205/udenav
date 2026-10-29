@@ -1,6 +1,9 @@
 // 后端 API 封装
 export async function api<T = any>(method: string, path: string, body?: any): Promise<T> {
-  const opts: RequestInit = { method };
+  // 必须带 credentials: 'include'，否则跨域部署（前台页与 API 不同源）时浏览器
+  // 不会把会话 Cookie（__Host-sp_session）随请求发出，导致登录后 me/loadAll 全部 401、
+  // 「登录成功却几秒后退出登录」。同源部署下 same-origin 也会照常带 Cookie，无副作用。
+  const opts: RequestInit = { method, credentials: 'include' };
   /* X-Requested-With: unav 是 CSRF 防护头：同源请求都带，跨站伪造请求带它会触发 CORS
      预检（预检只放行 content-type），自定义头被浏览器拦掉，伪造请求到不了后端。 */
   const headers: Record<string, string> = { 'x-requested-with': 'unav' };

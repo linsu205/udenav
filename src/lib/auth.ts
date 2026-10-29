@@ -144,6 +144,16 @@ export function clearSessionCookie(): string[] {
   ];
 }
 
+/**
+ * 仅清掉旧版遗留的 sp_session（不带 Secure/__Host- 前缀的名字）。
+ * 登录成功后调用：把历史部署残留的失效 sp_session 清掉，浏览器里就只剩当前有效的
+ * __Host-sp_session，readSessionCookie 不会再有「命中过期/失效遗留令牌」的歧义。
+ * 注意不能清 __Host-sp_session —— 那是本次刚签发的、要留着用。
+ */
+export function clearLegacyCookie(): string {
+  return `${COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`;
+}
+
 export function readSessionCookie(req: Request): string | null {
   const raw = req.headers.get('cookie');
   if (!raw) return null;

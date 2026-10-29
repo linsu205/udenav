@@ -54,14 +54,21 @@ export default {
 };
 
 function preflight(req: Request, env: Env): Response {
+  const o = req.headers.get('origin');
+  const allowed = !!(o && env.CORS_ORIGIN && o === env.CORS_ORIGIN);
   const h = new Headers({
-    'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-    'access-control-allow-headers': 'content-type',
+    'access-control-allow-methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
+    // 前端 api.ts 固定带 x-requested-with: unav，跨域时这是非简单头，预检必须放行否则真正的请求被拦
+    'access-control-allow-headers': 'content-type,x-requested-with',
     'access-control-max-age': '86400',
   });
-  const o = req.headers.get('origin');
-  if (o && env.CORS_ORIGIN && o === env.CORS_ORIGIN) h.set('access-control-allow-origin', o);
-  else h.set('access-control-allow-origin', 'self');
+  if (allowed) {
+    h.set('access-control-allow-origin', o!);
+    h.set('access-control-allow-credentials', 'true');
+    h.set('vary', 'origin');
+  } else {
+    h.set('access-control-allow-origin', 'self');
+  }
   return new Response(null, { status: 204, headers: h });
 }
 

@@ -60,7 +60,9 @@ export function withCors(req: Request, res: Response, corsOrigin?: string): Resp
   const origin = req.headers.get('origin');
   const headers = new Headers(res.headers);
   if (origin && corsOrigin && origin === corsOrigin) {
+    // 跨域带凭据（Cookie）时，必须回显具体源 + 允许凭据；不能用 *，也不能漏掉这条
     headers.set('access-control-allow-origin', origin);
+    headers.set('access-control-allow-credentials', 'true');
     headers.set('vary', 'origin');
   }
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
