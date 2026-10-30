@@ -29,7 +29,7 @@ const PRESETS = [
   },
   {
     key: 'custom', label: '自定义（OpenAI 兼容）', base_url: '', model: '',
-    tip: '任何兼容 /chat/completions 的服务都能接',
+    tip: '填到 /v1 就行；粘完整 /v1/chat/completions 也会自动识别',
   },
 ] as const;
 
@@ -99,6 +99,10 @@ async function save() {
     if (keyInput.value.trim()) body.key = keyInput.value.trim();
     const r: any = await put('/api/admin/ai', body);
     info.value = r;
+    /* 服务端会把「粘进来的完整 endpoint」收成 base，回显以服务端为准，免得输入框和实际请求不一致 */
+    if (r?.base_url) form.base_url = r.base_url;
+    if (r?.model) form.model = r.model;
+    if (Number(r?.daily_limit) > 0) form.daily_limit = Number(r.daily_limit);
     keyInput.value = '';
     ElMessage.success('已保存');
   } catch (e: any) {

@@ -162,7 +162,8 @@ export async function aiSave(env: Env, req: Request): Promise<Response> {
 
   if ('enabled' in body) next.enabled = !!body.enabled;
   if (typeof body.base_url === 'string') {
-    const u = body.base_url.trim().replace(/\/+$/, '');
+    /* 完整 endpoint 也会被粘进来：落库前统一收成 base，界面回显就干净了 */
+    const u = body.base_url.trim().replace(/\/+$/, '').replace(/\/chat\/completions$/i, '');
     if (u && !/^https?:\/\/[^\s]+$/i.test(u)) return bad('接口地址要以 http:// 或 https:// 开头');
     next.base_url = u || DEFAULT_CFG.base_url;
   }
@@ -184,9 +185,20 @@ export async function aiSave(env: Env, req: Request): Promise<Response> {
 
 type ChatMsg = { role: 'system' | 'user'; content: string };
 
+/**
+ * 地址容错：用户既可能填到 /v1，也可能直接把文档里那条完整 endpoint 粘进来。
+ * 早先无脑拼 /chat/completions，粘完整地址就会变成 …/chat/completions/chat/completions，
+ * 上游网关对这种不存在的路径常直接回 429/1015（看着像限流，其实是路径错）。
+ */
+export function chatUrl(base: string): string {
+  const u = String(base || '').trim().replace(/\/+$/, '');
+  if (/\/chat\/completions$/i.test(u)) return u;
+  return u + '/chat/completions';
+}
+
 async function callChat(env: Env, cfg: AiCfg, messages: ChatMsg[], maxTokens = 400): Promise<{ text: string; tokens: number }> {
   void env;
-  const url = cfg.base_url.replace(/\/+$/, '') + '/chat/completions';
+  const url = chatUrl(cfg.base_url);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25000);
   let res: Response;
@@ -196,7 +208,10 @@ async function callChat(env: Env, cfg: AiCfg, messages: ChatMsg[], maxTokens = 4
       signal: controller.signal,
       headers: {
         'content-type': 'application/json',
+        accept: 'application/json',
         authorization: 'Bearer ' + cfg.key,
+        /* 不少中转站前面挂了 Cloudflare 并开了按 UA 的机器人规则；Worker 默认没 UA 容易被判成脚本 */
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
       },
       body: JSON.stringify({
         model: cfg.model,
@@ -215,18 +230,28 @@ async function callChat(env: Env, cfg: AiCfg, messages: ChatMsg[], maxTokens = 4
   const raw = await res.text();
   if (!res.ok) {
     /* 常见错因直接翻译成人话，省得用户对着 401/402 猜 */
-    let hint = raw.slice(0, 200);
+    let detail = raw.slice(0, 200);
     try {
       const j = JSON.parse(raw);
-      hint = j?.error?.message || j?.message || hint;
+      detail = j?.error?.message || j?.message || detail;
     } catch { /* 上游不是 JSON 就原样截断 */ }
+
+    /* 上游挂 Cloudflare 时，429 往往不是「余额不足」，而是边缘风控 */
+    const cf = /error\s*code\s*:?\s*(10\d\d)/i.exec(raw)?.[1] || '';
+    if (cf === '1015') {
+      throw new Error('上游 Cloudflare 边缘限流（1015）：这家中转站对来自云服务器的请求卡得比家用宽带紧，等 1~2 分钟再试；一直这样就换一家，或把接口地址改回 /v1 结尾再试：' + detail);
+    }
+    if (cf === '1020') {
+      throw new Error('上游 Cloudflare 防火墙拒绝（1020）：这家中转站不允许云服务器直接调用，只能换服务商：' + detail);
+    }
+
     const map: Record<number, string> = {
       401: '密钥无效或已过期',
       403: '密钥没有该模型的权限',
       404: '接口地址不对（多数服务商要带 /v1）',
       429: '模型服务限流或余额不足',
     };
-    throw new Error((map[res.status] || `模型服务返回 ${res.status}`) + '：' + hint);
+    throw new Error((map[res.status] || `模型服务返回 ${res.status}`) + '：' + detail);
   }
 
   let data: any;
