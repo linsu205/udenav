@@ -106,11 +106,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
     overflow: auto;
     overscroll-behavior: contain;
   }
-  /* 弹窗挂在 body 下，主题里那份滚动条样式只作用于 #adminRoot，这里补一份同口径的 */
-  .ce-body::-webkit-scrollbar { width: 8px; height: 8px; }
-  .ce-body::-webkit-scrollbar-track { background: transparent; }
-  .ce-body::-webkit-scrollbar-thumb { background: var(--sp-scrollbar, #ccd2d9); border-radius: 4px; }
-  .ce-body::-webkit-scrollbar-thumb:hover { background: var(--sp-scrollbar-hover, #b4bcc6); }
+  /* 滚动条样式不在这里写：弹窗虽然挂在 body 下，但 theme.css 已把 .ce-card 一并收进
+     后台统一那套「4px 圆胶囊」，两处各写一份迟早分叉（改一处忘另一处就会露出系统粗条） */
 
   .ce-foot {
     flex: 0 0 auto;

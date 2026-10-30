@@ -37,8 +37,10 @@
   --sp-alert-text: #2c6da8;
   --sp-preview-bg: #f0f3f6;    /* 图标预览方块底 */
   --sp-preview-border: #e0e5eb;
-  --sp-scrollbar: #ccd2d9;
-  --sp-scrollbar-hover: #b4bcc6;
+  /* 滚动条滑块：与访客页同一套「半透明细圆胶囊」，只是跟随后台自己的明暗主题。
+     用半透明而不是实色，是为了滑过内容时不糊出一条硬边灰杠 */
+  --sp-scrollbar: rgba(31, 35, 40, .16);
+  --sp-scrollbar-hover: rgba(31, 35, 40, .34);
   /* 外网 / 内网 线路色标：公网走蓝、内网走琥珀，比纯灰字更容易扫读 */
   --sp-tag-wan-fg: #2c6da8;
   --sp-tag-wan-bg: rgba(64, 158, 255, .10);
@@ -113,8 +115,8 @@ html.dark {
   --sp-alert-text: #a8c3d8;
   --sp-preview-bg: #15171a;
   --sp-preview-border: #3a4048;
-  --sp-scrollbar: #31373d;
-  --sp-scrollbar-hover: #3d444c;
+  --sp-scrollbar: rgba(255, 255, 255, .20);
+  --sp-scrollbar-hover: rgba(255, 255, 255, .46);
   /* 暗色下把色标文字提亮，否则蓝/琥珀在深底上发糊 */
   --sp-tag-wan-fg: #8fb6d8;
   --sp-tag-wan-bg: rgba(64, 158, 255, .13);
@@ -159,7 +161,8 @@ html.dark {
   -webkit-font-smoothing: auto;
   transition: background .2s, color .2s;
   /* 作为滚动容器（内嵌弹窗里 overflow:auto）时始终预留滚动条槽位：
-     内容一多一少滚动条就出现/消失，可用宽度差 8px，贴右的「添加分组」会横向跳一下 */
+     内容一多一少滚动条就出现/消失，可用宽度会跳一下，贴右的「添加分组」会横向抖。
+     槽位宽度跟着滚动条走（现在是 12px，见文件末尾那套统一滚动条样式）。 */
   scrollbar-gutter: stable;
 }
 #adminRoot, #adminRoot *, #adminRoot *::before, #adminRoot *::after { box-sizing: border-box; }
@@ -314,27 +317,75 @@ html.dark {
   border-radius: 10px;
 }
 
-/* ---------- 滚动条（只作用于后台，别动访客页） ---------- */
-#adminRoot::-webkit-scrollbar,
-#adminRoot ::-webkit-scrollbar,
-.el-select-dropdown::-webkit-scrollbar,
-.el-scrollbar__wrap::-webkit-scrollbar { width: 8px; height: 8px; }
-#adminRoot::-webkit-scrollbar-track,
-#adminRoot ::-webkit-scrollbar-track,
-.el-select-dropdown::-webkit-scrollbar-track,
-.el-scrollbar__wrap::-webkit-scrollbar-track { background: transparent; }
-#adminRoot::-webkit-scrollbar-thumb,
-#adminRoot ::-webkit-scrollbar-thumb,
-.el-select-dropdown::-webkit-scrollbar-thumb,
-.el-scrollbar__wrap::-webkit-scrollbar-thumb { background: var(--sp-scrollbar); border-radius: 4px; }
-#adminRoot::-webkit-scrollbar-thumb:hover,
-#adminRoot ::-webkit-scrollbar-thumb:hover,
-.el-select-dropdown::-webkit-scrollbar-thumb:hover,
-.el-scrollbar__wrap::-webkit-scrollbar-thumb:hover { background: var(--sp-scrollbar-hover); }
-#adminRoot,
-#adminRoot *,
-.el-select-dropdown,
-.el-scrollbar__wrap { scrollbar-width: thin; scrollbar-color: var(--sp-scrollbar) transparent; }
+/* ---------- 滚动条（只作用于后台，别动访客页） ----------
+   形状与访客页完全一致：12px 轨道 + 全透明轨道底色，滑块靠 4px 透明边框 +
+   background-clip:content-box 内缩成 4px 圆胶囊，平时半透明、悬停加深 ——
+   不再是系统那种贴着面板边缘的粗灰杠。
+   后台浮层（ModalShell 的 .ce-card、Element 的下拉/对话框/气泡）都 teleport 到
+   body 下，选不到 #adminRoot，只能逐个列名字，漏一处就会在弹窗里露出系统滚动条。
+   颜色用 --sp-scrollbar（跟随后台自身明暗主题），不能借访客页的 --sb-thumb ——
+   那个跟着壁纸主题走，浅色面板上会配出看不见的白滑块。 */
+:is(#adminRoot, #adminRoot *,
+    .ce-card, .ce-card *,
+    .el-popper, .el-popper *,
+    .el-select-dropdown,
+    .el-message-box, .el-message-box *,
+    .el-overlay-dialog, .el-dialog, .el-dialog *,
+    .el-drawer, .el-drawer *,
+    .el-scrollbar__wrap)::-webkit-scrollbar { width: 12px; height: 12px; }
+:is(#adminRoot, #adminRoot *,
+    .ce-card, .ce-card *,
+    .el-popper, .el-popper *,
+    .el-select-dropdown,
+    .el-message-box, .el-message-box *,
+    .el-overlay-dialog, .el-dialog, .el-dialog *,
+    .el-drawer, .el-drawer *,
+    .el-scrollbar__wrap)::-webkit-scrollbar-track { background: transparent; border: 0; }
+:is(#adminRoot, #adminRoot *,
+    .ce-card, .ce-card *,
+    .el-popper, .el-popper *,
+    .el-select-dropdown,
+    .el-message-box, .el-message-box *,
+    .el-overlay-dialog, .el-dialog, .el-dialog *,
+    .el-drawer, .el-drawer *,
+    .el-scrollbar__wrap)::-webkit-scrollbar-thumb {
+  background: var(--sp-scrollbar);
+  background-clip: content-box;
+  border: 4px solid transparent;
+  border-radius: 999px;
+  transition: background-color .25s ease;
+}
+:is(#adminRoot, #adminRoot *,
+    .ce-card, .ce-card *,
+    .el-popper, .el-popper *,
+    .el-select-dropdown,
+    .el-message-box, .el-message-box *,
+    .el-overlay-dialog, .el-dialog, .el-dialog *,
+    .el-drawer, .el-drawer *,
+    .el-scrollbar__wrap)::-webkit-scrollbar-thumb:hover {
+  background: var(--sp-scrollbar-hover);
+  background-clip: content-box;
+}
+:is(#adminRoot, #adminRoot *,
+    .ce-card, .ce-card *,
+    .el-popper, .el-popper *,
+    .el-select-dropdown,
+    .el-message-box, .el-message-box *,
+    .el-overlay-dialog, .el-dialog, .el-dialog *,
+    .el-drawer, .el-drawer *,
+    .el-scrollbar__wrap)::-webkit-scrollbar-corner { background: transparent; }
+
+/* Firefox 兜底。必须用 @supports 限死在「不支持 ::-webkit-scrollbar」的浏览器里：
+   Chrome 只要看到 scrollbar-width / scrollbar-color，就会整段丢开上面那套圆角细条、
+   切回系统滚动条实现（宽度也不再受控）—— 之前弹窗里那条粗灰杠就是这么来的。
+   这里不列 .el-scrollbar__wrap：Element Plus 自己会用 scrollbar-width:none 藏掉原生条，
+   再给它设 thin 会跟组件的自绘滚动条叠成两条。 */
+@supports not selector(::-webkit-scrollbar) {
+  #adminRoot,
+  #adminRoot *,
+  .ce-card, .ce-card *,
+  .el-popper { scrollbar-width: thin; scrollbar-color: var(--sp-scrollbar) transparent; }
+}
 
 /* ---------- 登录页 ---------- */
 .sp-login {
