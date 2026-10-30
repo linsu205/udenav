@@ -5,6 +5,8 @@ export type Env = {
   DB: D1Database;
   ASSETS: Fetcher;
   SECRET: string;
+  /** Cloudflare Workers AI 绑定（wrangler.toml 里的 [ai]）：有它就能免密钥调用模型，不走公网 */
+  AI?: Ai;
   SEED_DEMO?: string;
   ACCESS_AUD?: string;
   /** Cloudflare Access 团队域名（如 yourteam.cloudflareaccess.com），用于拉取验签公钥；

@@ -36,6 +36,13 @@ ACCESS_AUD = "udenav"
 # 配了它，后端才会真正校验 Access JWT 的 RS256 签名；不配则只校验 aud/exp（边缘已鉴权）。
 # ACCESS_TEAM_DOMAIN = "yourteam.cloudflareaccess.com"
 
+# ---------- AI 绑定（Cloudflare Workers AI）----------
+# 走账号自带的 AI 额度：后台「AI 模型管理」选「Cloudflare Workers AI」即可用，不用密钥。
+# 关键好处是**不产生公网请求** —— 很多第三方中转站在 Cloudflare 出口上有限流（error 1015），
+# 走绑定就绕开了这条路。免费额度按 neurons 计，卡片补全这种短请求完全够用。
+[ai]
+binding = "AI"
+
 # ---------- 定时任务 ----------
 # 每小时整点触发一次。真正的执行策略（每小时/每天/每周）由后台配置决定：
 # cron 表达式是部署配置，运行时改不了，所以这里固定每小时，代码里按策略判断是否执行

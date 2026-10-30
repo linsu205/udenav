@@ -4,32 +4,33 @@ import { get, put, post } from '../api';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { MagicStick, Key, Connection, DataLine, Refresh } from '@element-plus/icons-vue';
 
-/* 预设服务商：只填地址和默认模型，真正的调用都走 OpenAI 兼容的 /chat/completions，
-   所以「自定义」也能接任何自建服务（vLLM、one-api 网关、公司内网模型）。 */
+/* 预设服务商：「内网通道」走本站 Cloudflare 账号自带的 Workers AI 绑定（免密钥、不产生公网请求），
+   其余走 OpenAI 兼容的 /chat/completions，所以「自定义」也能接任何自建服务（vLLM、one-api 网关、公司内网模型）。 */
 const PRESETS = [
   {
+    key: 'cf', label: 'Cloudflare Workers AI（内置·免密钥）', base_url: '', model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    tip: '用本站 Cloudflare 账号自带的 AI 额度，不用密钥、不走外网；第三方中转站报 1015 时用这个最稳',
+    provider: 'cf' as const,
+  },
+  {
     key: 'deepseek', label: 'DeepSeek', base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat',
-    tip: '便宜、中文好。密钥在 platform.deepseek.com 申请',
+    tip: '便宜、中文好。密钥在 platform.deepseek.com 申请', provider: 'openai' as const,
   },
   {
     key: 'dashscope', label: '通义千问（阿里云百炼）', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus',
-    tip: '密钥在阿里云百炼控制台申请，必须用「兼容模式」这个地址',
+    tip: '密钥在阿里云百炼控制台申请，必须用「兼容模式」这个地址', provider: 'openai' as const,
   },
   {
     key: 'zhipu', label: '智谱 GLM', base_url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash',
-    tip: 'glm-4-flash 有免费额度，适合先试水',
+    tip: 'glm-4-flash 有免费额度，适合先试水', provider: 'openai' as const,
   },
   {
     key: 'moonshot', label: 'Kimi（月之暗面）', base_url: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k',
-    tip: '长文本见长，补全卡片用不上这么长的上下文',
-  },
-  {
-    key: 'cf', label: 'Cloudflare Workers AI', base_url: '', model: '@cf/meta/llama-3.1-8b-instruct',
-    tip: '地址形如 https://api.cloudflare.com/client/v4/accounts/账号ID/ai/v1，需要自己填账号 ID',
+    tip: '长文本见长，补全卡片用不上这么长的上下文', provider: 'openai' as const,
   },
   {
     key: 'custom', label: '自定义（OpenAI 兼容）', base_url: '', model: '',
-    tip: '填到 /v1 就行；粘完整 /v1/chat/completions 也会自动识别',
+    tip: '填到 /v1 就行；粘完整 /v1/chat/completions 也会自动识别', provider: 'openai' as const,
   },
 ] as const;
 
@@ -38,20 +39,24 @@ const saving = ref(false);
 const testing = ref(false);
 const info = ref<any>(null);
 
-const form = reactive({ switch_on: true, base_url: '', model: '', daily_limit: 50 });
+const form = reactive({ switch_on: true, base_url: '', model: '', daily_limit: 50, provider: 'openai' as 'openai' | 'cf' });
 const keyInput = ref('');
 const preset = ref<string>('custom');
 
 const curPreset = computed(() => PRESETS.find((p) => p.key === preset.value) || PRESETS[PRESETS.length - 1]);
+/* 内置通道没有地址和密钥，界面上就把这两栏收起来，免得用户以为漏填 */
+const isBuiltin = computed(() => form.provider === 'cf');
 
-function matchPreset(base: string, model: string): string {
-  const hit = PRESETS.find((p) => p.base_url && p.base_url === base);
+function matchPreset(provider: string, base: string, model: string): string {
+  if (provider === 'cf') return 'cf';
+  const hit = PRESETS.find((p) => p.provider === 'openai' && p.base_url && p.base_url === base);
   return hit ? hit.key : 'custom';
 }
 
 const state = computed(() => {
   const r = info.value;
   if (!r) return { cls: 'off', text: '读取中' };
+  if (r.provider === 'cf' && !r.ai_binding) return { cls: 'off', text: '缺少 AI 绑定' };
   if (!r.configured) return { cls: 'off', text: '未配置密钥' };
   if (!r.switch_on) return { cls: 'off', text: '已关闭' };
   return { cls: 'on', text: '已启用' };
@@ -66,7 +71,8 @@ async function load() {
     form.base_url = r.base_url || '';
     form.model = r.model || '';
     form.daily_limit = Number(r.daily_limit) || 50;
-    preset.value = matchPreset(form.base_url, form.model);
+    form.provider = r.provider === 'cf' ? 'cf' : 'openai';
+    preset.value = matchPreset(form.provider, form.base_url, form.model);
   } catch (e: any) {
     ElMessage.error('读取 AI 配置失败：' + (e?.message || '未知错误'));
   } finally {
@@ -74,22 +80,25 @@ async function load() {
   }
 }
 
-/* 换服务商只改「地址 + 默认模型」，密钥不动 —— 用户可能只是想换个模型试试 */
+/* 换服务商只改「通道 + 地址 + 默认模型」，密钥不动 —— 用户可能只是想换个模型试试 */
 function applyPreset(k: string) {
   preset.value = k;
   const p = PRESETS.find((x) => x.key === k);
   if (!p) return;
+  form.provider = p.provider;
   if (p.base_url) form.base_url = p.base_url;
   if (p.model) form.model = p.model;
 }
 
 async function save() {
-  if (form.switch_on && !info.value?.configured && !keyInput.value.trim()) {
+  /* 内置通道不需要密钥；自定义通道没密钥就别让开 */
+  if (form.switch_on && !isBuiltin.value && !info.value?.configured && !keyInput.value.trim()) {
     return ElMessage.warning('开启前请先填写 API 密钥');
   }
   saving.value = true;
   try {
     const body: any = {
+      provider: form.provider,
       enabled: form.switch_on,
       base_url: form.base_url,
       model: form.model,
@@ -174,15 +183,21 @@ onMounted(load);
             >{{ p.label }}</button>
           </div>
         </el-form-item>
-        <el-form-item label="接口地址">
+        <el-form-item v-if="!isBuiltin" label="接口地址">
           <el-input v-model="form.base_url" placeholder="https://api.deepseek.com/v1" />
+          <div class="ai-hint">{{ curPreset.tip }}</div>
+        </el-form-item>
+        <el-form-item v-else label="调用方式">
+          <div class="ai-builtin">
+            本站账号自带的 Workers AI 额度，<b>不填地址、不填密钥</b>
+          </div>
           <div class="ai-hint">{{ curPreset.tip }}</div>
         </el-form-item>
         <el-form-item label="模型名">
           <el-input v-model="form.model" placeholder="deepseek-chat" />
           <div class="ai-hint">填服务商文档里的模型标识，不要填显示名</div>
         </el-form-item>
-        <el-form-item label="API 密钥">
+        <el-form-item v-if="!isBuiltin" label="API 密钥">
           <div class="ai-key">
             <el-input
               v-model="keyInput" type="password" show-password
@@ -195,7 +210,7 @@ onMounted(load);
         <el-form-item label="启用">
           <div class="ai-switch-row">
             <el-switch v-model="form.switch_on" />
-            <span class="ai-switch-tip">{{ info?.configured ? '关闭后卡片补全只填网页自带信息' : '未填密钥时，开关打开也不生效' }}</span>
+            <span class="ai-switch-tip">{{ info?.configured ? '关闭后卡片补全只填网页自带信息' : (isBuiltin ? '这台部署缺少 AI 绑定，先用自定义通道' : '未填密钥时，开关打开也不生效') }}</span>
           </div>
         </el-form-item>
         <el-form-item label="每日上限">
@@ -246,11 +261,17 @@ onMounted(load);
         说明：AI 只负责「起名、写一句说明、挑图标、选分组」。网址本身和你的卡片数据不会整站上传，
         每次只发送这一个网址和它公开的标题/描述。
       </div>
+      <div class="ai-note">
+        选「Cloudflare Workers AI（内置）」时走本站账号自带的额度，不填地址、不填密钥，
+        也不产生公网请求 —— 第三方中转站报 <b>error 1015</b>（对云服务器出口限流）时，用这个通道最稳。
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.ai-builtin { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+.ai-builtin b { color: var(--text); }
 .head-right { display: flex; align-items: center; gap: 10px; }
 
 .ai-state {

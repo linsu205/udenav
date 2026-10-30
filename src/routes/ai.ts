@@ -21,6 +21,8 @@ const CFG_KEY = 'ai_cfg';
 const USAGE_KEY = 'ai_usage';
 
 type AiCfg = {
+  /** 走哪种通道：openai = 任何 OpenAI 兼容的 HTTP 服务；cf = 本站 Cloudflare Workers AI 绑定（免密钥、不走外网） */
+  provider: 'openai' | 'cf';
   /** 用户开关（勾上才允许调用；没填密钥时即使勾着也视为关闭） */
   enabled: boolean;
   /** OpenAI 兼容的 base url，例如 https://api.deepseek.com/v1（末尾斜杠会自动去掉） */
@@ -33,12 +35,21 @@ type AiCfg = {
 };
 
 const DEFAULT_CFG: AiCfg = {
+  provider: 'openai',
   enabled: true,
   base_url: 'https://api.deepseek.com/v1',
   model: 'deepseek-chat',
   key: '',
   daily_limit: 50,
 };
+
+/** Workers AI 的默认模型：指令跟随和 JSON 稳定性比 8b 好一档，单价仍然很低 */
+const CF_DEFAULT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+
+/** 当前配置在这台部署上到底能不能用：cf 通道要看有没有 AI 绑定，openai 通道要看有没有密钥 */
+function ready(env: Env, cfg: AiCfg): boolean {
+  return cfg.provider === 'cf' ? !!env.AI : !!cfg.key;
+}
 
 /* ---------------- 配置读写 ---------------- */
 
@@ -48,6 +59,7 @@ async function loadCfg(env: Env): Promise<AiCfg> {
   if (row?.value) {
     try {
       const saved = JSON.parse(row.value) as Partial<AiCfg>;
+      if (saved.provider === 'cf' || saved.provider === 'openai') merged.provider = saved.provider;
       if (typeof saved.enabled === 'boolean') merged.enabled = saved.enabled;
       if (typeof saved.base_url === 'string' && saved.base_url.trim()) merged.base_url = saved.base_url.trim();
       if (typeof saved.model === 'string' && saved.model.trim()) merged.model = saved.model.trim();
@@ -125,9 +137,11 @@ function maskKey(key: string): string {
   return key.slice(0, 3) + '••••' + key.slice(-4);
 }
 
-function view(cfg: AiCfg, usage: Usage) {
-  const configured = !!cfg.key;
+function view(cfg: AiCfg, usage: Usage, hasAI = false) {
+  const configured = cfg.provider === 'cf' ? hasAI : !!cfg.key;
   return {
+    provider: cfg.provider,
+    ai_binding: hasAI,
     enabled: cfg.enabled && configured,
     switch_on: cfg.enabled,
     configured,
@@ -150,7 +164,7 @@ function view(cfg: AiCfg, usage: Usage) {
 export async function aiInfo(env: Env, req: Request): Promise<Response> {
   await requireRole(req, env, 'editor');
   const cfg = await loadCfg(env);
-  return json({ ok: true, ...view(cfg, await loadUsage(env)) });
+  return json({ ok: true, ...view(cfg, await loadUsage(env), !!env.AI) });
 }
 
 export async function aiSave(env: Env, req: Request): Promise<Response> {
@@ -161,6 +175,7 @@ export async function aiSave(env: Env, req: Request): Promise<Response> {
   const next: AiCfg = { ...cur };
 
   if ('enabled' in body) next.enabled = !!body.enabled;
+  if (body.provider === 'cf' || body.provider === 'openai') next.provider = body.provider;
   if (typeof body.base_url === 'string') {
     /* 完整 endpoint 也会被粘进来：落库前统一收成 base，界面回显就干净了 */
     const u = body.base_url.trim().replace(/\/+$/, '').replace(/\/chat\/completions$/i, '');
@@ -168,6 +183,8 @@ export async function aiSave(env: Env, req: Request): Promise<Response> {
     next.base_url = u || DEFAULT_CFG.base_url;
   }
   if (typeof body.model === 'string' && body.model.trim()) next.model = body.model.trim();
+  /* 内置通道只认 @cf/ 开头的模型名；切过来时别把 deepseek-chat 这种名字带过去 */
+  if (next.provider === 'cf' && !/^@cf\//i.test(next.model)) next.model = CF_DEFAULT_MODEL;
   if (Number(body.daily_limit) > 0) next.daily_limit = Math.min(1000, Math.max(1, Math.round(Number(body.daily_limit))));
 
   /* 密钥三种语义：不传/空串 = 保持原值；'clear' = 清空；其他 = 覆盖 */
@@ -178,7 +195,7 @@ export async function aiSave(env: Env, req: Request): Promise<Response> {
   }
 
   await persistCfg(env, next);
-  return json({ ok: true, ...view(next, await loadUsage(env)) });
+  return json({ ok: true, ...view(next, await loadUsage(env), !!env.AI) });
 }
 
 /* ---------------- 模型调用 ---------------- */
@@ -197,7 +214,22 @@ export function chatUrl(base: string): string {
 }
 
 async function callChat(env: Env, cfg: AiCfg, messages: ChatMsg[], maxTokens = 400): Promise<{ text: string; tokens: number }> {
-  void env;
+  /* 通道二：Cloudflare Workers AI 绑定 —— 不发明文请求、不走公网，
+     正好绕开「中转站对云服务器出口限流（1015）」这类问题，也不用密钥。 */
+  if (cfg.provider === 'cf') {
+    if (!env.AI) throw new Error('这台部署没有 AI 绑定：请确认 wrangler.toml 里有 [ai] binding = "AI" 且已重新部署');
+    let r: any;
+    try {
+      r = await env.AI.run(cfg.model as any, { messages, max_tokens: maxTokens } as any);
+    } catch (e: any) {
+      throw new Error('Workers AI 调用失败：' + (e?.message || '未知错误'));
+    }
+    const text = String(r?.response ?? r?.choices?.[0]?.message?.content ?? '').trim();
+    if (!text) throw new Error('Workers AI 没有返回内容（模型可能不支持对话格式）');
+    const tokens = Number(r?.usage?.total_tokens) || 0;
+    return { text, tokens };
+  }
+
   const url = chatUrl(cfg.base_url);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25000);
@@ -272,7 +304,9 @@ function parseLooseJson(text: string): any {
 export async function aiTest(env: Env, req: Request): Promise<Response> {
   await requireRole(req, env, 'owner');
   const cfg = await loadCfg(env);
-  if (!cfg.key) return bad('还没有填写 API 密钥');
+  if (cfg.provider === 'cf') {
+    if (!env.AI) return bad('这台部署没有 AI 绑定，请确认 wrangler.toml 里有 [ai] binding = "AI" 并已重新部署');
+  } else if (!cfg.key) return bad('还没有填写 API 密钥');
   const t0 = Date.now();
   try {
     const r = await callChat(env, cfg, [
@@ -280,7 +314,7 @@ export async function aiTest(env: Env, req: Request): Promise<Response> {
       { role: 'user', content: '测试' },
     ], 16);
     await bumpUsage(env, r.tokens);
-    return json({ ok: true, reply: r.text.slice(0, 80), ms: Date.now() - t0, model: cfg.model, usage: view(cfg, await loadUsage(env)).usage });
+    return json({ ok: true, reply: r.text.slice(0, 80), ms: Date.now() - t0, model: cfg.model, provider: cfg.provider, usage: view(cfg, await loadUsage(env), !!env.AI).usage });
   } catch (e: any) {
     return bad(e?.message || '测试失败', 502);
   }
@@ -422,7 +456,7 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
   }
 
   const cfg = await loadCfg(env);
-  const canAi = cfg.enabled && !!cfg.key;
+  const canAi = cfg.enabled && ready(env, cfg);
   const usage = await loadUsage(env);
 
   /* 没有密钥 / 关了开关 / 今日超额 → 只回网页信息，不算失败 */
@@ -491,7 +525,7 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
     source: 'ai',
     notes,
     item: { title, description, color, icon_name: iconName, group_title: group },
-    usage: view(cfg, await loadUsage(env)).usage,
+    usage: view(cfg, await loadUsage(env), !!env.AI).usage,
   });
 }
 
