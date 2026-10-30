@@ -86,8 +86,12 @@ function applyPreset(k: string) {
   const p = PRESETS.find((x) => x.key === k);
   if (!p) return;
   form.provider = p.provider;
-  if (p.base_url) form.base_url = p.base_url;
-  if (p.model) form.model = p.model;
+  /* 预设本身没给地址/模型时（内置通道、自定义）要清空输入框：
+     不清会残留上一个服务商的值，看着像已配置，保存时还会被一起提交 */
+  form.base_url = p.base_url || '';
+  form.model = p.model || '';
+  /* 输入框里没提交的密钥草稿属于上一个服务商，一起清掉，避免误发 */
+  keyInput.value = '';
 }
 
 async function save() {
