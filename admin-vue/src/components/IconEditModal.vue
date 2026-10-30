@@ -465,10 +465,12 @@ function chooseImg(it: PickImg) {
             <template #suffix>
               <button
                 type="button" class="ai-fill" :class="{ busy: aiFilling }" :disabled="aiFilling"
+                :aria-busy="aiFilling"
                 title="按这个网址补全标题、描述、图标、主题色与分组"
                 @click.stop="aiFill"
               >
-                <IIcon name="ri:magic-line" :size="13" />
+                <span v-if="aiFilling" class="ai-spin" aria-hidden="true"></span>
+                <IIcon v-else name="ri:magic-line" :size="13" />
                 <span>{{ aiFilling ? '补全中' : 'AI 补全' }}</span>
               </button>
             </template>
@@ -640,7 +642,38 @@ function chooseImg(it: PickImg) {
 }
 .ai-fill:hover:not(:disabled) { background: rgba(var(--sp-accent-rgb), .18); border-color: var(--sp-accent); }
 .ai-fill:disabled { cursor: default; opacity: .6; }
-.ai-fill.busy { opacity: .75; }
+
+/* 补全中：按钮上叠一道流光扫过，图标换成旋转细圆环。
+   后端要抓网页 + 调模型，通常要等几秒，只有静态文字反馈太弱，
+   用户会以为没点上而反复点击（按钮已 disabled，但看着没反应）。 */
+.ai-fill.busy { position: relative; overflow: hidden; cursor: progress; opacity: 1; }
+.ai-fill.busy::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(var(--sp-accent-rgb), .3), transparent);
+  transform: translateX(-100%);
+  animation: ai-fill-sweep 1.1s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes ai-fill-sweep { to { transform: translateX(100%); } }
+
+.ai-spin {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid rgba(var(--sp-accent-rgb), .25);
+  border-top-color: var(--sp-accent);
+  animation: ai-spin-rotate .7s linear infinite;
+}
+@keyframes ai-spin-rotate { to { transform: rotate(360deg); } }
+
+/* 尊重系统「减少动态效果」设置 */
+@media (prefers-reduced-motion: reduce) {
+  .ai-fill.busy::after,
+  .ai-spin { animation: none; }
+}
 
 /* 换组提示：比正文小一档、主题色描边，放在下拉框下面一行，不占表单项高度 */
 .g-move-tip {
