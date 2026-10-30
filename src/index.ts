@@ -11,7 +11,7 @@ import { iconifyProxy } from './routes/iconify';
 import { getBackupCfg, putBackupCfg, runBackupNow, scheduledBackup, listBackups, restoreBackup, testBackupConn } from './routes/webdav';
 import * as s3 from './routes/s3';
 import { linkCheck } from './routes/linkcheck';
-import { aboutInfo, checkLatest } from './routes/about';
+import { aboutInfo, checkLatest, extensionInfo } from './routes/about';
 import type { Env } from './lib/schema';
 
 const API = '/api/';
@@ -187,6 +187,12 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
       if (rl) return rl;
       if (parts[2] === 'check') return checkLatest(env, req);
       if (!parts[2]) return aboutInfo(env, req);
+    }
+    /* 浏览器插件页：也要打外网（GitHub 查最新发布），比照 about/check 单独限流 */
+    if (m === 'GET' && a === 'extension') {
+      const rl = await lim('extension', 20);
+      if (rl) return rl;
+      return extensionInfo(env, req);
     }
     if (m === 'GET' && a === 'stats') return stats(env, req);
     if (m === 'GET' && a === 'users') return admin.listUsers(env, req);

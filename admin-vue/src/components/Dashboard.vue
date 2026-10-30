@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { useStore } from '../store';
 import { ElMessage } from 'element-plus';
-import { Setting, FolderOpened, Files, TrendCharts, User, SwitchButton, ArrowRight, Picture, InfoFilled, Grid, Collection } from '@element-plus/icons-vue';
+import { Setting, FolderOpened, Files, TrendCharts, User, SwitchButton, ArrowRight, Picture, InfoFilled, Grid, Collection, ChromeFilled } from '@element-plus/icons-vue';
 import { logoSrc } from '../lib/brand';
 import ConfigPanel from './ConfigPanel.vue';
 import GroupsPanel from './GroupsPanel.vue';
@@ -13,6 +13,7 @@ import BackupPanel from './BackupPanel.vue';
 import StatsPanel from './StatsPanel.vue';
 import UsersPanel from './UsersPanel.vue';
 import AboutPanel from './AboutPanel.vue';
+import ExtensionPanel from './ExtensionPanel.vue';
 
 const store = useStore();
 const active = ref(store.tab || 'config');
@@ -28,6 +29,8 @@ const menus = [
   { key: 'backup', label: '备份与导入', icon: Files },
   { key: 'stats', label: '访问统计', icon: TrendCharts },
   { key: 'users', label: '用户管理', icon: User },
+  /* 插件页是给使用者看「怎么装怎么用」的，放在「关于」上面；不进主导航前几项，避免抢管理功能的注意力 */
+  { key: 'ext', label: '浏览器插件', icon: ChromeFilled },
   { key: 'about', label: '关于', icon: InfoFilled },
 ];
 
@@ -36,7 +39,7 @@ const sideLogo = computed(() => logoSrc(store.config?.favicon));
 
 const current = computed(() => ({
   config: ConfigPanel, groups: GroupsPanel, widgets: WidgetsPanel, images: ImagesPanel, icons: IconsPanel, backup: BackupPanel,
-  stats: StatsPanel, users: UsersPanel, about: AboutPanel,
+  stats: StatsPanel, users: UsersPanel, about: AboutPanel, ext: ExtensionPanel,
 }[active.value] || ConfigPanel));
 
 async function logout() {

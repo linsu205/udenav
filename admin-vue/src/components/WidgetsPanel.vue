@@ -301,6 +301,16 @@ const draft = ref<Draft | null>(null);
 const saving = ref(false);
 const editing = computed(() => !!draft.value);
 const draftMeta = computed(() => kindMeta(draft.value?.kind));
+/* 开关分两段显示：「权限」只放「不登录也能用」，其余都算「功能」。
+   混在一列里会让人以为访客开关也是某种显示样式，而它其实决定「谁能用」 */
+const toggleRows = computed(() => {
+  const list = draftMeta.value?.toggles || [];
+  const rows = [
+    { label: '权限', list: list.filter((t) => t.key === 'guest') },
+    { label: '功能', list: list.filter((t) => t.key !== 'guest') },
+  ];
+  return rows.filter((r) => r.list.length > 0);
+});
 /* 弹窗里实际预览用的风格：空值按该组件默认风格（如换算器实心）处理 */
 const draftVariant = computed(() => normVariant(draft.value?.variant || draftMeta.value?.defVariant));
 
@@ -604,10 +614,10 @@ async function save() {
           </div>
         </div>
 
-        <div v-if="draftMeta?.toggles.length" class="fm-row">
-          <label class="fm-label">功能</label>
+        <div v-for="row in toggleRows" :key="row.label" class="fm-row">
+          <label class="fm-label">{{ row.label }}</label>
           <div class="toggles">
-            <div v-for="t in draftMeta.toggles" :key="t.key" class="tg">
+            <div v-for="t in row.list" :key="t.key" class="tg">
               <div class="tg-txt">
                 <span class="tg-t">{{ t.label }}</span>
                 <span class="tg-h">{{ t.hint }}</span>

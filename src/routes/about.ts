@@ -13,6 +13,10 @@ import { APP_NAME, APP_VERSION, APP_REPO, REPO_SLUG, COMPAT_DATE } from '../lib/
 
 const BACKUP_KEY = 'backup_webdav';
 
+/** 浏览器插件仓库（和主仓库分开，发布节奏也不同） */
+const EXT_REPO_SLUG = 'linsu205/udenav-extension';
+const EXT_REPO = 'https://github.com/' + EXT_REPO_SLUG;
+
 /* GitHub 接口有未认证限速（60 次/小时/IP），Worker 出口 IP 是共享的，
    所以结果在实例内存里缓存 10 分钟；实例回收了也只是重新查一次。 */
 const GH_TIMEOUT = 6000;
@@ -116,6 +120,63 @@ export async function checkLatest(env: Env, req: Request): Promise<Response> {
 
 function localMeta() {
   return { version: APP_VERSION, compat_date: COMPAT_DATE, repo: APP_REPO, repo_slug: REPO_SLUG };
+}
+
+/* ---------------- 浏览器插件 ---------------- */
+
+let extCache: { at: number; data: ExtInfo } | null = null;
+const EXT_CACHE_MS = 10 * 60 * 1000;
+
+type ExtAsset = { name: string; size: number; url: string };
+/* 不带 ok 字段：外层的 json({ ok: true, ...data }) 已经表过态，
+   两处都写同一个键会被 spread 覆盖（tsc 也会报 TS2783） */
+type ExtInfo = {
+  latest: { version: string; date: string; url: string; notes: string; assets: ExtAsset[] } | null;
+  error?: string;
+};
+
+/**
+ * GET /api/admin/extension —— 「浏览器插件」页的数据源
+ *
+ * 只查 release（插件是压缩包分发，没有「只有提交」的分支）：
+ * 拿不到就返回 latest:null + 一句人话，前端退化成「去 Releases 页自己下」，
+ * 不让整页报错 —— 用户来这页的目的就是「给我一个能点的下载链接」。
+ */
+export async function extensionInfo(env: Env, req: Request): Promise<Response> {
+  await requireRole(req, env, 'editor');
+
+  const now = Date.now();
+  if (extCache && now - extCache.at < EXT_CACHE_MS) {
+    return json({ ok: true, repo: EXT_REPO, repo_slug: EXT_REPO_SLUG, releases: EXT_REPO + '/releases', ...extCache.data, cached: true, cached_at: extCache.at });
+  }
+
+  const rel = await gh(`/repos/${EXT_REPO_SLUG}/releases/latest`);
+  let data: ExtInfo;
+  if (rel.rateLimited) {
+    data = { latest: null, error: 'GitHub 接口限流，请稍后再试' };
+  } else if (rel.data?.tag_name) {
+    const assets: ExtAsset[] = (Array.isArray(rel.data.assets) ? rel.data.assets : [])
+      /* 只挑 zip：仓库里可能还挂了别的产物，页面上只认安装包 */
+      .filter((a: any) => /\.zip$/i.test(String(a?.name || '')))
+      .map((a: any) => ({ name: String(a.name), size: Number(a.size || 0), url: String(a.browser_download_url || '') }));
+    data = {
+      latest: {
+        version: String(rel.data.tag_name || ''),
+        date: String(rel.data.published_at || rel.data.created_at || ''),
+        url: String(rel.data.html_url || EXT_REPO + '/releases'),
+        notes: String(rel.data.body || '').slice(0, 300),
+        assets,
+      },
+    };
+  } else {
+    data = {
+      latest: null,
+      error: rel.status ? `GitHub 返回 ${rel.status}` : '读取插件仓库失败（网络或仓库地址变更）',
+    };
+  }
+
+  if (data.latest) extCache = { at: now, data };
+  return json({ ok: true, repo: EXT_REPO, repo_slug: EXT_REPO_SLUG, releases: EXT_REPO + '/releases', ...data, cached: false, cached_at: now });
 }
 
 /** 调 GitHub：先看 release（更接近「版本」语义），没有 release 就退回最新提交 */

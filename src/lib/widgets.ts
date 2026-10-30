@@ -55,6 +55,19 @@ export type WidgetKindMeta = {
 /** 组件默认主色 = 项目 logo 的蓝（与后台 --sp-accent 同一值，改这里要一起改 theme.css） */
 export const WIDGET_DEFAULT_COLOR = '#409EFF';
 
+/* 「不登录也能用」开关：只对内置组件有意义，且所有组件共用同一 key。
+   为什么放在 toggles 里而不是新开一路字段：组件的配置（icon / variant / color / opts）
+   已经整份按类型存在 widget_cfg.cfg，toggles 又同时驱动后台的开关列表和入库白名单
+   （normWidgetCfg 只认 meta.toggles 里的 key），复用它等于零迁移。
+   打开这个开关后，未登录访客也能打开该组件 —— 代价是内容无处可存，
+   只能落在访客自己的浏览器 localStorage 里（见 public/index.html 的 wpGuest 分支）。 */
+const GUEST_TOGGLE: WidgetToggle = {
+  key: 'guest',
+  label: '不登录也能用',
+  hint: '开启后，没登录后台的访客也能打开它；内容只保存在访客自己的浏览器里，不上传服务器',
+  def: 0,
+};
+
 /* 描边属性串：线框/实心变体里共用，避免同一条属性写多遍后改漏 */
 const FRAME = 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"';
 /* 反白色：画在实心色块**内部**的细节，必须真的白，不能跟随 currentColor
@@ -170,6 +183,7 @@ export const WIDGET_KINDS: WidgetKindMeta[] = [
       { type: 'iconify', name: 'flat-color-icons:calendar', label: '彩色' },
     ],
     toggles: [
+      { ...GUEST_TOGGLE, hint: '开启后，没登录后台的访客也能打开日历（日历不保存任何内容，放心开放）' },
       { key: 'lunar', label: '农历与节气', hint: '日期下方显示农历、传统节日和二十四节气', def: 1 },
       { key: 'monFirst', label: '周一为一周起始', hint: '关闭后按周日开头排列（周日在前）', def: 1 },
     ],
@@ -186,6 +200,7 @@ export const WIDGET_KINDS: WidgetKindMeta[] = [
       { type: 'iconify', name: 'twemoji:memo', label: '彩色' },
     ],
     toggles: [
+      GUEST_TOGGLE,
       { key: 'showTime', label: '显示编辑时间', hint: '列表与编辑区显示「最后编辑」时间', def: 1 },
       { key: 'newFirst', label: '新建的排在最上面', hint: '关闭后新建的备忘录追加到列表末尾', def: 1 },
     ],
@@ -204,6 +219,7 @@ export const WIDGET_KINDS: WidgetKindMeta[] = [
       { type: 'iconify', name: 'thesvg-color:microsoft-todo', label: '彩色' },
     ],
     toggles: [
+      GUEST_TOGGLE,
       { key: 'showWhen', label: '显示日期', hint: '每条任务右侧显示任务日期', def: 1 },
       { key: 'showCreated', label: '显示创建时间', hint: '每条任务下方显示创建时间', def: 1 },
       { key: 'doneToday', label: '「今天」含已完成', hint: '关闭后，今天视图只列未完成的任务', def: 0 },
@@ -222,8 +238,11 @@ export const WIDGET_KINDS: WidgetKindMeta[] = [
       { type: 'builtin', variant: 'solid', label: '实心' },
       { type: 'iconify', name: 'twemoji:scales', label: '彩色' },
     ],
-    /* 换算器没有功能开关：分类/单位是数学常量，没有可配的行为 */
-    toggles: [],
+    /* 换算器没有「行为」开关（分类/单位是数学常量），只留一个访客开关：
+       计算历史本来存在 widget_data，开放给访客后就改成存访客本机 */
+    toggles: [
+      { ...GUEST_TOGGLE, hint: '开启后，没登录后台的访客也能用；计算历史只保存在访客自己的浏览器里' },
+    ],
   },
 ];
 

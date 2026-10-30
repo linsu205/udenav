@@ -415,6 +415,15 @@
     background:rgba(28,31,36,.95);backdrop-filter:blur(26px) saturate(1.15);-webkit-backdrop-filter:blur(26px) saturate(1.15)}
   html[data-theme="light"] .modal.wp .box{background:rgba(255,255,255,.96)}
   .modal.wp .bar{background:transparent}
+  /* 标题占掉所有富余空间：不这么做，bar 的 space-between 会把「只存本机」角标
+     摆在标题和关闭按钮正中间，看着像一条独立的状态栏 */
+  .modal.wp .bar #wpTitle{margin-right:auto}
+  /* 「只存本机」角标：只有未登录访客打开组件时才显示，说明内容不会同步到服务器。
+     字号压到 11px、颜色走 --text-dim，不能抢标题的视觉重心 */
+  .wp-local{display:inline-flex;align-items:center;gap:4px;margin-left:10px;padding:2px 8px;
+    border:1px solid color-mix(in srgb,var(--text-dim) 34%,transparent);border-radius:999px;
+    color:var(--text-dim);font-size:11px;line-height:1.5;letter-spacing:.2px;white-space:nowrap}
+  .wp-local[hidden]{display:none}
   #wpBody{flex:1;min-height:0;display:flex;overflow:hidden}
   .wp-boot{display:flex;align-items:center;justify-content:center;width:100%;min-height:180px;color:var(--text-dim);font-size:13px}
   /* 组件卡片的图标用组件自己的主色（--wc，由 renderGroups 内联写入；
@@ -819,7 +828,7 @@
      内容和上面的后台弹窗互不干扰，独立一层，关闭即卸载内部结构 -->
 <div class="modal wp" id="wpanel">
   <div class="box">
-    <div class="bar"><span id="wpTitle">组件</span><button class="close" id="wpClose" data-tip="关闭" aria-label="关闭">✕</button></div>
+    <div class="bar"><span id="wpTitle">组件</span><span class="wp-local" id="wpLocal" hidden>只存本机</span><button class="close" id="wpClose" data-tip="关闭" aria-label="关闭">✕</button></div>
     <div id="wpBody"></div>
   </div>
 </div>
@@ -1179,12 +1188,27 @@ function iconMiniInner(item, plateTxt) {
   return `<span class="mtext" style="--fs:${fsOf(plateTxt)}px">${esc(plateTxt)}</span>`;
 }
 
+/* 这张卡访客（未登录）能不能看到：
+   普通链接卡照旧全部显示；组件卡只有在后台勾了「不登录也能用」才显示。
+   没勾的直接不渲染 —— 让访客点得到却打不开（再弹「请先登录」）看着像坏了。 */
+function visibleToGuest(it) {
+  if (state.admin) return true;
+  if (!isWidget(it)) return true;
+  return widgetOptOf(it, it.kind, 'guest', 0) === 1;
+}
+
 function renderGroups(instant) {
   const box = $('#groups');
   const kw = $('#q').value.trim().toLowerCase();
-  const filtered = state.groups.filter(g => {
-    if (g.cardStyle === 'hide') return false;
-    return g.items.filter(it => !kw || (it.title + ' ' + (it.description || '') + ' ' + (it.url || '')).toLowerCase().includes(kw));
+  /* 先把每组的可见卡片算出来（访客可见 + 搜索词），再决定这组要不要留：
+     访客侧一组里的卡全被过滤掉时不保留空标题；登录后照旧保留（标题上的「＋」要用） */
+  const filtered = [];
+  state.groups.forEach(g => {
+    if (g.cardStyle === 'hide') return;
+    const items = g.items.filter(it => visibleToGuest(it)
+      && (!kw || (it.title + ' ' + (it.description || '') + ' ' + (it.url || '')).toLowerCase().includes(kw)));
+    if (!items.length && !state.admin) return;
+    filtered.push({ g, items });
   });
   box.innerHTML = '';
   if (!filtered.length) {
@@ -1192,7 +1216,7 @@ function renderGroups(instant) {
     box.innerHTML = state.groups.length ? '<div class="empty">没有匹配的卡片</div>' : '';
     return;
   }
-  filtered.forEach(g => {
+  filtered.forEach(({ g, items }) => {
     const sec = document.createElement('section');
     sec.className = 'group';
     /* 登录后在分组标题后面挂一个「＋」：直接往该分组加一条导航，
@@ -1213,7 +1237,7 @@ function renderGroups(instant) {
     sec.innerHTML = `<div class="group-head"><h2${g.description ? ` data-tip="${esc(g.description)}" data-tip-pos="right"` : ''}>${gIcon}${esc(g.title)}</h2>${addBtn}</div>`;
     const grid = document.createElement('div');
     grid.className = g.cardStyle === 'icon' ? 'grid icons' : 'grid';
-    g.items.forEach(it => {
+    items.forEach(it => {
       const isW = isWidget(it);
       if (g.cardStyle === 'icon') {
         /* 小图标模式（参照 sun-panel）：未设背景色用玻璃底板（同卡片），设了则用实色 */
@@ -1418,17 +1442,45 @@ function widgetOpt(key, dflt) {
   const t = ((wmetaOf(wpKind) || {}).toggles || []).find(x => x.key === key);
   return t ? t.def : dflt;
 }
+/* 按「某张卡片」取开关值。widgetOpt 读的是 wpItem（面板打开后才存在），
+   而「这张卡访客能不能点开」要在点击那一刻就判断，所以单独来一份 */
+function widgetOptOf(it, kind, key, dflt) {
+  const v = widgetCfg(it).opts[key];
+  if (v === 0 || v === 1) return v;
+  const t = ((wmetaOf(kind) || {}).toggles || []).find(x => x.key === key);
+  return t ? t.def : dflt;
+}
 const fmtDT = ms => {
   const d = new Date(ms || Date.now()), p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
 let wpItem = null, wpKind = '', wpData = null, wpTimer = 0;
+/* 访客模式：当前面板是否走「本机存储」。为 true 时既不读也不写服务器 ——
+   未登录时读 /api/admin/widgets 会 401，那会顺带触发全局「登录已过期」提示。 */
+let wpGuest = false, wpLocalKey = '';
+
+/* 本机存储键：按卡片 id 分开，和服务器上一张卡一份数据的粒度对齐 */
+const WP_LS_PREFIX = 'udenav.widget.';
+function readLocalWidget() {
+  try { return localStorage.getItem(wpLocalKey) || ''; } catch (e) { return ''; }
+}
+/* 写本机：localStorage 有 5MB 左右上限，备忘录写满会抛 QuotaExceededError，
+   必须当场告知 —— 否则用户以为存上了，刷新后内容没了 */
+function writeLocalWidget(payload) {
+  try { localStorage.setItem(wpLocalKey, payload); return true; }
+  catch (e) { ctxToast('本机存储已满，这次内容没能保存'); return false; }
+}
 
 function openWidget(it) {
-  /* 组件内容属于私人数据，接口要登录；未登录时别打开空面板，直接提示 */
-  if (!state.admin) { ctxToast('请先登录后台再使用组件'); return; }
+  /* 组件内容默认属于私人数据，接口要登录；未登录时别打开空面板，直接提示。
+     例外：后台「组件管理」里勾了「不登录也能用」的组件，访客可以打开，
+     但内容只能放在他自己的浏览器里（服务器没有他的身份，写了也归不到任何人）。 */
+  const guestOk = widgetOptOf(it, it.kind, 'guest', 0) === 1;
+  if (!state.admin && !guestOk) { ctxToast('请先登录后台再使用组件'); return; }
   wpItem = it; wpKind = it.kind;
+  wpGuest = !state.admin;
+  wpLocalKey = WP_LS_PREFIX + it.id;
   /* 待办默认落在「今天」：上次关面板前选的日期（比如明天）不该带到下一次，
      否则新任务会悄悄跑到别的日期里，看上去像「添加了却没出现」 */
   if (wpKind === 'todo') tdDue = todayKey();
@@ -1438,12 +1490,20 @@ function openWidget(it) {
   if (wc) $('#wpanel').style.setProperty('--wc', wc);
   else $('#wpanel').style.removeProperty('--wc');
   $('#wpTitle').textContent = it.title || '组件';
+  /* 角标：让访客一眼知道「内容只存在这台电脑上」，不会被误解成没保存 */
+  $('#wpLocal').hidden = !wpGuest;
   $('#wpanel').classList.add('open');
   $('#wpBody').innerHTML = '<div class="wp-boot">加载中…</div>';
-  fetch('/api/admin/widgets/' + it.id, { headers: { 'X-Requested-With': 'unav' }, cache: 'no-store' })
-    .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-    .then(j => { wpData = parseWidget(j.payload); renderWidget(); })
-    .catch(() => { wpData = parseWidget(''); renderWidget(); });
+  if (wpGuest) {
+    /* 不用「加载中」那一屏：本地读取是同步的，直接画 */
+    wpData = parseWidget(readLocalWidget());
+    renderWidget();
+  } else {
+    fetch('/api/admin/widgets/' + it.id, { headers: { 'X-Requested-With': 'unav' }, cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then(j => { wpData = parseWidget(j.payload); renderWidget(); })
+      .catch(() => { wpData = parseWidget(''); renderWidget(); });
+  }
   /* 日历没有实例数据，但「休 / 班」角标来自另一个接口：
      首次进页面时若那次请求失败（离线、限流），这里补一次，免得日历一直没角标 */
   if (wpKind === 'calendar') {
@@ -1491,14 +1551,17 @@ function renderWidget() {
 }
 
 /* 实时保存：输入时 600ms 防抖，关闭面板时强制落一次。
-   PUT 整份 payload 覆盖，后端只做长度兜底。 */
+   已登录 → PUT 整份 payload 覆盖（后端只做长度兜底）；
+   访客 → 只写本机 localStorage，一个请求都不发。 */
 function saveWidgetNow() {
   if (!wpItem || !wpData) return;
   clearTimeout(wpTimer);
+  const payload = JSON.stringify(wpData);
+  if (wpGuest) { writeLocalWidget(payload); return; }
   fetch('/api/admin/widgets/' + wpItem.id, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'unav' },
-    body: JSON.stringify({ payload: JSON.stringify(wpData) })
+    body: JSON.stringify({ payload })
   }).catch(() => ctxToast('保存失败，请检查网络'));
 }
 function scheduleSave() { clearTimeout(wpTimer); wpTimer = setTimeout(saveWidgetNow, 600); }
@@ -1508,7 +1571,9 @@ function closeWidget() {
   if (wpData) saveWidgetNow();
   $('#wpanel').classList.remove('open');
   $('#wpBody').innerHTML = '';
+  $('#wpLocal').hidden = true;
   wpItem = null; wpData = null;
+  wpGuest = false; wpLocalKey = '';
 }
 $('#wpClose').onclick = closeWidget;
 $('#wpanel').addEventListener('click', e => { if (e.target.id === 'wpanel') closeWidget(); });
