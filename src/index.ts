@@ -12,6 +12,7 @@ import { getBackupCfg, putBackupCfg, runBackupNow, scheduledBackup, listBackups,
 import * as s3 from './routes/s3';
 import { linkCheck } from './routes/linkcheck';
 import { aboutInfo, checkLatest, extensionInfo } from './routes/about';
+import * as ai from './routes/ai';
 import type { Env } from './lib/schema';
 
 const API = '/api/';
@@ -193,6 +194,22 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
       const rl = await lim('extension', 20);
       if (rl) return rl;
       return extensionInfo(env, req);
+    }
+    /* AI 模型：配置读写 / 连通性测试 / 卡片补全。都打外网，各自单独限流 */
+    if (a === 'ai') {
+      if (m === 'GET' && !parts[2]) return ai.aiInfo(env, req);
+      if (m === 'PUT' && !parts[2]) return ai.aiSave(env, req);
+      if (m === 'POST' && parts[2] === 'test') {
+        const rl = await lim('ai-test', 6);
+        if (rl) return rl;
+        return ai.aiTest(env, req);
+      }
+      if (m === 'POST' && parts[2] === 'fill') {
+        const rl = await lim('ai-fill', 30);
+        if (rl) return rl;
+        return ai.aiFill(env, req);
+      }
+      return bad('未知的 AI 接口');
     }
     if (m === 'GET' && a === 'stats') return stats(env, req);
     if (m === 'GET' && a === 'users') return admin.listUsers(env, req);

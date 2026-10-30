@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { useStore } from '../store';
 import { ElMessage } from 'element-plus';
-import { Setting, FolderOpened, Files, TrendCharts, User, SwitchButton, ArrowRight, Picture, InfoFilled, Grid, Collection, ChromeFilled } from '@element-plus/icons-vue';
+import { Setting, FolderOpened, Files, TrendCharts, User, SwitchButton, ArrowRight, Picture, InfoFilled, Grid, Collection, ChromeFilled, MagicStick } from '@element-plus/icons-vue';
 import { logoSrc } from '../lib/brand';
 import ConfigPanel from './ConfigPanel.vue';
 import GroupsPanel from './GroupsPanel.vue';
@@ -14,6 +14,7 @@ import StatsPanel from './StatsPanel.vue';
 import UsersPanel from './UsersPanel.vue';
 import AboutPanel from './AboutPanel.vue';
 import ExtensionPanel from './ExtensionPanel.vue';
+import AiPanel from './AiPanel.vue';
 
 const store = useStore();
 const active = ref(store.tab || 'config');
@@ -24,6 +25,8 @@ const menus = [
   { key: 'config', label: '页面配置', icon: Setting },
   { key: 'groups', label: '分组与卡片', icon: FolderOpened },
   { key: 'widgets', label: '组件管理', icon: Collection },
+  /* AI 是给卡片编辑用的辅助能力，紧跟在「组件管理」后面，日常管理功能往后排 */
+  { key: 'ai', label: 'AI 模型管理', icon: MagicStick },
   { key: 'images', label: '图片管理', icon: Picture },
   { key: 'icons', label: '图标管理', icon: Grid },
   { key: 'backup', label: '备份与导入', icon: Files },
@@ -39,7 +42,7 @@ const sideLogo = computed(() => logoSrc(store.config?.favicon));
 
 const current = computed(() => ({
   config: ConfigPanel, groups: GroupsPanel, widgets: WidgetsPanel, images: ImagesPanel, icons: IconsPanel, backup: BackupPanel,
-  stats: StatsPanel, users: UsersPanel, about: AboutPanel, ext: ExtensionPanel,
+  stats: StatsPanel, users: UsersPanel, about: AboutPanel, ext: ExtensionPanel, ai: AiPanel,
 }[active.value] || ConfigPanel));
 
 async function logout() {

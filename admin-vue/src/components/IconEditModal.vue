@@ -240,6 +240,41 @@ async function fetchFavicon() {
   }
 }
 
+/* ---------- AI 补全 ----------
+   只做「填表」，不发保存请求：补完用户还能改，最后仍要点「保存」才落库。
+   模型没配好时后端会退化成只填网页自带信息（标题/描述/主题色），不是报错。 */
+const aiFilling = ref(false);
+async function aiFill() {
+  const u = f.url.trim();
+  if (!u) return ElMessage.warning('请先填写默认地址');
+  aiFilling.value = true;
+  try {
+    const r: any = await post('/api/admin/ai/fill', { url: u });
+    const it = r.item || {};
+    if (it.title) f.title = String(it.title).slice(0, 20);
+    if (it.description) f.description = String(it.description).slice(0, 100);
+    if (it.color && /^#[0-9a-f]{6}$/i.test(it.color)) f.background_color = it.color;
+    /* 图标只在模型真的给出可用名字时才切到「在线图标」tab；
+       给不出就保持原样（前台会退回首字母色块），别把用户原来的图刷掉 */
+    if (it.icon_name) {
+      f.icon_type = 'iconify';
+      f.icon_name = String(it.icon_name);
+      f.icon_url = '';
+    }
+    if (it.group_title) {
+      const g = (props.groups || []).find((x) => x.title === it.group_title);
+      if (g) f.group_id = g.id;
+    }
+    const note = (r.notes || [])[0];
+    if (r.source === 'ai') ElMessage.success('已补全，确认无误后点保存');
+    else ElMessage.warning(note || '只填入了网页自带信息');
+  } catch (err: any) {
+    ElMessage.error('AI 补全失败：' + (err?.message || '未知错误'));
+  } finally {
+    aiFilling.value = false;
+  }
+}
+
 /* ---------- 从项目已有图标中挑一个（弹窗） ----------
    入口是「图像地址」行里的「从项目图标选」按钮，弹窗里列出全站卡片正在用的图标
    （复用 /api/admin/images，只取 source=card，按 url 去重）。
@@ -420,7 +455,19 @@ function chooseImg(it: PickImg) {
       </el-row>
       <el-form-item label="默认地址 *">
         <div style="display:flex;gap:8px;width:100%">
-          <el-input v-model="f.url" placeholder="https://" />
+          <el-input v-model="f.url" placeholder="https://">
+            <!-- AI 补全放在输入框内右侧：粘贴完网址不用移开鼠标就能点 -->
+            <template #suffix>
+              <button
+                type="button" class="ai-fill" :class="{ busy: aiFilling }" :disabled="aiFilling"
+                title="按这个网址补全标题、描述、图标、主题色与分组"
+                @click.stop="aiFill"
+              >
+                <IIcon name="ri:magic-line" :size="13" />
+                <span>{{ aiFilling ? '补全中' : 'AI 补全' }}</span>
+              </button>
+            </template>
+          </el-input>
           <el-button :loading="fetchingIcon" @click="fetchFavicon">
             <IIcon name="ri:search-line" :size="14" class="btn-ico" />获取图标
           </el-button>
@@ -566,6 +613,29 @@ function chooseImg(it: PickImg) {
 .btn-ico {
   margin-right: 5px;
 }
+
+/* 地址框内的 AI 补全按钮：小胶囊，跟主题色走；窄屏只留图标 */
+.ai-fill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  margin-left: 4px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--sp-accent);
+  background: rgba(var(--sp-accent-rgb), .1);
+  border: 1px solid rgba(var(--sp-accent-rgb), .28);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, opacity .15s;
+}
+.ai-fill:hover:not(:disabled) { background: rgba(var(--sp-accent-rgb), .18); border-color: var(--sp-accent); }
+.ai-fill:disabled { cursor: default; opacity: .6; }
+.ai-fill.busy { opacity: .75; }
 
 /* 换组提示：比正文小一档、主题色描边，放在下拉框下面一行，不占表单项高度 */
 .g-move-tip {
