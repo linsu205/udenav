@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, computed } from 'vue';
-import { get, put, post } from '../api';
+import { get, put, post, del } from '../api';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { MagicStick, Key, Connection, DataLine, Refresh } from '@element-plus/icons-vue';
 
@@ -39,9 +39,14 @@ const saving = ref(false);
 const testing = ref(false);
 const info = ref<any>(null);
 
-const form = reactive({ switch_on: true, base_url: '', model: '', daily_limit: 50, provider: 'openai' as 'openai' | 'cf' });
+const form = reactive({ name: '', switch_on: true, base_url: '', model: '', daily_limit: 50, provider: 'openai' as 'openai' | 'cf' });
 const keyInput = ref('');
 const preset = ref<string>('custom');
+/* 模型库：点「保存设置」会自动记一条，之后可在这里直接切换 / 编辑 / 删除 */
+const models = ref<any[]>([]);
+const activeId = ref('');
+/** 非空表示正在编辑某条已有记录，保存时更新那条而不是新建 */
+const editingId = ref('');
 
 const curPreset = computed(() => PRESETS.find((p) => p.key === preset.value) || PRESETS[PRESETS.length - 1]);
 /* 内置通道没有地址和密钥，界面上就把这两栏收起来，免得用户以为漏填 */
@@ -73,6 +78,14 @@ async function load() {
     form.daily_limit = Number(r.daily_limit) || 50;
     form.provider = r.provider === 'cf' ? 'cf' : 'openai';
     preset.value = matchPreset(form.provider, form.base_url, form.model);
+    /* 模型库随配置一起返回，省一次请求 */
+    models.value = Array.isArray(r.models?.list) ? r.models.list : [];
+    activeId.value = String(r.models?.active_id || '');
+    /* 备注名取自「当前生效的那条记录」；正在编辑别的记录时不要覆盖 */
+    if (!editingId.value) {
+      const act = models.value.find((m: any) => m.id === activeId.value);
+      form.name = act?.name || '';
+    }
   } catch (e: any) {
     ElMessage.error('读取 AI 配置失败：' + (e?.message || '未知错误'));
   } finally {
@@ -107,6 +120,9 @@ async function save() {
       base_url: form.base_url,
       model: form.model,
       daily_limit: form.daily_limit,
+      /* 有 id = 更新那条记录；没有就按「通道+地址+模型」去重后新建 */
+      id: editingId.value || undefined,
+      name: form.name.trim(),
     };
     /* 不传 key 表示「保持原密钥」，避免每次保存设置都把密钥清空 */
     if (keyInput.value.trim()) body.key = keyInput.value.trim();
@@ -116,6 +132,11 @@ async function save() {
     if (r?.base_url) form.base_url = r.base_url;
     if (r?.model) form.model = r.model;
     if (Number(r?.daily_limit) > 0) form.daily_limit = Number(r.daily_limit);
+    /* 保存即写入模型库，直接用接口回传的列表刷新，省一次请求 */
+    models.value = Array.isArray(r.models?.list) ? r.models.list : [];
+    activeId.value = String(r.models?.active_id || '');
+    /* 保存即生效，所以之后的表单就附着在刚写入/更新的这条记录上 */
+    editingId.value = activeId.value;
     keyInput.value = '';
     ElMessage.success('已保存');
   } catch (e: any) {
@@ -138,6 +159,60 @@ async function clearKey() {
     ElMessage.success('密钥已清除');
   } catch (e: any) {
     ElMessage.error('清除失败：' + (e?.message || '未知错误'));
+  }
+}
+
+/* ---------- 模型记录：编辑 / 切换 / 删除 ----------
+   「编辑」把记录填回上面的表单并记住 id，之后点「保存设置」= 更新这条；
+   没点编辑就改表单保存，则按「通道+地址+模型」去重后新建一条。 */
+
+function editRecord(m: any) {
+  editingId.value = m.id;
+  form.name = m.name || '';
+  form.provider = m.provider === 'cf' ? 'cf' : 'openai';
+  form.base_url = m.base_url || '';
+  form.model = m.model || '';
+  form.daily_limit = Number(m.daily_limit) || 50;
+  preset.value = matchPreset(form.provider, form.base_url, form.model);
+  /* 接口只回密钥末四位，编辑时输入框是空的；要换密钥就重新粘一次 */
+  keyInput.value = '';
+  ElMessage.info('已载入上方表单，改完点「保存设置」');
+}
+
+/** 退出编辑态，回到「新增」：表单清空并停在「自定义」 */
+function newRecord() {
+  editingId.value = '';
+  form.name = '';
+  applyPreset('custom');
+  keyInput.value = '';
+}
+
+async function switchRecord(m: any) {
+  if (m.id === activeId.value) return;
+  try {
+    const r: any = await post('/api/admin/ai/models/active', { id: m.id });
+    activeId.value = String(r.active_id || '');
+    ElMessage.success(`已切换到「${m.name}」`);
+    await load();
+  } catch (err: any) {
+    ElMessage.error('切换失败：' + (err?.message || '未知错误'));
+  }
+}
+
+async function removeRecord(m: any) {
+  try {
+    await ElMessageBox.confirm(`删除后「${m.name}」这条记录不可恢复。确定删除？`, '删除模型记录', {
+      type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消', lockScroll: false,
+    });
+  } catch { return; }
+  try {
+    const r: any = await del('/api/admin/ai/models?id=' + encodeURIComponent(m.id));
+    models.value = Array.isArray(r.list) ? r.list : [];
+    activeId.value = String(r.active_id || '');
+    if (editingId.value === m.id) newRecord();
+    ElMessage.success('已删除');
+  } catch (err: any) {
+    ElMessage.error('删除失败：' + (err?.message || '未知错误'));
   }
 }
 
@@ -178,6 +253,13 @@ onMounted(load);
     <div class="sp-card">
       <div class="sp-card-title">服务商</div>
       <el-form label-width="104px" label-position="left" class="ai-form">
+        <el-form-item label="备注名">
+          <el-input v-model="form.name" maxlength="40" placeholder="给这个模型起个好认的名字，例如 DeepSeek·主用" />
+          <div v-if="editingId" class="ai-hint">
+            正在编辑已有记录 <b>{{ form.name || '（未命名）' }}</b>
+            <el-button text class="ai-rec-cancel" @click="newRecord">取消编辑</el-button>
+          </div>
+        </el-form-item>
         <el-form-item label="预设">
           <div class="ai-presets">
             <button
@@ -228,6 +310,46 @@ onMounted(load);
           </div>
         </el-form-item>
       </el-form>
+    </div>
+
+    <!-- 模型记录：每次保存配置都会记一条，之后可直接切换 / 编辑 / 删除 -->
+    <div class="sp-card">
+      <div class="sp-card-title">
+        模型记录
+        <span class="ai-rec-count">共 {{ models.length }} 条</span>
+      </div>
+      <div v-if="!models.length" class="ai-rec-empty">
+        还没有记录，在上面填好配置点「保存设置」就会生成第一条
+      </div>
+      <div v-else class="ai-rec-list">
+        <div v-for="m in models" :key="m.id" class="ai-rec" :class="{ on: m.id === activeId }">
+          <span class="ai-rec-ico"><IIcon name="ri:magic-line" :size="14" /></span>
+          <div class="ai-rec-main">
+            <div class="ai-rec-name">
+              {{ m.name }}
+              <span v-if="m.id === activeId" class="ai-rec-badge">生效中</span>
+            </div>
+            <div class="ai-rec-sub">
+              {{ m.provider === 'cf' ? '内置通道' : (m.base_url || '自定义') }} · {{ m.model }}
+            </div>
+          </div>
+          <div class="ai-rec-ops">
+            <button type="button" class="ai-rec-op" title="编辑" @click="editRecord(m)">
+              <IIcon name="ri:pencil-line" :size="14" />
+            </button>
+            <button
+              type="button" class="ai-rec-op" :class="{ dis: m.id === activeId }"
+              :title="m.id === activeId ? '当前已生效' : '切换为当前模型'"
+              :disabled="m.id === activeId" @click="switchRecord(m)"
+            >
+              <IIcon name="ri:link" :size="14" />
+            </button>
+            <button type="button" class="ai-rec-op danger" title="删除" @click="removeRecord(m)">
+              <IIcon name="ri:delete-bin-line" :size="14" />
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="sp-card">
@@ -311,6 +433,85 @@ onMounted(load);
 
 .ai-key { display: flex; align-items: center; gap: 8px; width: 100%; }
 .ai-clear { color: var(--sp-danger, #e24b4a); flex: none; }
+
+/* 模型记录列表：白底 + 分割线的简洁行式，跟分组/卡片列表保持一致 */
+.ai-rec-count { margin-left: 8px; font-size: 11.5px; font-weight: 400; color: var(--sp-faint); }
+.ai-rec-empty { padding: 14px 2px; font-size: 12.5px; color: var(--sp-faint); line-height: 1.6; }
+
+.ai-rec-list { display: flex; flex-direction: column; }
+.ai-rec {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 2px;
+  border-top: 1px solid var(--sp-border);
+}
+.ai-rec:first-child { border-top: none; }
+.ai-rec.on { background: rgba(var(--sp-accent-rgb), .06); }
+
+.ai-rec-ico {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  color: var(--sp-accent);
+  background: rgba(var(--sp-accent-rgb), .12);
+}
+
+.ai-rec-main { flex: 1 1 auto; min-width: 0; }
+.ai-rec-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sp-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-rec-badge {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--sp-ok);
+  background: rgba(var(--sp-ok-rgb), .12);
+}
+.ai-rec-sub {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--sp-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-rec-ops { display: flex; align-items: center; gap: 2px; flex: none; }
+.ai-rec-op {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font: inherit;
+  color: var(--sp-dim);
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: color .15s, background .15s;
+}
+.ai-rec-op:hover { color: var(--sp-text); background: var(--sp-ctrl); }
+.ai-rec-op.danger:hover { color: var(--sp-danger, #e24b4a); background: rgba(var(--sp-danger-rgb, 226, 75, 74), .12); }
+.ai-rec-op:disabled { cursor: default; opacity: .3; }
+.ai-rec-op.dis:disabled { color: var(--sp-ok); opacity: .55; }
+
+.ai-rec-cancel { margin-left: 6px; padding: 0; height: auto; font-size: 11.5px; }
 
 .ai-switch-row { display: flex; align-items: center; gap: 10px; }
 .ai-switch-tip { font-size: 12px; color: var(--sp-faint); }

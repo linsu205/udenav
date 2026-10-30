@@ -19,6 +19,8 @@ import type { Env } from '../lib/schema';
 
 const CFG_KEY = 'ai_cfg';
 const USAGE_KEY = 'ai_usage';
+/** 模型记录（多条）整体存成一个 blob，跟 ai_cfg 同表，不需要数据库迁移 */
+const MODELS_KEY = 'ai_models';
 
 type AiCfg = {
   /** 走哪种通道：openai = 任何 OpenAI 兼容的 HTTP 服务；cf = 本站 Cloudflare Workers AI 绑定（免密钥、不走外网） */
@@ -42,6 +44,22 @@ const DEFAULT_CFG: AiCfg = {
   key: '',
   daily_limit: 50,
 };
+
+/** 模型库里的一条记录：本质是一份「已保存的 AI 配置」，比 AiCfg 多备注名和创建时间 */
+type AiModelRecord = {
+  id: string;
+  /** 备注名，如「DeepSeek·主用」；留空则列表里回退显示模型名 */
+  name: string;
+  provider: 'openai' | 'cf';
+  base_url: string;
+  model: string;
+  /** 密文（enc: 前缀）；和历史明文兼容 */
+  key: string;
+  daily_limit: number;
+  created_at: number;
+};
+
+type AiModelsBlob = { active_id: string; list: AiModelRecord[] };
 
 /**
  * Workers AI 的默认模型。
@@ -98,6 +116,89 @@ async function persistCfg(env: Env, cfg: AiCfg): Promise<void> {
     .prepare('INSERT INTO app_setting (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at')
     .bind(CFG_KEY, JSON.stringify(stored), Date.now())
     .run();
+}
+
+/* ---------------- 模型记录读写 ---------------- */
+
+async function loadModels(env: Env): Promise<AiModelsBlob> {
+  const row = await env.DB.prepare('SELECT value FROM app_setting WHERE key = ?').bind(MODELS_KEY).first<{ value: string }>();
+  if (!row?.value) return { active_id: '', list: [] };
+  try {
+    const b = JSON.parse(row.value) as Partial<AiModelsBlob>;
+    const secret = await getSecret(env);
+    const list: AiModelRecord[] = Array.isArray(b.list)
+      ? await Promise.all(
+          b.list
+            .filter((r: any) => r && typeof r.id === 'string' && r.id)
+            .map(async (r: any): Promise<AiModelRecord> => ({
+              id: String(r.id),
+              name: typeof r.name === 'string' ? r.name.slice(0, 40) : '',
+              provider: r.provider === 'cf' ? 'cf' : 'openai',
+              base_url: typeof r.base_url === 'string' ? r.base_url : '',
+              model: typeof r.model === 'string' ? r.model.slice(0, 120) : '',
+              key: typeof r.key === 'string' && r.key ? await decryptSecret(r.key, secret) : '',
+              daily_limit:
+                Number(r.daily_limit) > 0 ? Math.min(1000, Math.round(Number(r.daily_limit))) : DEFAULT_CFG.daily_limit,
+              created_at: Number(r.created_at) || 0,
+            })),
+        )
+      : [];
+    /* active_id 指向的记录若已被删掉，就退回空，避免界面高亮一个不存在的条目 */
+    const active_id = typeof b.active_id === 'string' && list.some((r) => r.id === b.active_id) ? b.active_id : '';
+    return { active_id, list };
+  } catch {
+    return { active_id: '', list: [] };
+  }
+}
+
+/** 落库：密钥只存密文 */
+async function persistModels(env: Env, blob: AiModelsBlob): Promise<void> {
+  const secret = await getSecret(env);
+  const list = await Promise.all(
+    blob.list.map(async (r) => ({ ...r, key: r.key ? await encryptSecret(r.key, secret) : '' })),
+  );
+  await env.DB
+    .prepare('INSERT INTO app_setting (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at')
+    .bind(MODELS_KEY, JSON.stringify({ active_id: blob.active_id, list }), Date.now())
+    .run();
+}
+
+function newModelId(): string {
+  return 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+/** 记录对外的形状：跟 view() 一致，密钥只给末四位 */
+function recordView(r: AiModelRecord) {
+  return {
+    id: r.id,
+    name: r.name || r.model,
+    provider: r.provider,
+    base_url: r.base_url,
+    model: r.model,
+    daily_limit: r.daily_limit,
+    key_hint: maskKey(r.key),
+    created_at: r.created_at,
+  };
+}
+
+function modelsView(blob: AiModelsBlob) {
+  return { active_id: blob.active_id, list: blob.list.map(recordView) };
+}
+
+/** 把一条记录写成「当前生效配置」，调用点只认 ai_cfg，不用感知模型库的存在 */
+async function activateRecord(env: Env, rec: AiModelRecord): Promise<void> {
+  const cfg = await loadCfg(env);
+  cfg.provider = rec.provider;
+  cfg.base_url = rec.base_url;
+  cfg.model = rec.model;
+  cfg.key = rec.key;
+  cfg.daily_limit = rec.daily_limit;
+  await persistCfg(env, cfg);
+}
+
+/** 记录的去重键：同「通道 + 地址 + 模型」视为同一条，反复保存不会堆出一堆重复记录 */
+function modelKey(p: { provider: string; base_url: string; model: string }): string {
+  return `${p.provider}|${p.base_url}|${p.model}`;
 }
 
 /* ---------------- 用量记账 ---------------- */
@@ -183,7 +284,8 @@ function view(cfg: AiCfg, usage: Usage, hasAI = false) {
 export async function aiInfo(env: Env, req: Request): Promise<Response> {
   await requireRole(req, env, 'editor');
   const cfg = await loadCfg(env);
-  return json({ ok: true, ...view(cfg, await loadUsage(env), !!env.AI) });
+  const blob = await loadModels(env);
+  return json({ ok: true, ...view(cfg, await loadUsage(env), !!env.AI), models: modelsView(blob) });
 }
 
 export async function aiSave(env: Env, req: Request): Promise<Response> {
@@ -519,4 +621,35 @@ function metaOnly(meta: PageMeta | null, u: URL, fav?: { dataUrl: string } | nul
   const title = (first || fallbackTitle).slice(0, 20);
   const description = (meta?.description || '').replace(/^[，。\s]+/, '').slice(0, 100);
   return { title, description, color: meta?.color || '', icon_url: fav?.dataUrl || '', icon_name: '', group_title: '' };
+}
+
+/* ---------------- 模型记录（多条：切换 / 删除） ----------------
+   库里始终只留一份「当前生效配置」ai_cfg，模型记录是额外的「我的模型库」。
+   切换 = 把记录内容写回 ai_cfg，所以调用点（aiFill / aiTest）不用感知记录的存在。 */
+
+/** 切换当前生效模型 */
+export async function aiModelsActive(env: Env, req: Request): Promise<Response> {
+  await requireRole(req, env, 'owner');
+  const body = await readJson(req);
+  const id = String(body.id || '').trim();
+  const blob = await loadModels(env);
+  const rec = blob.list.find((r) => r.id === id);
+  if (!rec) return bad('记录不存在');
+  blob.active_id = id;
+  await persistModels(env, blob);
+  await activateRecord(env, rec);
+  return json({ ok: true, ...modelsView(blob) });
+}
+
+/** 删除一条记录；删掉的若是当前生效记录，只摘掉生效标记，ai_cfg 仍保持可用 */
+export async function aiModelsDelete(env: Env, req: Request): Promise<Response> {
+  await requireRole(req, env, 'owner');
+  const id = String(new URL(req.url).searchParams.get('id') || '').trim();
+  const blob = await loadModels(env);
+  const next = blob.list.filter((r) => r.id !== id);
+  if (next.length === blob.list.length) return bad('记录不存在');
+  blob.list = next;
+  if (blob.active_id === id) blob.active_id = '';
+  await persistModels(env, blob);
+  return json({ ok: true, ...modelsView(blob) });
 }

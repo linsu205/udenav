@@ -209,6 +209,9 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
         if (rl) return rl;
         return ai.aiFill(env, req);
       }
+      /* 模型记录：列表随 aiInfo 一起返回，这里只补「切换 / 删除」两个写操作 */
+      if (m === 'POST' && parts[2] === 'models' && parts[3] === 'active') return ai.aiModelsActive(env, req);
+      if (m === 'DELETE' && parts[2] === 'models') return ai.aiModelsDelete(env, req);
       return bad('未知的 AI 接口');
     }
     if (m === 'GET' && a === 'stats') return stats(env, req);
