@@ -1108,11 +1108,54 @@ export async function importAll(env: Env, req: Request): Promise<Response> {
   return json({ ok: true, confirm_used: confirm, ...counts });
 }
 
-/* ---------------- 根据网址抓取站点图标（参照 sun-panel「获取图标」） ---------------- */
+/* ---------------- 网页信息 + 站点真实图标一次性抓取（AI 补全与「获取图标」复用） ---------------- */
 
-const FETCH_TIMEOUT_MS = 8000;
-const MAX_PAGE_BYTES = 300_000;    // 页面 HTML 最多读 300KB，够解析 <link> 了
-const MAX_ICON_BYTES = 300 * 1024; // 图标最大 300KB
+/** 首页抓取超时（原 8s → 6s 提速） */
+const FETCH_TIMEOUT_MS = 6000;
+/** 首页 HTML 最多读 200KB，够解析 <link>/<meta>（原 300KB） */
+const PAGE_BYTES = 200_000;
+/** 单个图标请求超时 */
+const ICON_TIMEOUT_MS = 5000;
+/** 图标最大 300KB */
+const MAX_ICON_BYTES = 300 * 1024;
+/** 真实像素小于此尺寸（如 1x1 占位像素）直接跳过：用户要求「图标太小就不要了」 */
+export const MIN_ICON_DIM = 16;
+/** 字节数小于此值视为无效占位直接跳过 */
+export const MIN_ICON_BYTES = 200;
+
+export type PageMeta = {
+  title: string;
+  description: string;
+  color: string;
+  host: string;
+  keywords?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+};
+
+export type PageIcon = {
+  dataUrl: string;
+  bytes: number;
+  contentType: string;
+};
+
+export type PageInfo = {
+  meta: PageMeta | null;
+  icon: PageIcon | null;
+  error?: string;
+};
+
+/** 明显是内网/本机的地址不抓：Worker 不该被当成内网探测工具 */
+function isPrivateHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (!h) return true;
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (!m) return false;
+  const a = Number(m[1]), b = Number(m[2]);
+  return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
+}
 
 function sniffImage(buf: ArrayBuffer): string | null {
   const b = new Uint8Array(buf, 0, Math.min(16, buf.byteLength));
@@ -1126,6 +1169,46 @@ function sniffImage(buf: ArrayBuffer): string | null {
   return null;
 }
 
+/** 解析真实像素尺寸；解析不出（如 SVG）返回 null（null 时不过滤，避免误杀有效图标） */
+function imageDims(buf: ArrayBuffer, ct: string): { w: number; h: number } | null {
+  const b = new Uint8Array(buf);
+  const u16 = (o: number) => (b[o] | (b[o + 1] << 8));
+  const u32 = (o: number) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
+  try {
+    if (ct === 'image/png' && b.byteLength >= 24) {
+      return { w: u32(16), h: u32(20) };
+    }
+    if (ct === 'image/gif' && b.byteLength >= 10) {
+      return { w: u16(6), h: u16(8) };
+    }
+    if (ct === 'image/x-icon' && b.byteLength >= 8) {
+      const n = b[4] | (b[5] << 8);
+      let w = 0, h = 0;
+      for (let i = 0; i < n; i++) {
+        const off = 6 + i * 16;
+        const iw = b[off] || 256, ih = b[off + 1] || 256;
+        if (iw > w) w = iw;
+        if (ih > h) h = ih;
+      }
+      return { w, h };
+    }
+    if (ct === 'image/webp' && b.byteLength >= 30) {
+      const fourcc = String.fromCharCode(b[12], b[13], b[14], b[15]);
+      if (fourcc === 'VP8X') {
+        return { w: (b[24] | (b[25] << 8) | (b[26] << 16)) + 1, h: (b[27] | (b[28] << 8) | (b[29] << 16)) + 1 };
+      }
+      if (fourcc === 'VP8 ' && b.byteLength >= 30) {
+        return { w: (u16(26) + 1), h: (u16(28) + 1) };
+      }
+      if (fourcc === 'VP8L' && b.byteLength >= 25) {
+        const bits = b[21] | (b[22] << 8) | (b[23] << 16) | (b[24] << 24);
+        return { w: (bits & 0x3fff) + 1, h: ((bits >> 14) & 0x3fff) + 1 };
+      }
+    }
+  } catch { /* 解析失败当作未知 */ }
+  return null;
+}
+
 function toBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   let bin = '';
@@ -1134,12 +1217,172 @@ function toBase64(buf: ArrayBuffer): string {
   return btoa(bin);
 }
 
-async function fetchT(url: string, ua: string): Promise<Response> {
-  return fetch(url, {
-    redirect: 'follow',
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    headers: { 'user-agent': ua, 'accept': '*/*' },
+/** 字节看起来是 HTML/文本（而不是图片）—— 典型是 404 页被服务器谎报成 image/*。这种绝不能当图标存下来 */
+function looksLikeHtml(buf: ArrayBuffer): boolean {
+  const head = new Uint8Array(buf, 0, Math.min(512, buf.byteLength));
+  const s = String.fromCharCode(...head).toLowerCase();
+  if (s.includes('<svg')) return false; // 真 SVG 放行（也可能以 <?xml 开头）
+  return s.includes('<html') || s.includes('<!doctype') || s.includes('<iframe') || s.includes('<head') || s.includes('<body') || s.includes('<script') || s.includes('<style');
+}
+
+async function fetchText(url: string, ua: string, timeoutMs: number, maxBytes: number): Promise<string | null> {
+  try {
+    const r = await fetch(url, {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { 'user-agent': ua, 'accept': 'text/html,application/xhtml+xml,*/*' },
+    });
+    if (!r.ok) return null;
+    const t = await r.text();
+    return t.slice(0, maxBytes);
+  } catch { return null; }
+}
+
+async function fetchIconBytes(url: string, ua: string, skipSizeCheck: boolean): Promise<PageIcon | null> {
+  try {
+    const r = await fetch(url, {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(ICON_TIMEOUT_MS),
+      headers: { 'user-agent': ua, 'accept': 'image/*,*/*' },
+    });
+    if (!r.ok) return null;
+    const buf = await r.arrayBuffer();
+    if (!buf.byteLength || buf.byteLength > MAX_ICON_BYTES) return null;
+    const declared = (r.headers.get('content-type') || '').toLowerCase();
+    const declaredImg = declared.startsWith('image/') ? declared.split(';')[0] : null;
+    const sniffed = sniffImage(buf);
+    /* 服务端可能谎报 Content-Type（如把 404 页标成 image/x-icon）：
+       先看真实字节是不是图片，HTML/文本一律当无效图标丢弃，别把网页存成图标 */
+    if (looksLikeHtml(buf)) return null;
+    const ct = sniffed || (declaredImg === 'image/svg+xml' ? 'image/svg+xml' : null);
+    if (!ct) return null;
+    if (ct === 'image/svg+xml') {
+      /* SVG 无固定像素，不按尺寸过滤，但保留字节下限 */
+      if (buf.byteLength < MIN_ICON_BYTES) return null;
+      return { dataUrl: 'data:' + ct + ';base64,' + toBase64(buf), bytes: buf.byteLength, contentType: ct };
+    }
+    /* 太小（占位像素 / 空响应）直接跳过 */
+    if (buf.byteLength < MIN_ICON_BYTES) return null;
+    if (!skipSizeCheck) {
+      const dims = imageDims(buf, ct);
+      /* 解析不出尺寸（被谎报成图片的怪数据）也当作可疑跳过 */
+      if (!dims || dims.w < MIN_ICON_DIM || dims.h < MIN_ICON_DIM) return null;
+    }
+    return { dataUrl: 'data:' + ct + ';base64,' + toBase64(buf), bytes: buf.byteLength, contentType: ct };
+  } catch { return null; }
+}
+
+function attrsOf(tag: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const re = /([a-z-]+)\s*=\s*["']([^"']*)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(tag))) out[m[1].toLowerCase()] = m[2];
+  return out;
+}
+
+function decodeHtml(s: string): string {
+  const map: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+  return s.replace(/&([a-z]+|#\d+);/gi, (mm, e: string) => {
+    if (e[0] === '#') { const c = parseInt(e.slice(1), 10); return isNaN(c) ? mm : String.fromCodePoint(c); }
+    return map[e.toLowerCase()] ?? mm;
   });
+}
+
+function getMetaContent(html: string, key: string): string {
+  const re = /<meta\b[^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    const a = attrsOf(m[0]);
+    const k = (a['name'] || a['property'] || '').toLowerCase();
+    if (k === key.toLowerCase() && a['content'] != null) return decodeHtml(a['content']).trim();
+  }
+  return '';
+}
+
+function getTitle(html: string): string {
+  const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+  return m ? decodeHtml(m[1]).replace(/\s+/g, ' ').trim() : '';
+}
+
+function parseMeta(html: string, base: URL): PageMeta {
+  const title = getTitle(html);
+  const description = getMetaContent(html, 'description') || getMetaContent(html, 'og:description');
+  const color = getMetaContent(html, 'theme-color');
+  const ogTitle = getMetaContent(html, 'og:title');
+  const ogDescription = getMetaContent(html, 'og:description');
+  const ogImage = getMetaContent(html, 'og:image');
+  const keywords = getMetaContent(html, 'keywords');
+  return {
+    title,
+    description,
+    color,
+    host: base.hostname.replace(/^www\./, ''),
+    keywords,
+    ogTitle,
+    ogDescription,
+    ogImage,
+  };
+}
+
+async function pickIcon(html: string, base: URL, ua: string, skipSizeCheck: boolean): Promise<PageIcon | null> {
+  const candidates: { w: number; href: string }[] = [];
+  const re = /<link\b[^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    const tag = m[0];
+    const attrs = attrsOf(tag);
+    const rel = (attrs['rel'] || '').toLowerCase();
+    if (!rel.split(/\s+/).some((r) => r.includes('icon'))) continue;
+    const href = attrs['href'] || '';
+    if (!href) continue;
+    const w = rel.includes('apple-touch') ? 0 : rel.includes('shortcut') ? 1 : 2;
+    try { candidates.push({ w, href: new URL(href, base.toString()).toString() }); } catch { /* 跳过坏地址 */ }
+  }
+  /* 兜底：站点根目录 favicon.ico（大多站点都有，尺寸通常达标） */
+  candidates.push({ w: 9, href: new URL('/favicon.ico', base.origin).toString() });
+  candidates.sort((a, b) => a.w - b.w);
+  for (const c of candidates) {
+    const ic = await fetchIconBytes(c.href, ua, skipSizeCheck);
+    if (ic) return ic;
+  }
+  return null;
+}
+
+/**
+ * 一次抓取：首页元信息 + 站点真实 favicon 一起拿回，页面只下载一次。
+ * - skipSizeCheck=false（默认，AI 补全用）：图标按 MIN_ICON_DIM / MIN_ICON_BYTES 过滤掉占位像素
+ * - skipSizeCheck=true（「获取图标」按钮用）：只过字节下限，保留真实小图标
+ */
+export async function fetchPage(url: string, opts?: { skipSizeCheck?: boolean; timeoutMs?: number; maxBytes?: number }): Promise<PageInfo> {
+  const skipSizeCheck = opts?.skipSizeCheck ?? false;
+  const timeoutMs = opts?.timeoutMs ?? FETCH_TIMEOUT_MS;
+  const maxBytes = opts?.maxBytes ?? PAGE_BYTES;
+
+  let target: URL;
+  try {
+    target = new URL(/^https?:\/\//i.test(url) ? url : 'https://' + url);
+  } catch { return { meta: null, icon: null, error: '网址格式不正确' }; }
+  if (target.protocol !== 'http:' && target.protocol !== 'https:') return { meta: null, icon: null, error: '仅支持 http/https 网址' };
+  if (isPrivateHost(target.hostname)) return { meta: null, icon: null, error: '内网或本机地址不抓取' };
+
+  const UA = 'Mozilla/5.0 (compatible; unav-fetch/1.0)';
+  let meta: PageMeta | null = null;
+  let icon: PageIcon | null = null;
+  let error: string | undefined;
+
+  const html = await fetchText(target.toString(), UA, timeoutMs, maxBytes);
+  if (html) {
+    meta = parseMeta(html, target);
+    icon = await pickIcon(html, target, UA, skipSizeCheck);
+  }
+  /* 首页抓不到、或首页里没找到合适图标时，再兜底试根目录 favicon.ico */
+  if (!icon) {
+    const ico = await fetchIconBytes(new URL('/favicon.ico', target.origin).toString(), UA, skipSizeCheck);
+    if (ico) icon = ico;
+    else if (!html) error = '首页与根目录图标均抓取失败';
+  }
+
+  return { meta, icon, error };
 }
 
 export async function favicon(env: Env, req: Request): Promise<Response> {
@@ -1153,45 +1396,9 @@ export async function favicon(env: Env, req: Request): Promise<Response> {
   } catch { return bad('网址格式不正确'); }
   if (target.protocol !== 'http:' && target.protocol !== 'https:') return bad('仅支持 http/https 网址');
 
-  const UA = 'Mozilla/5.0 (compatible; unav-icon-fetch/1.0)';
-  const candidates: string[] = [];
-
-  // 1) 抓首页，解析 <link rel="...icon...">，apple-touch-icon 优先（通常最大最清晰）
-  try {
-    const page = await fetchT(target.toString(), UA);
-    if (page.ok) {
-      const html = (await page.text()).slice(0, MAX_PAGE_BYTES);
-      const base = page.url || target.toString();
-      const found: { w: number; href: string }[] = [];
-      const re = /<link\b[^>]*>/gi;
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(html))) {
-        const tag = m[0];
-        const rel = (tag.match(/\brel\s*=\s*["']([^"']*)["']/i)?.[1] || '').toLowerCase();
-        const href = tag.match(/\bhref\s*=\s*["']([^"']*)["']/i)?.[1] || '';
-        if (!href || !rel.split(/\s+/).some(r => r.includes('icon'))) continue;
-        const w = rel.includes('apple-touch') ? 0 : rel.includes('shortcut') ? 1 : 2;
-        found.push({ w, href });
-      }
-      found.sort((a, b) => a.w - b.w);
-      for (const f of found) { try { candidates.push(new URL(f.href, base).toString()); } catch { /* 跳过坏地址 */ } }
-    }
-  } catch { /* 首页抓不到，直接试 favicon.ico 兜底 */ }
-
-  // 2) 兜底：站点根目录 favicon.ico
-  candidates.push(new URL('/favicon.ico', target.origin).toString());
-
-  for (const u of candidates) {
-    try {
-      const r = await fetchT(u, UA);
-      if (!r.ok) continue;
-      const buf = await r.arrayBuffer();
-      if (buf.byteLength === 0 || buf.byteLength > MAX_ICON_BYTES) continue;
-      const declared = (r.headers.get('content-type') || '').toLowerCase();
-      const ct = declared.startsWith('image/') ? declared.split(';')[0] : sniffImage(buf);
-      if (!ct) continue;
-      return json({ ok: true, icon: 'data:' + ct + ';base64,' + toBase64(buf) });
-    } catch { /* 试下一个候选 */ }
-  }
-  return bad('未找到可用图标', 404);
+  /* 复用 fetchPage：优先真实站点图标，失败只回 404，不让异常 500 */
+  const page = await fetchPage(target.toString(), { skipSizeCheck: true });
+  if (page.icon) return json({ ok: true, icon: page.icon.dataUrl });
+  return bad(page.error || '未找到可用图标', 404);
 }
+

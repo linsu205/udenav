@@ -12,7 +12,7 @@
 // 为什么密钥不能放前端：后台打包产物是公开静态文件，写进前端等于公开密钥。
 
 import { json, bad, readJson } from '../lib/http';
-import { requireRole } from './admin';
+import { requireRole, fetchPage } from './admin';
 import { getSecret } from '../lib/secret';
 import { encryptSecret, decryptSecret } from './webdav';
 import type { Env } from '../lib/schema';
@@ -43,8 +43,10 @@ const DEFAULT_CFG: AiCfg = {
   daily_limit: 50,
 };
 
-/** Workers AI 的默认模型：指令跟随和 JSON 稳定性比 8b 好一档，单价仍然很低 */
-const CF_DEFAULT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+/** Workers AI 的默认模型：补全只是抽几个字段，8B 完全够用，比 70B 快好几倍、错误率更低、更省额度 */
+const CF_DEFAULT_MODEL = '@cf/meta/llama-3.1-8b-instruct';
+/** 旧版默认模型：存量部署里可能已落库，加载时若还是它则自动迁移到新默认（不影响用户手动选的其它 @cf 模型） */
+const OLD_CF_DEFAULT = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 /** 当前配置在这台部署上到底能不能用：cf 通道要看有没有 AI 绑定，openai 通道要看有没有密钥 */
 function ready(env: Env, cfg: AiCfg): boolean {
@@ -67,6 +69,8 @@ async function loadCfg(env: Env): Promise<AiCfg> {
       if (Number(saved.daily_limit) > 0) merged.daily_limit = Math.min(1000, Math.round(Number(saved.daily_limit)));
     } catch { /* 配置坏了就用默认值，不要让整页 500 */ }
   }
+  /* 存量部署若还停在旧版 70B 默认模型，自动迁移到更快的 8B（用户手动选的其它 @cf 模型不受影响） */
+  if (merged.provider === 'cf' && merged.model === OLD_CF_DEFAULT) merged.model = CF_DEFAULT_MODEL;
   if (merged.key) merged.key = await decryptSecret(merged.key, await getSecret(env));
   return merged;
 }
@@ -335,65 +339,7 @@ function isPrivateHost(hostname: string): boolean {
 
 type PageMeta = { title: string; description: string; color: string; host: string };
 
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
-}
-
-function pickMeta(html: string, names: string[]): string {
-  for (const n of names) {
-    const re = new RegExp('<meta[^>]+(?:name|property)=["\']' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '["\'][^>]*>', 'i');
-    const tag = re.exec(html)?.[0];
-    if (!tag) continue;
-    const c = /content=["']([^"']*)["']/i.exec(tag)?.[1];
-    if (c && c.trim()) return decodeEntities(c.trim());
-  }
-  return '';
-}
-
-async function fetchMeta(url: string): Promise<PageMeta> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 9000);
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: {
-        /* 不少站点对非浏览器 UA 直接返回空壳/403，这里伪装成普通 Chrome */
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
-        accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
-        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.6',
-      },
-    });
-  } catch (e: any) {
-    clearTimeout(timer);
-    throw new Error(e?.name === 'AbortError' ? '网页打开超时（9 秒）' : '打不开这个网址：' + (e?.message || '网络错误'));
-  }
-  clearTimeout(timer);
-
-  if (!res.ok) throw new Error('网页返回 ' + res.status + '（可能不允许外部抓取）');
-  const type = res.headers.get('content-type') || '';
-  if (!/html|xml|text/i.test(type)) throw new Error('这个地址不是网页（' + (type || '未知类型') + '）');
-
-  /* 只读前 400KB：大页面没必要整份读，边缘内存省着点 */
-  const buf = await res.arrayBuffer();
-  const html = new TextDecoder('utf-8').decode(buf.slice(0, 400 * 1024));
-
-  const titleTag = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] || '';
-  const title = pickMeta(html, ['og:title', 'twitter:title']) || decodeEntities(titleTag.replace(/\s+/g, ' ').trim());
-  const description = pickMeta(html, ['og:description', 'description', 'twitter:description']).replace(/\s+/g, ' ').slice(0, 200);
-  const colorRaw = pickMeta(html, ['theme-color', 'msapplication-TileColor']);
-  const color = /^#[0-9a-f]{6}$/i.test(colorRaw) ? colorRaw : '';
-
-  let host = '';
-  try { host = new URL(res.url || url).hostname; } catch { host = ''; }
-  return { title, description, color, host };
-}
+/* 网页元信息与图标候选解析已迁移到 admin.ts 的 fetchPage：一次抓取同时产出元信息与真实 favicon，避免页面被重复下载 */
 
 /* ---------------- 图标名校验：AI 给的名字必须真的存在 ---------------- */
 
@@ -448,9 +394,16 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
   if (isPrivateHost(parsed.hostname)) return bad('内网或用本机地址不能抓取，请手填标题');
 
   const notes: string[] = [];
+  /* 一次抓页：元信息 + 站点真实 favicon 一起拿回来（图标已按尺寸门槛过滤）。
+     比「先 fetchMeta 再让模型猜 iconify 名」少一次页面下载，也根除了
+     「模型猜的图标名不存在」这个主要错误源 */
   let meta: PageMeta | null = null;
+  let faviconData: { dataUrl: string; bytes: number; contentType: string } | null = null;
   try {
-    meta = await fetchMeta(parsed.toString());
+    const page = await fetchPage(parsed.toString());
+    meta = page.meta;
+    faviconData = page.icon;
+    if (page.error) notes.push(page.error);
   } catch (e: any) {
     notes.push(e?.message || '网页信息抓取失败');
   }
@@ -459,14 +412,14 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
   const canAi = cfg.enabled && ready(env, cfg);
   const usage = await loadUsage(env);
 
-  /* 没有密钥 / 关了开关 / 今日超额 → 只回网页信息，不算失败 */
+  /* 没有密钥 / 关了开关 / 今日超额 → 只回网页信息 + 真实图标，不算失败 */
   if (!canAi) {
     notes.push(cfg.key ? 'AI 已关闭，只填入了网页自带信息' : '还没有配置 AI 模型，只填入了网页自带信息');
-    return json({ ok: true, source: 'meta', notes, item: metaOnly(meta, parsed) });
+    return json({ ok: true, source: 'meta', notes, item: metaOnly(meta, parsed, faviconData) });
   }
   if (usage.calls >= cfg.daily_limit) {
     notes.push(`今日 AI 调用已达上限（${cfg.daily_limit} 次），只填入了网页自带信息`);
-    return json({ ok: true, source: 'meta', notes, item: metaOnly(meta, parsed) });
+    return json({ ok: true, source: 'meta', notes, item: metaOnly(meta, parsed, faviconData) });
   }
 
   /* 分组候选：让模型只能在已有分组里挑，避免凭空造一个「工具」分组出来 */
@@ -478,9 +431,9 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
     '只输出一个 JSON 对象，不要解释、不要 markdown 代码块。字段：',
     'title：卡片标题，2-6 个汉字（最多 8 字），要像人给网站起的简称，不要照抄整条网页标题；',
     'description：一句话说明，不超过 18 字，说清「这是干什么的」；',
-    'icon：一个真实存在的 Iconify 图标名，形如 "ri:xxx" 或 "mdi:xxx"，必须与网站主题相关；',
-    'color：该品牌/网站的代表色，#RRGGBB；',
+    'color：该品牌/网站的代表色，#RRGGBB，没有就留空字符串；',
     'group：从下面候选里原样挑一个最合适的，没有合适的就留空字符串。',
+    '注意：图标由系统单独抓取站点真实 favicon，你不需要、也不应该返回 icon 字段。',
     '',
     '网址：' + parsed.toString(),
     '网页标题：' + (meta?.title || '（抓不到）'),
@@ -495,7 +448,7 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
     raw = await callChat(env, cfg, [
       { role: 'system', content: '你只输出严格 JSON。' },
       { role: 'user', content: prompt },
-    ], 300);
+    ], 150);
     aiItem = parseLooseJson(raw.text);
     if (!aiItem) notes.push('模型返回的格式不对，已退回网页自带信息');
   } catch (e: any) {
@@ -503,18 +456,30 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
   }
   if (raw) await bumpUsage(env, raw.tokens);
 
-  const base = metaOnly(meta, parsed);
+  const base = metaOnly(meta, parsed, faviconData);
   if (!aiItem) return json({ ok: true, source: 'meta', notes, item: base });
 
   const title = String(aiItem.title || '').trim().slice(0, 20) || base.title;
   const description = String(aiItem.description || '').trim().slice(0, 100) || base.description;
   const color = /^#[0-9a-f]{6}$/i.test(String(aiItem.color || '')) ? String(aiItem.color) : base.color;
 
-  /* 图标：先信模型给的名字，但必须真存在；不存在则拿模型给的名字当关键词去搜，再不行留空 */
-  let iconName = String(aiItem.icon || '').trim();
-  if (iconName && !(await iconExists(iconName))) {
-    notes.push('模型给的图标名不存在，已改用关键词搜索');
-    iconName = await searchIcon(iconName.replace(/^[a-z0-9-]+:/i, '').replace(/-/g, ' '));
+  /* 图标：优先用站点真实 favicon（fetchPage 已按尺寸门槛过滤过，太小的不要）；
+     抓不到 / 太小才回退到模型给的 Iconify 名，并校验存在性、关键词兜底搜索 */
+  let iconUrl = faviconData?.dataUrl || '';
+  let iconName = '';
+  if (!iconUrl && aiItem?.icon) {
+    const nm = String(aiItem.icon || '').trim();
+    if (nm && !(await iconExists(nm))) {
+      notes.push('模型给的图标名不存在，已改用关键词搜索');
+      iconName = await searchIcon(nm.replace(/^[a-z0-9-]+:/i, '').replace(/-/g, ' '));
+    } else {
+      iconName = nm;
+    }
+    if (!iconName) notes.push('没拿到可用图标，将显示标题首字母色块');
+  } else if (iconUrl) {
+    notes.push('已优先采用站点真实图标');
+  } else {
+    notes.push('没抓到站点图标，将显示标题首字母色块');
   }
 
   const gTitle = String(aiItem.group || '').trim();
@@ -524,13 +489,13 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
     ok: true,
     source: 'ai',
     notes,
-    item: { title, description, color, icon_name: iconName, group_title: group },
+    item: { title, description, color, icon_url: iconUrl, icon_name: iconName, group_title: group },
     usage: view(cfg, await loadUsage(env), !!env.AI).usage,
   });
 }
 
-/** 只靠网页自身信息拼出的一套字段（AI 不可用时的兜底） */
-function metaOnly(meta: PageMeta | null, u: URL) {
+/** 只靠网页自身信息拼出的一套字段（AI 不可用时的兜底）；fav 为已抓到的真实站点图标 */
+function metaOnly(meta: PageMeta | null, u: URL, fav?: { dataUrl: string } | null) {
   const host = meta?.host || u.hostname.replace(/^www\./, '');
   const fallbackTitle = host.split('.')[0] || u.hostname;
   const raw = (meta?.title || '').trim();
@@ -538,5 +503,5 @@ function metaOnly(meta: PageMeta | null, u: URL) {
   const first = raw.split(/\s+[-|–—]\s+|\s*[|｜]\s*/)[0].trim();
   const title = (first || fallbackTitle).slice(0, 20);
   const description = (meta?.description || '').replace(/^[，。\s]+/, '').slice(0, 100);
-  return { title, description, color: meta?.color || '', icon_name: '', group_title: '' };
+  return { title, description, color: meta?.color || '', icon_url: fav?.dataUrl || '', icon_name: '', group_title: '' };
 }

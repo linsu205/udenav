@@ -254,9 +254,14 @@ async function aiFill() {
     if (it.title) f.title = String(it.title).slice(0, 20);
     if (it.description) f.description = String(it.description).slice(0, 100);
     if (it.color && /^#[0-9a-f]{6}$/i.test(it.color)) f.background_color = it.color;
-    /* 图标只在模型真的给出可用名字时才切到「在线图标」tab；
-       给不出就保持原样（前台会退回首字母色块），别把用户原来的图刷掉 */
-    if (it.icon_name) {
+    /* 图标优先级：后端已优先抓取站点真实 favicon（data URL）→ 直接切「图片」tab；
+       只有抓不到/太小、且模型给出可用 Iconify 名时才切「在线图标」tab；
+       都给不出就保持原样（前台会退回首字母色块），别把用户原来的图刷掉 */
+    if (it.icon_url) {
+      f.icon_type = 'data';
+      f.icon_url = String(it.icon_url);
+      f.icon_name = '';
+    } else if (it.icon_name) {
       f.icon_type = 'iconify';
       f.icon_name = String(it.icon_name);
       f.icon_url = '';
