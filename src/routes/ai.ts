@@ -306,17 +306,54 @@ export async function aiSave(env: Env, req: Request): Promise<Response> {
   if (typeof body.model === 'string' && body.model.trim()) next.model = body.model.trim();
   /* 内置通道只认 @cf/ 开头的模型名；切过来时别把 deepseek-chat 这种名字带过去 */
   if (next.provider === 'cf' && !/^@cf\//i.test(next.model)) next.model = CF_DEFAULT_MODEL;
+  /* 内置通道不发 HTTP 请求，地址留空，免得记录里挂着上一个服务商的地址 */
+  if (next.provider === 'cf') next.base_url = '';
   if (Number(body.daily_limit) > 0) next.daily_limit = Math.min(1000, Math.max(1, Math.round(Number(body.daily_limit))));
 
-  /* 密钥三种语义：不传/空串 = 保持原值；'clear' = 清空；其他 = 覆盖 */
-  if (typeof body.key === 'string') {
-    const k = body.key.trim();
-    if (k === 'clear') next.key = '';
-    else if (k) next.key = k;
-  }
+  /* 密钥三种语义：不传/空串 = 保持原值；'clear' = 清空；其他 = 覆盖。
+     「原值」以这次保存命中的那条记录为准，不要拿全局 ai_cfg 兜底 ——
+     编辑别的记录时输入框必然是空的，拿 ai_cfg 兜底会把上一条记录的密钥覆盖过来。 */
+  const keyRaw = typeof body.key === 'string' ? body.key.trim() : '';
+  const wantClear = keyRaw === 'clear';
+  const typedKey = keyRaw && !wantClear ? keyRaw : '';
 
+  /* 保存即入模型库：给了 id 就更新那条，没给就按「通道 + 地址 + 模型」去重后新建 */
+  const blob = await loadModels(env);
+  const wantId = String(body.id || '').trim();
+  let rec = wantId ? blob.list.find((r) => r.id === wantId) : undefined;
+  if (!rec) rec = blob.list.find((r) => modelKey(r) === modelKey(next));
+  if (rec) {
+    rec.name = String(body.name || '').trim().slice(0, 40);
+    rec.provider = next.provider;
+    rec.base_url = next.base_url;
+    rec.model = next.model;
+    rec.daily_limit = next.daily_limit;
+    if (wantClear) rec.key = '';
+    else if (typedKey) rec.key = typedKey;
+    /* 都没给 = 保持这条记录原来的密钥 */
+  } else {
+    /* 新建一条：没填密钥时，只有「同一个接口地址」才继承当前密钥。
+       换了服务商还把上家的密钥带过去，既不安全也必然调不通。 */
+    const inherit = next.provider === 'cf' || next.base_url !== cur.base_url ? '' : cur.key;
+    rec = {
+      id: newModelId(),
+      name: String(body.name || '').trim().slice(0, 40),
+      provider: next.provider,
+      base_url: next.base_url,
+      model: next.model,
+      key: wantClear ? '' : typedKey || inherit,
+      daily_limit: next.daily_limit,
+      created_at: Date.now(),
+    };
+    blob.list.push(rec);
+  }
+  blob.active_id = rec.id;
+
+  /* 保存即生效：ai_cfg 与这条记录保持一致，aiFill / aiTest 等调用点不用感知模型库 */
+  next.key = rec.key;
   await persistCfg(env, next);
-  return json({ ok: true, ...view(next, await loadUsage(env), !!env.AI) });
+  await persistModels(env, blob);
+  return json({ ok: true, ...view(next, await loadUsage(env), !!env.AI), models: modelsView(blob) });
 }
 
 /* ---------------- 模型调用 ---------------- */
