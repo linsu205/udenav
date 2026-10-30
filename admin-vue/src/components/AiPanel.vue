@@ -8,7 +8,7 @@ import { MagicStick, Key, Connection, DataLine, Refresh } from '@element-plus/ic
    其余走 OpenAI 兼容的 /chat/completions，所以「自定义」也能接任何自建服务（vLLM、one-api 网关、公司内网模型）。 */
 const PRESETS = [
   {
-    key: 'cf', label: 'Cloudflare Workers AI（内置·免密钥）', base_url: '', model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    key: 'cf', label: 'Cloudflare Workers AI（内置·免密钥）', base_url: '', model: '@cf/meta/llama-3.1-8b-instruct-fp8',
     tip: '用本站 Cloudflare 账号自带的 AI 额度，不用密钥、不走外网；第三方中转站报 1015 时用这个最稳',
     provider: 'cf' as const,
   },

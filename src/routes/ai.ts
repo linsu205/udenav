@@ -43,10 +43,25 @@ const DEFAULT_CFG: AiCfg = {
   daily_limit: 50,
 };
 
-/** Workers AI 的默认模型：补全只是抽几个字段，8B 完全够用，比 70B 快好几倍、错误率更低、更省额度 */
-const CF_DEFAULT_MODEL = '@cf/meta/llama-3.1-8b-instruct';
-/** 旧版默认模型：存量部署里可能已落库，加载时若还是它则自动迁移到新默认（不影响用户手动选的其它 @cf 模型） */
-const OLD_CF_DEFAULT = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+/**
+ * Workers AI 的默认模型。
+ * 补全只是从页面元信息里抽「标题/描述/颜色/分组」几个字段，8B 足够，
+ * 比 70B 快好几倍、更省额度。
+ * 注意：非量化的 llama-3.1-8b-instruct 已被 Cloudflare 于 2026-05-30 废弃，
+ * 现役的是 fp8 量化版 llama-3.1-8b-instruct-fp8，别再改回去。
+ */
+const CF_DEFAULT_MODEL = '@cf/meta/llama-3.1-8b-instruct-fp8';
+
+/**
+ * 已废弃/不再推荐的旧默认模型。存量部署里可能已落库，
+ * 加载时自动迁移到当前默认，避免出现「连接失败：模型已废弃」。
+ * 只迁移这些已知旧默认值，用户手动选的其它 @cf 模型不受影响。
+ */
+const DEPRECATED_CF_MODELS = [
+  '@cf/meta/llama-3.3-70b-instruct-fp8-fast', // 老默认，偏慢
+  '@cf/meta/llama-3.1-8b-instruct', // 2026-05-30 被 Cloudflare 废弃
+  '@cf/meta/infire-llama-3.1-8b-instruct', // 2026-05-30 被 Cloudflare 废弃
+];
 
 /** 当前配置在这台部署上到底能不能用：cf 通道要看有没有 AI 绑定，openai 通道要看有没有密钥 */
 function ready(env: Env, cfg: AiCfg): boolean {
@@ -69,8 +84,8 @@ async function loadCfg(env: Env): Promise<AiCfg> {
       if (Number(saved.daily_limit) > 0) merged.daily_limit = Math.min(1000, Math.round(Number(saved.daily_limit)));
     } catch { /* 配置坏了就用默认值，不要让整页 500 */ }
   }
-  /* 存量部署若还停在旧版 70B 默认模型，自动迁移到更快的 8B（用户手动选的其它 @cf 模型不受影响） */
-  if (merged.provider === 'cf' && merged.model === OLD_CF_DEFAULT) merged.model = CF_DEFAULT_MODEL;
+  /* 存量部署若还停在已废弃/偏慢的旧默认模型，自动迁移到当前默认（用户手动选的其它 @cf 模型不受影响） */
+  if (merged.provider === 'cf' && DEPRECATED_CF_MODELS.includes(merged.model)) merged.model = CF_DEFAULT_MODEL;
   if (merged.key) merged.key = await decryptSecret(merged.key, await getSecret(env));
   return merged;
 }
