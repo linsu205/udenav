@@ -172,13 +172,18 @@ async function loadModels(env: Env): Promise<AiModelsBlob> {
             })),
         )
       : [];
-    /* 内置的 Workers AI 记录：不用用户添加就存在，固定排第一位当兜底。
-       用户自己建过 cf 通道的记录时不再合成第二条 —— 那条就是他自己的内置通道。 */
-    const userCf = list.find((r) => r.provider === 'cf');
-    if (!userCf) list.unshift(builtinRecord());
-    /* active_id 指向的记录若已被删掉，就退回空，避免界面高亮一个不存在的条目 */
-    const active_id = typeof b.active_id === 'string' && list.some((r) => r.id === b.active_id) ? b.active_id : '';
-    return { active_id, list };
+    /* 内置的 Workers AI 记录固定排第一：不用用户添加就存在、不落库、不可删除。
+       老版本把 cf 通道当成普通记录存（预设里就有这一项），那条和内置的完全重合 ——
+       留着会出现「两条 Workers AI，旧那条还能删」，和「内置不可删」自相矛盾。
+       所以 cf 记录一律并入内置：不再单独列出，active_id 指向它时改挂到内置那条。
+       这类记录本身没有密钥、没有地址，合并不丢任何可用信息。 */
+    const rawActive = typeof b.active_id === 'string' ? b.active_id : '';
+    const legacyCfIds = list.filter((r) => r.provider === 'cf').map((r) => r.id);
+    const out = [builtinRecord(), ...list.filter((r) => r.provider !== 'cf')];
+    /* active_id 指向的记录若已被删掉/并入，就退回空，避免界面高亮一个不存在的条目 */
+    let active_id = out.some((r) => r.id === rawActive) ? rawActive : '';
+    if (!active_id && legacyCfIds.includes(rawActive)) active_id = BUILTIN_CF_ID;
+    return { active_id, list: out };
   } catch {
     /* 模型库坏了也别让面板空着：至少还有内置那条可以测、可以开 */
     return { active_id: '', list: [builtinRecord()] };
@@ -349,6 +354,18 @@ export async function aiSave(env: Env, req: Request): Promise<Response> {
   if (next.provider === 'cf') next.base_url = '';
   if (Number(body.daily_limit) > 0) next.daily_limit = Math.min(1000, Math.max(1, Math.round(Number(body.daily_limit))));
 
+  /* 内置通道由「Workers AI 记录」全权代表：它不落库、不可改、不可删，
+     所以这里只把配置切成 cf 并生效，不再往模型库里写一条 ——
+     写了也只会被 loadModels 并回内置，白折腾还留下脏数据。 */
+  if (next.provider === 'cf') {
+    next.key = '';
+    const blob = await loadModels(env);
+    blob.active_id = BUILTIN_CF_ID;
+    await persistCfg(env, next);
+    await persistModels(env, blob);
+    return json({ ok: true, ...view(next, await loadUsage(env), !!env.AI), models: modelsView(blob) });
+  }
+
   /* 密钥三种语义：不传/空串 = 保持原值；'clear' = 清空；其他 = 覆盖。
      「原值」以这次保存命中的那条记录为准，不要拿全局 ai_cfg 兜底 ——
      编辑别的记录时输入框必然是空的，拿 ai_cfg 兜底会把上一条记录的密钥覆盖过来。 */
@@ -381,8 +398,9 @@ export async function aiSave(env: Env, req: Request): Promise<Response> {
     /* 都没给 = 保持这条记录原来的密钥 */
   } else {
     /* 新建一条：没填密钥时，只有「同一个接口地址」才继承当前密钥。
-       换了服务商还把上家的密钥带过去，既不安全也必然调不通。 */
-    const inherit = next.provider === 'cf' || next.base_url !== cur.base_url ? '' : cur.key;
+       换了服务商还把上家的密钥带过去，既不安全也必然调不通。
+       （cf 通道在上面已经提前返回，走不到这里） */
+    const inherit = next.base_url !== cur.base_url ? '' : cur.key;
     rec = {
       id: newModelId(),
       name: String(body.name || '').trim().slice(0, 40),

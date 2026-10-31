@@ -7,12 +7,9 @@ import { MagicStick, Key, Connection, DataLine, Refresh, Plus } from '@element-p
 
 /* 预设服务商：「内网通道」走本站 Cloudflare 账号自带的 Workers AI 绑定（免密钥、不产生公网请求），
    其余走 OpenAI 兼容的 /chat/completions，所以「自定义」也能接任何自建服务（vLLM、one-api 网关、公司内网模型）。 */
+/* 预设只列「需要自己填密钥」的服务商：Workers AI 已经作为内置记录常驻列表第一位，
+   不用（也不该）再手动新增一条 —— 以前存下来的 cf 记录后端会并入内置那条。 */
 const PRESETS = [
-  {
-    key: 'cf', label: 'Cloudflare Workers AI（内置·免密钥）', base_url: '', model: '@cf/meta/llama-3.1-8b-instruct-fp8',
-    tip: '用本站 Cloudflare 账号自带的 AI 额度，不用密钥、不走外网；第三方中转站报 1015 时用这个最稳',
-    provider: 'cf' as const,
-  },
   {
     key: 'deepseek', label: 'DeepSeek', base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat',
     tip: '便宜、中文好。密钥在 platform.deepseek.com 申请', provider: 'openai' as const,
