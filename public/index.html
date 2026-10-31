@@ -1209,7 +1209,8 @@ function renderGroups(instant) {
   const kw = $('#q').value.trim().toLowerCase();
   /* 先把每组的可见卡片算出来（访客可见 + 搜索词），再决定这组要不要留：
      访客侧一组里的卡全被过滤掉时不保留空标题；登录后照旧保留（标题上的「＋」要用） */
-  const filtered = [];
+  /* 用 let：下方「网址无匹配回退全部」会用整体重建的方式覆盖它 */
+  let filtered = [];
   state.groups.forEach(g => {
     if (g.cardStyle === 'hide') return;
     const items = g.items.filter(it => visibleToGuest(it)
