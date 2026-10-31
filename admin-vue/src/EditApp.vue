@@ -18,8 +18,9 @@ import type { Group, IconItem } from './store';
 
 /* id = 0 表示「新增」：同一个弹窗换个标题直接加卡片，
    省得为加一条导航先去后台面板里翻分组。
-   init 可选：新增模式的预填数据（如首页「AI 添加」带进来的 AI 补全结果） */
-const props = defineProps<{ gid: number; id: number; init?: Record<string, any> }>();
+   init 可选：新增模式的预填数据（如首页「AI 添加」带进来的 AI 补全结果）。
+   onSaved 可选：保存成功后的回调（首页「AI 添加」用来清空搜索栏并回退展示全部导航） */
+const props = defineProps<{ gid: number; id: number; init?: Record<string, any>; onSaved?: () => void }>();
 const emit = defineEmits<{ (e: 'done'): void }>();
 
 const isAdd = computed(() => !props.id);
@@ -77,6 +78,8 @@ async function save(it: any) {
   }
   done();
   notifyHome();
+  /* 保存成功后的额外动作（如首页 AI 添加后清空搜索栏）：仅成功落库才触发 */
+  props.onSaved?.();
   ElMessage.success(isAdd.value ? '已添加，前台已同步' : '已保存，前台已同步');
 }
 </script>

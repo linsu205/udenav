@@ -74,7 +74,13 @@ let editHost: HTMLElement | null = null;
 /* id 传 0 / 省略 = 新增（弹窗标题变「添加卡片」，保存走 POST）。
    init 可选：新增模式下预填的卡片数据（如首页「AI 添加」带着 AI 补全结果直接打开弹窗）。
    传了 init 仍按「新增」处理（标题=添加卡片、保存走 POST），只是先把字段填上让用户确认。 */
-export function openItemEditor(el: HTMLElement, gid: number, id: number = 0, init: Record<string, any> | null = null): void {
+export function openItemEditor(
+  el: HTMLElement,
+  gid: number,
+  id: number = 0,
+  init: Record<string, any> | null = null,
+  onSaved: (() => void) | null = null,
+): void {
   closeItemEditor();
   el.hidden = false;
   editHost = el;
@@ -82,6 +88,7 @@ export function openItemEditor(el: HTMLElement, gid: number, id: number = 0, ini
     gid,
     id,
     init: init || undefined,
+    onSaved: onSaved || undefined,
     onDone: () => closeItemEditor(),
   });
   app.use(ElementPlus, { size: 'default', zIndex: 2500 });

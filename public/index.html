@@ -2549,10 +2549,10 @@ async function openAdmin() {
    它有自己的挂载点 #editRoot，与 #adminRoot 是两个独立 Vue 实例，
    所以从点下去的第一帧起就只有编辑弹窗，不会有后台面板闪一下。
    id 传 0（或省略）即新增模式 */
-async function openItemEditor(gid, id, init) {
+async function openItemEditor(gid, id, init, onSaved) {
   try {
     await loadAdmin();                       // 只取 JS/CSS，不挂后台面板
-    window.__udenavAdmin.openItemEditor($('#editRoot'), Number(gid), Number(id) || 0, init || null);
+    window.__udenavAdmin.openItemEditor($('#editRoot'), Number(gid), Number(id) || 0, init || null, onSaved || null);
   } catch (e) {
     console.warn('[UDeNav] 编辑弹窗加载失败', e);
     ctxToast('加载失败，请重试');
@@ -2699,7 +2699,12 @@ async function aiAddFromSearch() {
       icon_name: it.icon_name || '',
       group_title: it.group_title || '',
     };
-    openItemEditor(gid, 0, init);
+    /* 保存成功后：清空搜索栏里的网址并回退展示全部导航（AI 新增的卡片由后台同步逻辑带回） */
+    openItemEditor(gid, 0, init, () => {
+      $('#q').value = '';
+      updateAiAddBtn();
+      renderGroups(true);
+    });
   } catch (e) {
     ctxToast('AI 添加失败：' + (e?.message || '未知错误'));
   } finally {
