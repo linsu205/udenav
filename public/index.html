@@ -1219,6 +1219,19 @@ function renderGroups(instant) {
   });
   box.innerHTML = '';
   if (!filtered.length) {
+    /* 输入的是一个网址、但站内没有任何资源能匹配到该网址时：
+       不显示「没有匹配的卡片」空态，而是回退展示全部资源，
+       方便用户浏览现有卡片或点「AI 添加」直接收录这个网址 */
+    if (kw && isHttpUrl(kw)) {
+      state.groups.forEach(g => {
+        if (g.cardStyle === 'hide') return;
+        const items = g.items.filter(it => visibleToGuest(it));
+        if (!items.length && !state.admin) return;
+        filtered.push({ g, items });
+      });
+    }
+  }
+  if (!filtered.length) {
     /* 一个分组都没有（未登录且没有「免登录可见」的分组）时只保留头部，不显示空态文案 */
     box.innerHTML = state.groups.length ? '<div class="empty">没有匹配的卡片</div>' : '';
     return;
