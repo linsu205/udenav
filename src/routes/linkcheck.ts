@@ -30,7 +30,8 @@ function levelOf(status: number): LinkLevel {
   return 'bad';
 }
 
-async function probe(url: string): Promise<LinkResult> {
+/* 单条探测：后台手动检查与 cron 巡检共用（导出让 linkwatch 复用，别再复制一份） */
+export async function probeLink(url: string): Promise<LinkResult> {
   const t0 = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -75,7 +76,7 @@ export async function linkCheck(env: Env, req: Request): Promise<Response> {
     if (!/^https?:\/\//i.test(url)) {
       return { id, level: 'bad', status: 0, ms: 0, error: '地址格式不正确' };
     }
-    const r = await probe(url);
+    const r = await probeLink(url);
     return { ...r, id };
   });
 

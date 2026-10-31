@@ -66,7 +66,7 @@ export interface ConfigRow {
 }
 
 /* 数据模型版本：后台「关于」页会展示实际库里的值，方便核对「代码升级了、库没升」 */
-export const SCHEMA_VERSION = '1.7';
+export const SCHEMA_VERSION = '1.8';
 
 /**
  * 节假日 / 调休上班的种子数据（2026 年法定节假日 + 周末统一休息）。
@@ -267,9 +267,24 @@ CREATE TABLE IF NOT EXISTS visit_log (
   count INTEGER NOT NULL DEFAULT 1
 );
 
+/* 链接健康巡检结果：cron 每小时查一批外网卡片，结果落这里（手动检查不写库）。
+   一行对应一张卡片（icon_id 主键），所以 URL 改了就整行覆盖，不用自己做过期。
+   fail_streak 记「连续失败次数」：偶发超时/反爬不立刻判死，连续 3 次才在后台标红。 */
+CREATE TABLE IF NOT EXISTS link_status (
+  icon_id INTEGER PRIMARY KEY,
+  url TEXT NOT NULL DEFAULT '',
+  level TEXT NOT NULL DEFAULT 'ok',
+  status INTEGER NOT NULL DEFAULT 0,
+  ms INTEGER NOT NULL DEFAULT 0,
+  error TEXT NOT NULL DEFAULT '',
+  fail_streak INTEGER NOT NULL DEFAULT 0,
+  checked_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+
 CREATE INDEX IF NOT EXISTS ix_icon_group ON item_icon_group(sort);
 CREATE INDEX IF NOT EXISTS ix_icon_group_id ON item_icon(group_id, sort);
 CREATE INDEX IF NOT EXISTS ix_visit_ts ON visit_log(ts);
+CREATE INDEX IF NOT EXISTS ix_link_status_checked ON link_status(checked_at);
 `;
 
 let ready: Promise<void> | null = null;
@@ -304,6 +319,8 @@ export function ensureSchema(db: D1Database): Promise<void> {
     //             作为初始数据写进去 —— 之后完全由后台「组件管理 → 日历」维护
     // 1.6 → 1.7：新增 widget_cfg 表（组件外观/功能配置改为按类型存）。此前配置存在
     //             item_icon.w_cfg 上，组件没放到页面上就无处可存，组件管理页只能空着
+    // 1.7 → 1.8：新增 link_status 表（cron 巡检的链接健康结果，含连续失败次数）
+    //             — 建表走上面的 IF NOT EXISTS，这里无需 ALTER
     // 新库建表时已有该列，ALTER 会报 duplicate column，catch 掉即可
     await db
       .prepare('ALTER TABLE item_icon_group ADD COLUMN public_show INTEGER NOT NULL DEFAULT 0')

@@ -11,6 +11,7 @@ import { iconifyProxy } from './routes/iconify';
 import { getBackupCfg, putBackupCfg, runBackupNow, scheduledBackup, listBackups, restoreBackup, testBackupConn } from './routes/webdav';
 import * as s3 from './routes/s3';
 import { linkCheck } from './routes/linkcheck';
+import { scheduledLinkWatch, linkStatus, putLinkStatusCfg, runLinkStatusNow } from './routes/linkwatch';
 import { aboutInfo, checkLatest, extensionInfo } from './routes/about';
 import * as ai from './routes/ai';
 import type { Env } from './lib/schema';
@@ -47,10 +48,14 @@ export default {
   },
 
   /* Cron Trigger：wrangler.toml 里配了 crons，Cloudflare 到点调用这里。
-     放在 waitUntil 里，HTTP 响应（这里是空响应）不用等备份传完。 */
+     放在 waitUntil 里，HTTP 响应（这里是空响应）不用等任务跑完。 */
   async scheduled(_event: unknown, env: Env, ctx: Ctx): Promise<void> {
-    /* 两个备份目标并行跑：各自判断自己的开关与执行策略，一个失败不影响另一个 */
-    ctx.waitUntil(Promise.allSettled([scheduledBackup(env), s3.scheduledS3Backup(env)]));
+    /* 三个任务并行：各自判断自己的开关与执行策略，一个失败不影响另外两个
+       - 两个备份目标（WebDAV / S3）
+       - 链接巡检：每小时查一小批，结果落 link_status 供后台展示 */
+    ctx.waitUntil(
+      Promise.allSettled([scheduledBackup(env), s3.scheduledS3Backup(env), scheduledLinkWatch(env)]),
+    );
   },
 };
 
@@ -188,6 +193,17 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (m === 'PUT' && a === 'backup') return putBackupCfg(env, req);
     if (m === 'POST' && a === 'backup') return runBackupNow(env, req);
     if (m === 'POST' && a === 'linkcheck') return linkCheck(env, req);
+    /* 链接巡检结果：后台打开「分组与卡片」时读一次，把失败标记铺到列表上。
+       run 会真的发外网请求，单独限流，别让按钮被连点成限流 */
+    if (a === 'link-status') {
+      if (m === 'GET' && !parts[2]) return linkStatus(env, req);
+      if (m === 'PUT' && !parts[2]) return putLinkStatusCfg(env, req);
+      if (m === 'POST' && parts[2] === 'run') {
+        const rl = await lim('link-run', 6);
+        if (rl) return rl;
+        return runLinkStatusNow(env, req);
+      }
+    }
     /* 「关于」页：check 会打外网（GitHub），单独再限一层，别让按钮被连点成限流 */
     if (m === 'GET' && a === 'about') {
       const rl = await lim('about', 20);

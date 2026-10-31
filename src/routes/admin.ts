@@ -1149,7 +1149,7 @@ export type PageInfo = {
 };
 
 /** 明显是内网/本机的地址不抓：Worker 不该被当成内网探测工具 */
-function isPrivateHost(hostname: string): boolean {
+export function isPrivateHost(hostname: string): boolean {
   const h = hostname.toLowerCase();
   if (!h) return true;
   if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return true;
@@ -1407,8 +1407,10 @@ export async function favicon(env: Env, req: Request): Promise<Response> {
 /**
  * 网址可达性探测（卡片编辑弹窗「默认地址」失焦时用）。
  * 只判断「能否拿到 HTTP 响应」，不下载整页：
- * - 拿到任何状态码都算可达（403/404 说明站点活着，反爬站点很常见），避免误报「打不开」；
- * - 只有 DNS 失败 / 超时 / 连接被拒才判不可达；
+ * - 先过一遍域名格式：`https://cpu.bmcx.`（尾点、无后缀）、`https://cpu.bmcx`（没有 TLD）
+ *   这类输入 `new URL()` 不报错，但根本不可能是有效站点，直接判格式不对，别去发请求；
+ * - 404 / 410 判「页面不存在」，5xx 判「站点异常」—— 这两种在导航场景就是地址坏了；
+ * - 401/403/429 仍算可达（站点活着，只是挡机器，浏览器大概率能开），附一句说明；
  * - 内网地址不做探测（Workers 也连不到），回 reachable:null 让前端保持静默。
  */
 export async function urlProbe(env: Env, req: Request): Promise<Response> {
@@ -1419,8 +1421,13 @@ export async function urlProbe(env: Env, req: Request): Promise<Response> {
   let target: URL;
   try {
     target = new URL(/^https?:\/\//i.test(raw) ? raw : 'https://' + raw);
-  } catch { return bad('网址格式不正确'); }
-  if (target.protocol !== 'http:' && target.protocol !== 'https:') return bad('仅支持 http/https 网址');
+  } catch { return json({ ok: true, reachable: false, reason: '网址格式不正确' }); }
+  if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+    return json({ ok: true, reachable: false, reason: '只支持 http/https 网址' });
+  }
+  if (!hostLooksReal(target.hostname)) {
+    return json({ ok: true, reachable: false, reason: '域名不完整，缺少后缀' });
+  }
   if (isPrivateHost(target.hostname)) return json({ ok: true, reachable: null, reason: '内网地址不做检测' });
 
   const UA = 'Mozilla/5.0 (compatible; unav-fetch/1.0)';
@@ -1433,10 +1440,41 @@ export async function urlProbe(env: Env, req: Request): Promise<Response> {
     });
     /* 只为探测，正文直接丢弃，别把整页拉下来占时间与内存 */
     try { await r.body?.cancel(); } catch { /* 已经读完/已关闭，忽略 */ }
-    return json({ ok: true, reachable: true, status: r.status });
+    const st = r.status;
+    /* 404 / 410 就是「地址没了」，导航里属于必须处理的坏链 */
+    if (st === 404 || st === 410) {
+      return json({ ok: true, reachable: false, status: st, reason: `页面不存在（HTTP ${st}）` });
+    }
+    if (st >= 500) {
+      return json({ ok: true, reachable: false, status: st, reason: `站点异常（HTTP ${st}）` });
+    }
+    if (st === 401 || st === 403 || st === 429) {
+      return json({ ok: true, reachable: true, status: st, note: '站点拒绝机器访问，浏览器打开一般正常' });
+    }
+    return json({ ok: true, reachable: true, status: st });
   } catch (e: any) {
     const timedOut = e?.name === 'TimeoutError' || e?.name === 'AbortError';
     return json({ ok: true, reachable: false, reason: timedOut ? '连接超时' : '无法连接' });
   }
+}
+
+/**
+ * hostname 是否像个真域名。`new URL('https://cpu.bmcx.')` 是合法的（尾点 = FQDN 根写法），
+ * `new URL('https://cpu.bmcx')` 也合法（单段主机），但两者都不可能是可访问的站点。
+ * 规则：允许 localhost / IPv4 / IPv6；其余必须至少两段、末段是 2 位以上纯字母（或 punycode），
+ * 且不能以点结尾。
+ */
+function hostLooksReal(hostname: string): boolean {
+  const h = (hostname || '').toLowerCase();
+  if (!h) return false;
+  if (h === 'localhost' || h.endsWith('.localhost')) return true;
+  if (h.startsWith('[') || h.includes(':')) return true;            // IPv6 字面量
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return true;               // IPv4
+  if (h.endsWith('.')) return false;                                 // 尾点写法：不是给人输的
+  const parts = h.split('.');
+  if (parts.length < 2) return false;                                // 单段主机（内网短名）
+  if (parts.some((p) => !p || !/^[a-z0-9-]+$/.test(p))) return false;
+  const tld = parts[parts.length - 1];
+  return /^xn--[a-z0-9-]+$/.test(tld) || /^[a-z]{2,63}$/.test(tld);
 }
 

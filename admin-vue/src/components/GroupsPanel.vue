@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue';
 import { useStore, type Group, type IconItem } from '../store';
-import { post, patch, del } from '../api';
+import { post, get, patch, del } from '../api';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Edit, Delete, Rank, ArrowRight, Loading } from '@element-plus/icons-vue';
 import { notifyHome } from '../lib/notify';
@@ -49,7 +49,11 @@ function toggleGroup(id: number) {
   opened.value = isClosed(id) ? [...opened.value, id] : opened.value.filter(x => x !== id);
 }
 
-onMounted(() => { if (!store.groups.length) store.loadAll(); });
+onMounted(() => {
+  if (!store.groups.length) store.loadAll();
+  /* 巡检结论不阻塞页面：拿到就铺上去，失败就当没有 */
+  loadWatch();
+});
 
 /* 关闭卡片编辑弹窗。前台右键走的是一条完全独立的路径（见 EditApp.vue），
    不经过后台面板，这里只管后台「分组与卡片」页里自己的弹窗 */
@@ -151,7 +155,15 @@ const dragClass = (kind: 'group' | 'icon') => ({ 'drag-target': dragSrc.value?.k
    只查外网地址（it.url）—— 内网地址（it.lan_url）在 Cloudflare 侧不可达，
    查了必然全红，纯噪音，所以单独留空不查。
    结果只存在当前页面（不落库），再点一次即覆盖本组旧结果。 */
-interface LinkState { level: 'ok' | 'warn' | 'bad'; status: number; ms: number; error?: string }
+interface LinkState {
+  level: 'ok' | 'warn' | 'bad';
+  status: number;
+  ms: number;
+  error?: string;
+  auto?: boolean;      // true = 来自 cron 巡检（存在后端），false/空 = 本次手动检查的临时结果
+  at?: number;         // 自动结果的检查时间（秒）
+  streak?: number;     // 连续失败次数
+}
 const linkMap = reactive<Record<number, LinkState>>({});          // key = 卡片 id
 const runMap = reactive<Record<number, { done: number; total: number }>>({}); // key = 分组 id（进行中）
 const checkedSet = reactive<Record<number, boolean>>({});          // 分组 id → 是否查过
@@ -240,6 +252,76 @@ async function checkGroup(g: Group) {
   }
 }
 
+/* ---------- 自动巡检（cron 每小时查一小批，结果存在后端 link_status） ----------
+   打开页面就把上次巡检结论铺到列表上：分组标题直接显示「异常 N」，
+   不用先手动点一遍才知道哪个组有死链。手动检查仍可覆盖本次展示。 */
+interface WatchItem {
+  id: number; title: string; url: string; group_id: number;
+  level: string; status: number; ms: number; fail_streak: number; error: string; checked_at: number;
+}
+const watchLast = ref({ at: 0, checked: 0, bad: 0 });
+const watchFailed = ref<WatchItem[]>([]);
+const watchOpen = ref(false);
+const watchRunning = ref(false);
+
+function tsText(ts: number): string {
+  if (!ts) return '还没有跑过';
+  const d = new Date(ts * 1000);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+async function loadWatch() {
+  try {
+    const r = await get<any>('/api/admin/link-status');
+    watchLast.value = r.last || { at: 0, checked: 0, bad: 0 };
+    const items: WatchItem[] = Array.isArray(r.items) ? r.items : [];
+    /* 直接复用现有的 linkMap 色标与分组统计，模板不用另写一套渲染 */
+    for (const it of items) {
+      linkMap[it.id] = {
+        level: it.level as LinkState['level'],
+        status: it.status,
+        ms: it.ms || 0,
+        error: it.error || undefined,
+        auto: true,
+        at: it.checked_at,
+        streak: it.fail_streak,
+      };
+      /* 有巡检结论的组才算「已查过」，否则组头仍显示「检查链接」 */
+      if (it.group_id) checkedSet[it.group_id] = true;
+    }
+    watchFailed.value = items.filter((x) => x.level === 'bad' && x.fail_streak >= 3);
+  } catch {
+    /* 巡检接口异常不该让整个页面打不开：静默降级成「没有巡检数据」 */
+  }
+}
+
+async function runWatchNow() {
+  if (watchRunning.value) return;
+  watchRunning.value = true;
+  try {
+    const r = await post<any>('/api/admin/link-status/run', {});
+    await loadWatch();
+    const n = Number(r?.checked) || 0;
+    const bad = Number(r?.bad) || 0;
+    if (!n) ElMessage.success('这一轮没有需要检查的链接（都刚查过）');
+    else if (bad) ElMessage.warning(`巡检完成：查了 ${n} 条，其中 ${bad} 条异常`);
+    else ElMessage.success(`巡检完成：查了 ${n} 条，全部正常`);
+  } catch (e: any) {
+    ElMessage.error('巡检失败：' + (e?.message || '未知错误'));
+  } finally {
+    watchRunning.value = false;
+  }
+}
+
+/* 点失效条目直接打开那张卡片的编辑弹窗，省得自己翻分组 */
+function openFailed(f: WatchItem) {
+  const g = store.groups.find((x) => x.id === f.group_id);
+  const it = g?.items?.find((x) => x.id === f.id);
+  if (!it) return ElMessage.warning('这张卡片已不在当前列表里，刷新后再看');
+  iEdit.value = { gid: f.group_id, it };
+}
+
 /* 单条结果文字：正常只显示状态码，异常把原因放悬浮提示里 */
 function linkText(s?: LinkState): string {
   if (!s) return '';
@@ -297,11 +379,36 @@ function linkTipHead(s: LinkState): string {
         <div class="sub">点分组展开查看，拖动分组或卡片调整顺序</div>
       </div>
       <div class="head-ops">
+        <el-button :loading="watchRunning" :title="'自动巡检上次运行：' + tsText(watchLast.at)" @click="runWatchNow">
+          <IIcon name="ri:shield-check-line" :size="14" class="btn-ico" />检查全部链接
+        </el-button>
         <el-button type="primary" @click="gEdit = 'new'">＋ 添加分组</el-button>
       </div>
     </div>
 
     <el-empty v-if="!store.groups.length" description="还没有分组，点右上角「添加分组」开始" />
+
+    <!-- 自动巡检发现的失效链接：只在真有问题时出现，平时不占屏 -->
+    <div v-if="watchFailed.length" class="watch-bar">
+      <IIcon name="ri:error-warning-line" :size="15" class="watch-ico" />
+      <div class="watch-text">
+        <b>{{ watchFailed.length }}</b> 条链接疑似失效
+        <span class="watch-sub">连续失败 3 次以上 · 上次巡检 {{ tsText(watchLast.at) }}</span>
+      </div>
+      <button class="watch-link" @click="watchOpen = !watchOpen">{{ watchOpen ? '收起' : '查看明细' }}</button>
+      <button class="watch-link" :disabled="watchRunning" @click="runWatchNow">
+        {{ watchRunning ? '巡检中…' : '立即巡检' }}
+      </button>
+    </div>
+    <div v-if="watchOpen && watchFailed.length" class="watch-list">
+      <div v-for="f in watchFailed" :key="f.id" class="watch-row" @click="openFailed(f)"
+           title="点击打开这张卡片的编辑弹窗">
+        <span class="watch-name">{{ f.title || '未命名卡片' }}</span>
+        <span class="watch-url">{{ f.url }}</span>
+        <span class="watch-code">{{ f.status || f.error || '无响应' }}</span>
+        <span class="watch-streak">连续 {{ f.fail_streak }} 次</span>
+      </div>
+    </div>
 
     <div v-for="g in store.groups" :key="g.id" class="sp-card group"
          :class="[{ closed: isClosed(g.id) }, dragClass('group')]"
@@ -410,6 +517,45 @@ function linkTipHead(s: LinkState): string {
 
 <style scoped>
   .group { padding: 0; overflow: hidden; }
+
+  /* ---- 自动巡检：失效提示条 + 明细列表 ---- */
+  .watch-bar {
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 14px; margin-bottom: 12px;
+    border-radius: 10px;
+    background: rgba(245, 108, 108, .08);
+    border: 1px solid rgba(245, 108, 108, .28);
+    color: var(--sp-danger-text);
+    font-size: 13px;
+  }
+  .watch-ico { flex: none; }
+  .watch-text { flex: 1; min-width: 0; }
+  .watch-text b { font-weight: 600; }
+  .watch-sub { display: block; margin-top: 1px; font-size: 11.5px; color: var(--sp-dim); }
+  .watch-link {
+    flex: none; background: transparent; border: 0; padding: 0 2px;
+    color: var(--sp-danger-text); font-size: 12.5px; cursor: pointer;
+    text-decoration: underline; text-underline-offset: 3px;
+  }
+  .watch-link:disabled { opacity: .55; cursor: default; }
+
+  .watch-list {
+    margin: -4px 0 12px; border: 1px solid var(--sp-card-border);
+    border-radius: 10px; overflow: hidden; background: var(--sp-card-in);
+  }
+  .watch-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px; font-size: 12.5px; cursor: pointer;
+    border-bottom: 1px solid var(--sp-card-border);
+  }
+  .watch-row:last-child { border-bottom: 0; }
+  .watch-row:hover { background: var(--sp-hover); }
+  .watch-name { flex: none; max-width: 150px; font-weight: 500;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .watch-url { flex: 1; min-width: 0; color: var(--sp-dim);
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .watch-code { flex: none; color: var(--sp-danger-text); font-variant-numeric: tabular-nums; }
+  .watch-streak { flex: none; color: var(--sp-faint); font-size: 11.5px; }
 
   /* 展开 / 收起：grid 轨道从 1fr 收到 0fr，比 max-height 动画顺 */
   .g-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .26s ease; }

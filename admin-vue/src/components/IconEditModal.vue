@@ -285,19 +285,37 @@ function addWidget(w: (typeof WIDGET_DEFS)[number]) {
 
 /* ---------- 默认地址可达性（失焦自动探测） ----------
    只做提示，不拦保存：内网站点、临时维护的站点用户仍要能收录。
-   拿到任何 HTTP 状态码都算「可访问」（403/404 说明站点活着，反爬站点很常见）。 */
+   先过格式再发请求 —— `https://cpu.bmcx.` 这种 `new URL()` 不报错、但根本不可能是站点，
+   拿去做请求只会得到一个莫名其妙的结论，不如当场说「域名不完整」。 */
 const urlState = ref<'idle' | 'checking' | 'ok' | 'bad'>('idle');
 const urlMsg = ref('');
 let probedUrl = '';
 let probeSeq = 0;
 
-function looksLikeUrl(v: string): boolean {
+/** hostname 是否像个真域名（与后端 hostLooksReal 同一套规则，避免两边结论不一致） */
+function hostLooksReal(hostname: string): boolean {
+  const h = (hostname || '').toLowerCase();
+  if (!h) return false;
+  if (h === 'localhost' || h.endsWith('.localhost')) return true;
+  if (h.startsWith('[') || h.includes(':')) return true;          // IPv6
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return true;             // IPv4
+  if (h.endsWith('.')) return false;                              // 尾点写法
+  const parts = h.split('.');
+  if (parts.length < 2) return false;                             // 没有后缀
+  if (parts.some((p) => !p || !/^[a-z0-9-]+$/.test(p))) return false;
+  const tld = parts[parts.length - 1];
+  return /^xn--[a-z0-9-]+$/.test(tld) || /^[a-z]{2,63}$/.test(tld);
+}
+
+/** 输入形态：empty 空 / bad 明显不是网址 / ok 可以探测 */
+function urlShape(v: string): 'empty' | 'bad' | 'ok' {
   const s = (v || '').trim();
-  if (!s || /\s/.test(s)) return false;
-  try {
-    const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : 'https://' + s);
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  } catch { return false; }
+  if (!s) return 'empty';
+  if (/\s/.test(s)) return 'bad';
+  let u: URL;
+  try { u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : 'https://' + s); } catch { return 'bad'; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'bad';
+  return hostLooksReal(u.hostname) ? 'ok' : 'bad';
 }
 
 /* 地址一改，旧结论就作废：清掉提示并让进行中的探测结果失效 */
@@ -308,9 +326,9 @@ function resetUrlState() {
   urlMsg.value = '';
 }
 
-function setUrlOk() {
+function setUrlOk(note?: string) {
   urlState.value = 'ok';
-  urlMsg.value = '网址可访问';
+  urlMsg.value = '网址可访问' + (note ? '（' + note + '）' : '');
 }
 
 function setUrlBad(reason?: string) {
@@ -320,7 +338,15 @@ function setUrlBad(reason?: string) {
 
 async function probeUrl() {
   const u = f.url.trim();
-  if (!looksLikeUrl(u)) { resetUrlState(); return; }
+  const shape = urlShape(u);
+  if (shape === 'empty') { resetUrlState(); return; }
+  if (shape === 'bad') {
+    /* 明显不是网址：不发请求，直接指出问题，别让人以为「查过了没问题」 */
+    probedUrl = u;
+    urlState.value = 'bad';
+    urlMsg.value = '网址格式不对，检查域名后缀是否完整';
+    return;
+  }
   if (u === probedUrl) return;                 // 同一地址（失焦反复来）不重复打
   probedUrl = u;
   const seq = ++probeSeq;
@@ -329,7 +355,7 @@ async function probeUrl() {
   try {
     const r: any = await get('/api/admin/probe?url=' + encodeURIComponent(u));
     if (seq !== probeSeq) return;              // 期间地址又变了，丢弃旧结果
-    if (r && r.reachable === true) setUrlOk();
+    if (r && r.reachable === true) setUrlOk(r.note);
     else if (r && r.reachable === false) setUrlBad(r.reason);
     else { urlState.value = 'idle'; urlMsg.value = ''; }  // 内网地址等：静默，但已探过就不再重复
   } catch {
@@ -591,35 +617,38 @@ function chooseImg(it: PickImg) {
           </el-form-item>
         </el-col>
       </el-row>
-      <el-form-item label="默认地址 *">
-        <div style="width:100%">
-          <div style="display:flex;gap:8px;width:100%">
-            <el-input v-model="f.url" placeholder="https://" @blur="probeUrl">
-              <!-- AI 补全放在输入框内右侧：粘贴完网址不用移开鼠标就能点 -->
-              <template #suffix>
-                <button
-                  type="button" class="ai-fill" :class="{ busy: aiFilling }" :disabled="aiFilling"
-                  :aria-busy="aiFilling"
-                  title="按这个网址补全标题、描述、图标、主题色与分组"
-                  @click.stop="aiFill"
-                >
-                  <span v-if="aiFilling" class="ai-spin" aria-hidden="true"></span>
-                  <IIcon v-else name="ri:magic-line" :size="13" />
-                  <span>{{ aiFilling ? '补全中' : 'AI 补全' }}</span>
-                </button>
-              </template>
-            </el-input>
-            <el-button :loading="fetchingIcon" @click="fetchFavicon">
-              <IIcon name="ri:search-line" :size="14" class="btn-ico" />获取图标
-            </el-button>
-          </div>
-          <!-- 网址通/不通贴在输入框下方：绿字=可访问，红字=打不开 -->
-          <div v-if="urlState !== 'idle'" class="url-tip" :class="urlState">
-            <IIcon v-if="urlState === 'checking'" name="ri:loader-4-line" :size="13" class="spin" />
-            <IIcon v-else-if="urlState === 'ok'" name="ri:checkbox-circle-line" :size="13" />
-            <IIcon v-else name="ri:error-warning-line" :size="13" />
-            <span>{{ urlMsg }}</span>
-          </div>
+      <el-form-item>
+        <!-- 可达性提示跟在 label 后面（同一行），不额外占一行高度 -->
+        <template #label>
+          <span class="addr-label">
+            <span>默认地址 *</span>
+            <span v-if="urlState !== 'idle'" class="url-tip" :class="urlState">
+              <IIcon v-if="urlState === 'checking'" name="ri:loader-4-line" :size="13" class="spin" />
+              <IIcon v-else-if="urlState === 'ok'" name="ri:checkbox-circle-line" :size="13" />
+              <IIcon v-else name="ri:error-warning-line" :size="13" />
+              <span>{{ urlMsg }}</span>
+            </span>
+          </span>
+        </template>
+        <div style="display:flex;gap:8px;width:100%">
+          <el-input v-model="f.url" placeholder="https://" @blur="probeUrl">
+            <!-- AI 补全放在输入框内右侧：粘贴完网址不用移开鼠标就能点 -->
+            <template #suffix>
+              <button
+                type="button" class="ai-fill" :class="{ busy: aiFilling }" :disabled="aiFilling"
+                :aria-busy="aiFilling"
+                title="按这个网址补全标题、描述、图标、主题色与分组"
+                @click.stop="aiFill"
+              >
+                <span v-if="aiFilling" class="ai-spin" aria-hidden="true"></span>
+                <IIcon v-else name="ri:magic-line" :size="13" />
+                <span>{{ aiFilling ? '补全中' : 'AI 补全' }}</span>
+              </button>
+            </template>
+          </el-input>
+          <el-button :loading="fetchingIcon" @click="fetchFavicon">
+            <IIcon name="ri:search-line" :size="14" class="btn-ico" />获取图标
+          </el-button>
         </div>
       </el-form-item>
       <!-- 内网地址与打开方式并排：各占一半，省一行高度（弹窗不用出滚动条） -->
@@ -742,14 +771,22 @@ function chooseImg(it: PickImg) {
   color: var(--el-text-color-secondary, #6b7480);
 }
 
-/* 默认地址可达性：绿字=可访问，红字=打不开，灰字=检测中；只提示不拦截 */
-.url-tip {
+/* 默认地址的 label + 可达性提示同一行：绿字=可访问，红字=打不开，灰字=检测中。
+   只提示不拦截，保存时不做可达性校验。 */
+.addr-label {
   display: flex;
   align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.url-tip {
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
-  margin-top: 5px;
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.3;
+  font-weight: 400;
+  white-space: nowrap;
 }
 .url-tip.ok { color: var(--sp-ok); }
 .url-tip.bad { color: var(--sp-danger-text); }
