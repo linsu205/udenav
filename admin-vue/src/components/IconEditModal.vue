@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, computed, watch, ref } from 'vue';
+import { reactive, computed, watch, ref, onMounted, onBeforeUnmount } from 'vue';
 import { post, get } from '../api';
 import { ElMessage } from 'element-plus';
 import ModalShell from './ModalShell.vue';
@@ -193,14 +193,49 @@ function pickIconFile() {
 async function uploadIcon(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file) return;
+  await saveImageFile(file, '上传成功');
+}
+
+/* 把一张图片文件传到后台并设为「图片」图标（本地上传 / 剪贴板粘贴共用） */
+const pastingImg = ref(false);
+async function saveImageFile(file: File, okMsg: string) {
   const fd = new FormData();
   fd.append('file', file);
+  pastingImg.value = true;
   try {
     const r = await post<any>('/api/admin/upload', fd);
+    f.icon_type = 'data';
     f.icon_url = r.icon_url;
-    ElMessage.success('上传成功');
-  } catch (err: any) { ElMessage.error('上传失败：' + err.message); }
+    ElMessage.success(okMsg);
+  } catch (err: any) {
+    ElMessage.error('图片保存失败：' + (err?.message || '请重试'));
+  } finally {
+    pastingImg.value = false;
+  }
 }
+
+/* 复制图片后，在弹窗任意位置 Ctrl+V 直接粘贴为图标。
+   只处理剪贴板里的图片；纯文本粘贴照旧走默认行为（填标题/地址），不拦截 */
+function onPaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  let img: File | null = null;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it.kind === 'file' && it.type.startsWith('image/')) {
+      const file = it.getAsFile();
+      if (file) { img = file; break; }
+    }
+  }
+  if (!img) return;
+  e.preventDefault();
+  saveImageFile(img, '已粘贴图片作为图标');
+}
+
+/* 弹窗挂在 body（teleport），没有可直接绑定的模板根节点，
+   所以在 document 上监听 paste，卸载时移除 —— 只有编辑弹窗打开时才生效 */
+onMounted(() => document.addEventListener('paste', onPaste));
+onBeforeUnmount(() => document.removeEventListener('paste', onPaste));
 
 function save() {
   if (!f.title.trim()) return ElMessage.warning('标题不能为空');
@@ -444,12 +479,16 @@ function chooseImg(it: PickImg) {
           <div style="display:flex;gap:8px;width:100%">
             <el-input v-model="f.icon_url" style="flex:1;min-width:0" placeholder="粘贴图片 URL、本地上传或从项目图标选" />
             <input type="file" accept="image/*" style="display:none" id="iconFile" @change="uploadIcon">
-            <el-button @click="pickIconFile">
+            <el-button @click="pickIconFile" :loading="pastingImg">
               <IIcon name="ri:upload-2-line" :size="14" class="btn-ico" />本地上传
             </el-button>
             <el-button @click="openPickDialog">
               <IIcon name="ri:gallery-line" :size="14" class="btn-ico" />从项目图标选
             </el-button>
+          </div>
+          <div class="paste-tip">
+            <IIcon name="ri:clipboard-line" :size="12" />
+            也可以直接复制一张图片，在此弹窗任意位置按 Ctrl+V 粘贴为图标
           </div>
         </el-form-item>
       </div>
@@ -612,6 +651,17 @@ function chooseImg(it: PickImg) {
   align-items: center;
   gap: 8px;
   width: 100%;
+}
+
+/* 图片图标区的「可粘贴」提示：常显一行浅色小字，引导用户 Ctrl+V 粘贴图片 */
+.paste-tip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--el-text-color-secondary, #6b7480);
 }
 
 /* 图标库入口：标签固定宽度，链接换行时能与第一行对齐 */
