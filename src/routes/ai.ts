@@ -56,6 +56,8 @@ type AiModelRecord = {
   /** 密文（enc: 前缀）；和历史明文兼容 */
   key: string;
   daily_limit: number;
+  /** 这条记录自己的启停开关；老数据没有这个字段时按启用处理 */
+  enabled: boolean;
   created_at: number;
 };
 
@@ -139,6 +141,7 @@ async function loadModels(env: Env): Promise<AiModelsBlob> {
               key: typeof r.key === 'string' && r.key ? await decryptSecret(r.key, secret) : '',
               daily_limit:
                 Number(r.daily_limit) > 0 ? Math.min(1000, Math.round(Number(r.daily_limit))) : DEFAULT_CFG.daily_limit,
+              enabled: r.enabled !== false,
               created_at: Number(r.created_at) || 0,
             })),
         )
@@ -176,6 +179,7 @@ function recordView(r: AiModelRecord) {
     base_url: r.base_url,
     model: r.model,
     daily_limit: r.daily_limit,
+    enabled: r.enabled !== false,
     key_hint: maskKey(r.key),
     created_at: r.created_at,
   };
@@ -193,6 +197,7 @@ async function activateRecord(env: Env, rec: AiModelRecord): Promise<void> {
   cfg.model = rec.model;
   cfg.key = rec.key;
   cfg.daily_limit = rec.daily_limit;
+  cfg.enabled = rec.enabled;
   await persistCfg(env, cfg);
 }
 
@@ -323,11 +328,13 @@ export async function aiSave(env: Env, req: Request): Promise<Response> {
   let rec = wantId ? blob.list.find((r) => r.id === wantId) : undefined;
   if (!rec) rec = blob.list.find((r) => modelKey(r) === modelKey(next));
   if (rec) {
-    rec.name = String(body.name || '').trim().slice(0, 40);
+    /* 名称只在表单真的传了时才改：像「清除密钥」这种只带 key 的请求不能把备注名抹掉 */
+    if (typeof body.name === 'string') rec.name = body.name.trim().slice(0, 40);
     rec.provider = next.provider;
     rec.base_url = next.base_url;
     rec.model = next.model;
     rec.daily_limit = next.daily_limit;
+    rec.enabled = next.enabled;
     if (wantClear) rec.key = '';
     else if (typedKey) rec.key = typedKey;
     /* 都没给 = 保持这条记录原来的密钥 */
@@ -343,6 +350,7 @@ export async function aiSave(env: Env, req: Request): Promise<Response> {
       model: next.model,
       key: wantClear ? '' : typedKey || inherit,
       daily_limit: next.daily_limit,
+      enabled: next.enabled,
       created_at: Date.now(),
     };
     blob.list.push(rec);
@@ -461,7 +469,17 @@ function parseLooseJson(text: string): any {
 
 export async function aiTest(env: Env, req: Request): Promise<Response> {
   await requireRole(req, env, 'owner');
-  const cfg = await loadCfg(env);
+  const body = await readJson(req);
+  let cfg = await loadCfg(env);
+  /* 传了 id = 只测「模型记录」里那一条，不改动当前生效配置 ——
+     列表每行的「测试」按钮走这条路；不传 id 时测的就是当前生效配置 */
+  const testId = String(body?.id || '').trim();
+  if (testId) {
+    const blob = await loadModels(env);
+    const rec = blob.list.find((r) => r.id === testId);
+    if (!rec) return bad('记录不存在');
+    cfg = { ...cfg, provider: rec.provider, base_url: rec.base_url, model: rec.model, key: rec.key };
+  }
   if (cfg.provider === 'cf') {
     if (!env.AI) return bad('这台部署没有 AI 绑定，请确认 wrangler.toml 里有 [ai] binding = "AI" 并已重新部署');
   } else if (!cfg.key) return bad('还没有填写 API 密钥');
