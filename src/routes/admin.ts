@@ -1112,6 +1112,8 @@ export async function importAll(env: Env, req: Request): Promise<Response> {
 
 /** 首页抓取超时（原 8s → 6s 提速） */
 const FETCH_TIMEOUT_MS = 6000;
+/* 网址可达性探测（卡片「默认地址」失焦时用）：只拿响应头，比整页抓取短得多 */
+const PROBE_TIMEOUT_MS = 5000;
 /** 首页 HTML 最多读 200KB，够解析 <link>/<meta>（原 300KB） */
 const PAGE_BYTES = 200_000;
 /** 单个图标请求超时 */
@@ -1400,5 +1402,41 @@ export async function favicon(env: Env, req: Request): Promise<Response> {
   const page = await fetchPage(target.toString(), { skipSizeCheck: true });
   if (page.icon) return json({ ok: true, icon: page.icon.dataUrl });
   return bad(page.error || '未找到可用图标', 404);
+}
+
+/**
+ * 网址可达性探测（卡片编辑弹窗「默认地址」失焦时用）。
+ * 只判断「能否拿到 HTTP 响应」，不下载整页：
+ * - 拿到任何状态码都算可达（403/404 说明站点活着，反爬站点很常见），避免误报「打不开」；
+ * - 只有 DNS 失败 / 超时 / 连接被拒才判不可达；
+ * - 内网地址不做探测（Workers 也连不到），回 reachable:null 让前端保持静默。
+ */
+export async function urlProbe(env: Env, req: Request): Promise<Response> {
+  const s = await getSession(env, req);
+  if (!s) return bad('未登录', 401);
+  const raw = (new URL(req.url).searchParams.get('url') || '').trim();
+  if (!raw) return bad('缺少 url 参数');
+  let target: URL;
+  try {
+    target = new URL(/^https?:\/\//i.test(raw) ? raw : 'https://' + raw);
+  } catch { return bad('网址格式不正确'); }
+  if (target.protocol !== 'http:' && target.protocol !== 'https:') return bad('仅支持 http/https 网址');
+  if (isPrivateHost(target.hostname)) return json({ ok: true, reachable: null, reason: '内网地址不做检测' });
+
+  const UA = 'Mozilla/5.0 (compatible; unav-fetch/1.0)';
+  try {
+    const r = await fetch(target.toString(), {
+      method: 'GET',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      headers: { 'user-agent': UA, 'accept': 'text/html,application/xhtml+xml,*/*' },
+    });
+    /* 只为探测，正文直接丢弃，别把整页拉下来占时间与内存 */
+    try { await r.body?.cancel(); } catch { /* 已经读完/已关闭，忽略 */ }
+    return json({ ok: true, reachable: true, status: r.status });
+  } catch (e: any) {
+    const timedOut = e?.name === 'TimeoutError' || e?.name === 'AbortError';
+    return json({ ok: true, reachable: false, reason: timedOut ? '连接超时' : '无法连接' });
+  }
 }
 

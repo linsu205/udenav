@@ -150,6 +150,12 @@ async function dispatch(req: Request, env: Env, parts: string[], seg: string): P
     if (m === 'GET' && a === 'groups') return admin.listGroups(env, req);
     if (m === 'GET' && a === 'icons') return admin.listIcons(env, req, new URL(req.url).searchParams);
     if (m === 'GET' && a === 'favicon') return admin.favicon(env, req);
+    /* 网址可达性探测：会打外网，单独限流，不占 admin 那 60 次/分的额度 */
+    if (m === 'GET' && a === 'probe') {
+      const rl = await lim('url-probe', 40);
+      if (rl) return rl;
+      return admin.urlProbe(env, req);
+    }
     /* 节假日：日历组件每年放假安排的读取与整年覆盖 */
     if (a === 'cal-days') {
       if (m === 'GET') return admin.getCalDays(env, req);
