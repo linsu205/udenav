@@ -552,6 +552,32 @@ async function searchIcon(keyword: string): Promise<string> {
 
 /* ---------------- 补全 ---------------- */
 
+/**
+ * 把模型返回的「分组」归一到已有分组之一。
+ * 模型常返回近似名（如「开发」对应「软件开发」、「影视」对应「娱乐影视」），
+ * 纯相等会大量落空并退化到默认分组；这里做归一化 + 包含匹配，
+ * 但绝不让模型凭空造一个分组出来。
+ */
+function matchGroupTitle(raw: string, candidates: string[]): string {
+  const norm = (s: string) => s.trim().replace(/\s+/g, '').toLowerCase();
+  const r = norm(raw);
+  if (!r) return '';
+  const cands = candidates.map((t) => ({ t, n: norm(t) }));
+  /* 1) 归一化后完全相等 */
+  const exact = cands.find((c) => c.n === r);
+  if (exact) return exact.t;
+  /* 2) 候选包含模型名（模型用短名指代长分组名，最常见）：取最短的候选，最贴近缩写。
+     单字不做包含匹配，避免「网」误命中所有含「网」的分组 */
+  if (r.length >= 2) {
+    const contained = cands.filter((c) => c.n.includes(r));
+    if (contained.length) return contained.sort((a, b) => a.n.length - b.n.length)[0].t;
+    /* 3) 模型名包含候选（模型给了带后缀的全名）：取最长的候选 */
+    const rev = cands.filter((c) => r.includes(c.n) && c.n.length > 0);
+    if (rev.length) return rev.sort((a, b) => b.n.length - a.n.length)[0].t;
+  }
+  return '';
+}
+
 export async function aiFill(env: Env, req: Request): Promise<Response> {
   await requireRole(req, env, 'editor');
   const body = await readJson(req);
@@ -655,7 +681,7 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
   }
 
   const gTitle = String(aiItem.group || '').trim();
-  const group = groupTitles.find((t) => t === gTitle) || '';
+  const group = matchGroupTitle(gTitle, groupTitles);
 
   return json({
     ok: true,
