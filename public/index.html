@@ -2660,10 +2660,20 @@ $('#q').addEventListener('keydown', e => {
    用户确认无误再保存。未登录不显示（aiFill 要 editor 角色，点了也是 401）。 */
 function isHttpUrl(v) {
   v = (v || '').trim();
-  if (!v) return false;
-  if (/^https?:\/\//i.test(v)) return true;
-  /* 裸域名（含点、无空格、不像纯关键词）：交给后端补 https:// 当网址处理 */
-  return !/\s/.test(v) && /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/.*)?$/i.test(v);
+  if (!v || /\s/.test(v)) return false;
+  let u;
+  try {
+    /* 裸域名（example.com）先补 https:// 再交给 URL 解析；只有 http、http:// 这种残片会解析失败 */
+    u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? v : 'https://' + v);
+  } catch (e) {
+    return false;
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  /* 主机必须是一个像域名的东西（带点，如 example.com / 192.168.1.1）或 localhost。
+     光一个词（http、abc、搜索词）不算网址，避免「一打 http 就当网址」的误判 */
+  const h = u.hostname;
+  if (h === 'localhost') return true;
+  return h.indexOf('.') > 0 && !/^\.|\.$/.test(h);
 }
 
 function updateAiAddBtn() {
@@ -2689,6 +2699,9 @@ async function aiAddFromSearch() {
     if (!r.ok) { const j = await r.json().catch(() => null); ctxToast(j?.error || 'AI 补全失败'); return; }
     const j = await r.json();
     const it = (j && j.item) || {};
+    /* 后端抓页失败（DNS 不通 / 超时 / 拒绝连接）会带 reachable:false：
+       提醒用户网址可能填错，但仍打开弹窗让他确认或手填 */
+    if (j && j.reachable === false) ctxToast('网址可能无法访问，请确认地址是否正确');
     /* 默认分组：拿 AI 命中的分组；命中不到就落第一个分组，用户在弹窗里还能改。
        gid 只是「打开弹窗时所在分组」，真正的分组以 init.group_title 为准由弹窗再解析一次 */
     const gid = (state.groups && state.groups[0] && state.groups[0].id) || 0;

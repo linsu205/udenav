@@ -331,7 +331,9 @@ async function aiFill() {
       if (g) f.group_id = g.id;
     }
     const note = (r.notes || [])[0];
-    if (r.source === 'ai') ElMessage.success('已补全，确认无误后点保存');
+    /* 网址抓不通（DNS/超时/拒绝连接）时优先提示，避免误以为补全成功 */
+    if (r.reachable === false) ElMessage.warning('网址可能无法访问，请确认地址是否正确');
+    else if (r.source === 'ai') ElMessage.success('已补全，确认无误后点保存');
     else ElMessage.warning(note || '只填入了网页自带信息');
   } catch (err: any) {
     ElMessage.error('AI 补全失败：' + (err?.message || '未知错误'));

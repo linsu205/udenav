@@ -606,6 +606,10 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
     notes.push(e?.message || '网页信息抓取失败');
   }
 
+  /* 页面是否真的抓到：抓不到（DNS 不通 / 超时 / 拒绝连接 / 空响应）视为不可达。
+     前端据此提醒「网址无法访问」，但仍照常返回降级结果，不阻断用户保存 */
+  const reachable = !!meta;
+
   const cfg = await loadCfg(env);
   const canAi = cfg.enabled && ready(env, cfg);
   const usage = await loadUsage(env);
@@ -613,11 +617,11 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
   /* 没有密钥 / 关了开关 / 今日超额 → 只回网页信息 + 真实图标，不算失败 */
   if (!canAi) {
     notes.push(cfg.key ? 'AI 已关闭，只填入了网页自带信息' : '还没有配置 AI 模型，只填入了网页自带信息');
-    return json({ ok: true, source: 'meta', notes, item: metaOnly(meta, parsed, faviconData) });
+    return json({ ok: true, source: 'meta', reachable, notes, item: metaOnly(meta, parsed, faviconData) });
   }
   if (usage.calls >= cfg.daily_limit) {
     notes.push(`今日 AI 调用已达上限（${cfg.daily_limit} 次），只填入了网页自带信息`);
-    return json({ ok: true, source: 'meta', notes, item: metaOnly(meta, parsed, faviconData) });
+    return json({ ok: true, source: 'meta', reachable, notes, item: metaOnly(meta, parsed, faviconData) });
   }
 
   /* 分组候选：让模型只能在已有分组里挑，避免凭空造一个「工具」分组出来 */
@@ -655,7 +659,7 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
   if (raw) await bumpUsage(env, raw.tokens);
 
   const base = metaOnly(meta, parsed, faviconData);
-  if (!aiItem) return json({ ok: true, source: 'meta', notes, item: base });
+  if (!aiItem) return json({ ok: true, source: 'meta', reachable, notes, item: base });
 
   const title = String(aiItem.title || '').trim().slice(0, 20) || base.title;
   const description = String(aiItem.description || '').trim().slice(0, 100) || base.description;
@@ -686,6 +690,7 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
   return json({
     ok: true,
     source: 'ai',
+    reachable,
     notes,
     item: { title, description, color, icon_url: iconUrl, icon_name: iconName, group_title: group },
     usage: view(cfg, await loadUsage(env), !!env.AI).usage,
