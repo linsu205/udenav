@@ -65,7 +65,11 @@ onMounted(async () => {
 
 async function save(it: any) {
   try {
-    if (isAdd.value) await post('/api/admin/icons', { ...it, group_id: props.gid });
+    /* 新增：直接用弹窗表单里的 group_id（用户选择或 AI 识别的分组）。
+       原先这里强制覆盖成 props.gid（打开弹窗时所在分组=常用），会把用户/AI 选的分组丢掉，
+       导致「保存后还是常用组」。兜底回落已由 IconEditModal.save 里的
+       payload.group_id = Number(payload.group_id) || props.modelValue.gid 处理，无需在此再覆盖 */
+    if (isAdd.value) await post('/api/admin/icons', it);
     else await patch('/api/admin/icons/' + props.id, it);
   } catch (e: any) {
     if (e?.status === 401 || e?.status === 403) {
