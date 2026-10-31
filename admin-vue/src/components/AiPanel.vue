@@ -592,8 +592,12 @@ onMounted(load);
 .ai-dlg-foot { display: flex; align-items: center; width: 100%; }
 .ai-dlg-gap { flex: 1 1 auto; }
 
-/* 模型记录标题行：标题在左，新增按钮在右 */
+/* 模型记录标题行：左侧色条 + 标题靠左，新增按钮在右。
+   这里 .sp-card-title 自带 ::before 色条也是 flex 子项；若只用 space-between
+   会把「色条 / 标题 / 按钮」三者摊开，标题被推到中间。让标题 span 占满剩余空间，
+   文字左对齐后即紧贴色条，按钮仍贴右。 */
 .ai-rec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ai-rec-head > span { flex: 1 1 auto; min-width: 0; }
 
 .ai-switch-row { display: flex; align-items: center; gap: 10px; }
 .ai-switch-tip { font-size: 12px; color: var(--sp-faint); }

@@ -103,6 +103,12 @@
   .eng-list button{display:block;width:100%;background:none;border:0;color:var(--text);padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;text-align:left}
   .eng-list button:hover{background:rgba(24,160,88,.22)}
   .icon-btn{background:var(--card-bg-hover);border:0;color:var(--text);border-radius:999px;width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  /* 搜索框里的「AI 添加」：登录且输入是网址时才出现。主题色胶囊，和搜索框玻璃底区分开 */
+  .ai-add-btn{display:inline-flex;align-items:center;gap:4px;flex:none;height:34px;padding:0 14px;border:0;border-radius:999px;background:rgba(64,158,255,.16);color:#409eff;font:inherit;font-size:13px;line-height:1;cursor:pointer;white-space:nowrap;transition:background .15s}
+  .ai-add-btn:hover{background:rgba(64,158,255,.30)}
+  .ai-add-btn[hidden]{display:none}
+  .ai-add-btn.busy{opacity:.65;cursor:progress}
+  .ai-add-btn .ai-add-ico{font-size:13px;line-height:1}
 
   /* 注意：以下 .group / .card / .mini 规则必须限定在访客页 .wrap 内。
      后台是同一个文档里的 Vue 组件（#adminRoot 在 .modal 里），
@@ -781,6 +787,7 @@
       <div class="eng-list" id="engList"></div>
     </div>
     <input id="q" placeholder="搜索网站，或输入关键词搜索">
+    <button class="ai-add-btn" id="aiAddBtn" type="button" hidden aria-label="AI 添加"><span class="ai-add-ico">✨</span>AI 添加</button>
     <button class="icon-btn" id="clearBtn" data-tip="清空" aria-label="清空">✕</button>
   </div>
 
@@ -2529,10 +2536,10 @@ async function openAdmin() {
    它有自己的挂载点 #editRoot，与 #adminRoot 是两个独立 Vue 实例，
    所以从点下去的第一帧起就只有编辑弹窗，不会有后台面板闪一下。
    id 传 0（或省略）即新增模式 */
-async function openItemEditor(gid, id) {
+async function openItemEditor(gid, id, init) {
   try {
     await loadAdmin();                       // 只取 JS/CSS，不挂后台面板
-    window.__udenavAdmin.openItemEditor($('#editRoot'), Number(gid), Number(id) || 0);
+    window.__udenavAdmin.openItemEditor($('#editRoot'), Number(gid), Number(id) || 0, init || null);
   } catch (e) {
     console.warn('[UDeNav] 编辑弹窗加载失败', e);
     ctxToast('加载失败，请重试');
@@ -2589,8 +2596,8 @@ function syncFromAdmin() {
 function refreshAdminState() {
   return fetch('/api/admin/me', { cache: 'no-store' })
     .then(r => r.ok ? r.json() : null)
-    .then(j => { state.admin = !!(j && j.logged_in); paintAdminBtn(); })
-    .catch(() => { state.admin = false; paintAdminBtn(); });
+    .then(j => { state.admin = !!(j && j.logged_in); paintAdminBtn(); updateAiAddBtn(); })
+    .catch(() => { state.admin = false; paintAdminBtn(); updateAiAddBtn(); });
 }
 
 /* 顶栏后台按钮的登录状态指示：已登录时图标染品牌蓝，未登录保持白色。
@@ -2613,8 +2620,8 @@ function paintAdminBtn() {
 /* ---------- 交互 ---------- */
 $('#engBtn').onclick = e => { e.stopPropagation(); $('#engList').classList.toggle('open'); };
 document.addEventListener('click', () => $('#engList').classList.remove('open'));
-$('#q').addEventListener('input', () => renderGroups(true));
-$('#clearBtn').onclick = () => { $('#q').value = ''; renderGroups(true); };
+$('#q').addEventListener('input', () => { updateAiAddBtn(); renderGroups(true); });
+$('#clearBtn').onclick = () => { $('#q').value = ''; updateAiAddBtn(); renderGroups(true); };
 $('#modalClose').onclick = closeModal;
 $('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeCtx(); closeModal(); } });
@@ -2628,8 +2635,68 @@ $('#q').addEventListener('keydown', e => {
   window.open(url, '_blank');
   /* 跳转后清空搜索栏并恢复完整图标列表 */
   e.target.value = '';
+  updateAiAddBtn();
   renderGroups(true);
 });
+
+/* ---------- 搜索框「AI 添加」 ----------
+   输入是 http(s) 网址且已登录后台时，搜索框右侧出现「AI 添加」按钮；
+   点一下用该网址调 AI 补全，拿到标题/描述/图标/分组后直接打开「添加卡片」弹窗预填，
+   用户确认无误再保存。未登录不显示（aiFill 要 editor 角色，点了也是 401）。 */
+function isHttpUrl(v) {
+  v = (v || '').trim();
+  if (!v) return false;
+  if (/^https?:\/\//i.test(v)) return true;
+  /* 裸域名（含点、无空格、不像纯关键词）：交给后端补 https:// 当网址处理 */
+  return !/\s/.test(v) && /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/.*)?$/i.test(v);
+}
+
+function updateAiAddBtn() {
+  const btn = $('#aiAddBtn');
+  if (!btn) return;
+  const show = state.admin && isHttpUrl($('#q').value);
+  btn.hidden = !show;
+}
+
+async function aiAddFromSearch() {
+  const url = $('#q').value.trim();
+  if (!isHttpUrl(url)) return;
+  const btn = $('#aiAddBtn');
+  btn.classList.add('busy');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/admin/ai/fill', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-requested-with': 'unav' },
+      body: JSON.stringify({ url }),
+    });
+    if (r.status === 401 || r.status === 403) { ctxToast('请先登录后台'); openAdmin(); return; }
+    if (!r.ok) { const j = await r.json().catch(() => null); ctxToast(j?.error || 'AI 补全失败'); return; }
+    const j = await r.json();
+    const it = (j && j.item) || {};
+    /* 默认分组：拿 AI 命中的分组；命中不到就落第一个分组，用户在弹窗里还能改。
+       gid 只是「打开弹窗时所在分组」，真正的分组以 init.group_title 为准由弹窗再解析一次 */
+    const gid = (state.groups && state.groups[0] && state.groups[0].id) || 0;
+    const init = {
+      title: it.title || '',
+      url,
+      description: it.description || '',
+      color: it.color || '',
+      icon_url: it.icon_url || '',
+      icon_name: it.icon_name || '',
+      group_title: it.group_title || '',
+    };
+    openItemEditor(gid, 0, init);
+  } catch (e) {
+    ctxToast('AI 添加失败：' + (e?.message || '未知错误'));
+  } finally {
+    btn.classList.remove('busy');
+    btn.disabled = false;
+  }
+}
+
+$('#aiAddBtn').addEventListener('click', aiAddFromSearch);
+
 
 /* ---------- 卡片右键菜单（sun-panel 同款：打开 / 公网 / 内网 / 复制链接 + 编辑 / 删除） ---------- */
 const CTX_ICONS = {

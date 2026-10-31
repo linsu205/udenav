@@ -12,6 +12,9 @@ import { type Group, type IconItem } from '../store';
 const props = defineProps<{
   modelValue: { gid: number; it: IconItem | null };
   groups: Group[];
+  /** 新增模式下的预填数据（如首页「AI 添加」带进来的 AI 补全结果）。
+      只用于新增（it 为空）：填完字段让用户确认，不改动「编辑已有卡片」语义 */
+  init?: Record<string, any> | null;
 }>();
 const emit = defineEmits<{ (e: 'close'): void; (e: 'save', it: any): void }>();
 
@@ -153,6 +156,28 @@ watch(() => props.modelValue, v => {
     f.group_id = Number(f.group_id) || v.gid;
     /* 组件卡片默认落在「组件」页签，但编辑态不显示页签，这里只为语义分支用 */
     tab.value = (f.kind || 'link') === 'link' ? 'card' : 'widget';
+  } else if (props.init && isAdd.value) {
+    /* 新增模式预填：首页「AI 添加」带着 AI 补全结果进来。AI 的 group_title 在分组列表里
+       命中就直接落到那个分组，命中不到则退回打开弹窗时所在的分组（用户在弹窗里还能改）。 */
+    const d = props.init || {};
+    f.title = String(d.title || '').slice(0, 20);
+    f.url = String(d.url || '');
+    f.lan_url = '';
+    f.description = String(d.description || '').slice(0, 100);
+    f.icon_type = d.icon_url ? 'data' : (d.icon_name ? 'iconify' : 'color');
+    f.icon_url = String(d.icon_url || '');
+    f.icon_name = String(d.icon_name || '');
+    f.icon_text = '';
+    f.background_color = /^#[0-9a-f]{6}$/i.test(String(d.color || '')) ? String(d.color) : '';
+    f.open_method = 2;
+    f.sort = 0;
+    f.kind = 'link';
+    f.group_id = Number(v.gid) || 0;
+    if (d.group_title) {
+      const g = (props.groups || []).find((x) => x.title === d.group_title);
+      if (g) f.group_id = g.id;
+    }
+    tab.value = 'card';
   } else {
     Object.assign(f, { title: '', url: '', lan_url: '', description: '', icon_type: 'color', icon_url: '', icon_name: '', background_color: '', open_method: 2, sort: 0, group_id: v.gid, kind: 'link' });
     tab.value = 'card';

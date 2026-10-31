@@ -71,14 +71,17 @@ let editHost: HTMLElement | null = null;
  * 它和 mountAdmin 是两个互不相干的 app：容器不同、组件树不同，
  * 打开它不会创建后台面板的任何东西，所以后台不会闪。
  */
-/* id 传 0 / 省略 = 新增（弹窗标题变「添加卡片」，保存走 POST） */
-export function openItemEditor(el: HTMLElement, gid: number, id: number = 0): void {
+/* id 传 0 / 省略 = 新增（弹窗标题变「添加卡片」，保存走 POST）。
+   init 可选：新增模式下预填的卡片数据（如首页「AI 添加」带着 AI 补全结果直接打开弹窗）。
+   传了 init 仍按「新增」处理（标题=添加卡片、保存走 POST），只是先把字段填上让用户确认。 */
+export function openItemEditor(el: HTMLElement, gid: number, id: number = 0, init: Record<string, any> | null = null): void {
   closeItemEditor();
   el.hidden = false;
   editHost = el;
   const app = createApp(EditApp, {
     gid,
     id,
+    init: init || undefined,
     onDone: () => closeItemEditor(),
   });
   app.use(ElementPlus, { size: 'default', zIndex: 2500 });

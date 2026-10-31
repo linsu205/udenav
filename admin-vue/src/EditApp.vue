@@ -17,11 +17,14 @@ import { notifyHome } from './lib/notify';
 import type { Group, IconItem } from './store';
 
 /* id = 0 表示「新增」：同一个弹窗换个标题直接加卡片，
-   省得为加一条导航先去后台面板里翻分组 */
-const props = defineProps<{ gid: number; id: number }>();
+   省得为加一条导航先去后台面板里翻分组。
+   init 可选：新增模式的预填数据（如首页「AI 添加」带进来的 AI 补全结果） */
+const props = defineProps<{ gid: number; id: number; init?: Record<string, any> }>();
 const emit = defineEmits<{ (e: 'done'): void }>();
 
 const isAdd = computed(() => !props.id);
+/* 仅在新增模式下把 init 透传给编辑弹窗；编辑已有卡片时不接受预填，避免覆盖原数据 */
+const initItem = computed(() => (isAdd.value ? props.init : undefined));
 
 const ready = ref(false);
 const item = ref<IconItem | null>(null);
@@ -81,7 +84,7 @@ async function save(it: any) {
 <template>
   <!-- 取数据那几十毫秒先铺一层和弹窗同色的遮罩，点下去就立刻有反馈，不会白屏一下 -->
   <div v-if="!ready" class="edit-veil"><i></i></div>
-  <IconEditModal v-else :model-value="{ gid, it: item }" :groups="groups" @close="done" @save="save" />
+  <IconEditModal v-else :model-value="{ gid, it: item }" :groups="groups" :init="initItem" @close="done" @save="save" />
 </template>
 
 <style scoped>
