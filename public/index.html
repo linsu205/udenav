@@ -2699,9 +2699,9 @@ async function aiAddFromSearch() {
     if (!r.ok) { const j = await r.json().catch(() => null); ctxToast(j?.error || 'AI 补全失败'); return; }
     const j = await r.json();
     const it = (j && j.item) || {};
-    /* 后端抓页失败（DNS 不通 / 超时 / 拒绝连接）会带 reachable:false：
-       提醒用户网址可能填错，但仍打开弹窗让他确认或手填 */
-    if (j && j.reachable === false) ctxToast('网址可能无法访问，请确认地址是否正确');
+    /* reachable=false 只表示后端没抓到页面内容（标题/图标可能缺），不代表网址坏了：
+       Worker 出口在境外，国内站点常把它挡掉。可达性由弹窗里的本机探测负责，这里只提一句 */
+    if (j && j.reachable === false) ctxToast('没抓到页面信息，标题可能要手动补一下');
     /* 默认分组：拿 AI 命中的分组；命中不到就落第一个分组，用户在弹窗里还能改。
        gid 只是「打开弹窗时所在分组」，真正的分组以 init.group_title 为准由弹窗再解析一次 */
     const gid = (state.groups && state.groups[0] && state.groups[0].id) || 0;

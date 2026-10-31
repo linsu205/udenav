@@ -606,8 +606,9 @@ export async function aiFill(env: Env, req: Request): Promise<Response> {
     notes.push(e?.message || '网页信息抓取失败');
   }
 
-  /* 页面是否真的抓到：抓不到（DNS 不通 / 超时 / 拒绝连接 / 空响应）视为不可达。
-     前端据此提醒「网址无法访问」，但仍照常返回降级结果，不阻断用户保存 */
+  /* 页面是否真的抓到。注意语义只到这里为止：false = 没拿到页面内容（标题/图标可能缺），
+     不代表网址坏了 —— 可达性由前端在浏览器本机探测（lib/probe.ts），
+     Worker 出口在境外，国内站点常把它挡掉，拿它判死会大面积误报。 */
   const reachable = !!meta;
 
   const cfg = await loadCfg(env);

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { reactive, computed, watch, ref, onMounted, onBeforeUnmount } from 'vue';
-import { post, get } from '../api';
+import { post } from '../api';
 import { ElMessage } from 'element-plus';
 import ModalShell from './ModalShell.vue';
 import IIcon from './IIcon.vue';
 import IconPickerPopover from './IconPickerPopover.vue';
 import { readableOn } from '../lib/icon-color';
 import { ICON_LIBS, pushRecent } from '../lib/icon-lists';
+import { probeInBrowser } from '../lib/probe';
 import { type Group, type IconItem } from '../store';
 
 const props = defineProps<{
@@ -285,9 +286,11 @@ function addWidget(w: (typeof WIDGET_DEFS)[number]) {
 
 /* ---------- 默认地址可达性（失焦自动探测） ----------
    只做提示，不拦保存：内网站点、临时维护的站点用户仍要能收录。
+   探测在浏览器本机做（lib/probe.ts），不走 Worker：Worker 出口在境外，国内站点挡住境外 IP
+   时会误报「打不开」，而浏览器走的就是用户真实的访问路径。
    先过格式再发请求 —— `https://cpu.bmcx.` 这种 `new URL()` 不报错、但根本不可能是站点，
    拿去做请求只会得到一个莫名其妙的结论，不如当场说「域名不完整」。 */
-const urlState = ref<'idle' | 'checking' | 'ok' | 'bad'>('idle');
+const urlState = ref<'idle' | 'checking' | 'ok' | 'bad' | 'soft'>('idle');
 const urlMsg = ref('');
 let probedUrl = '';
 let probeSeq = 0;
@@ -336,6 +339,13 @@ function setUrlBad(reason?: string) {
   urlMsg.value = '网址无法访问' + (reason ? '（' + reason + '）' : '');
 }
 
+/* 黄字：本机连不上、或浏览器不允许探这个地址。这不等于「网址写错了」——
+   拦截插件、公司网络、https 页面里的 http 地址都会造成探不到，必须和红字分开，否则误报吓人 */
+function setUrlSoft(msg: string) {
+  urlState.value = 'soft';
+  urlMsg.value = msg;
+}
+
 async function probeUrl() {
   const u = f.url.trim();
   const shape = urlShape(u);
@@ -352,18 +362,11 @@ async function probeUrl() {
   const seq = ++probeSeq;
   urlState.value = 'checking';
   urlMsg.value = '检测中…';
-  try {
-    const r: any = await get('/api/admin/probe?url=' + encodeURIComponent(u));
-    if (seq !== probeSeq) return;              // 期间地址又变了，丢弃旧结果
-    if (r && r.reachable === true) setUrlOk(r.note);
-    else if (r && r.reachable === false) setUrlBad(r.reason);
-    else { urlState.value = 'idle'; urlMsg.value = ''; }  // 内网地址等：静默，但已探过就不再重复
-  } catch {
-    if (seq !== probeSeq) return;
-    /* 探测接口自身失败（未登录 / 限流）不该让用户以为网址坏了，静默收起并允许下次重试 */
-    probedUrl = '';
-    resetUrlState();
-  }
+  /* 不会再抛：探测失败本身就是要显示的结果，不要静默收起，否则用户以为没查 */
+  const r = await probeInBrowser(u);
+  if (seq !== probeSeq) return;                // 期间地址又变了，丢弃旧结果
+  if (r.level === 'ok') setUrlOk(`${r.ms} ms`);
+  else setUrlSoft(r.why);
 }
 
 /* 地址被改动后提示立刻失效，避免输入框里是新地址、下面还挂着旧结论 */
@@ -421,11 +424,11 @@ async function aiFill() {
       if (g) f.group_id = g.id;
     }
     const note = (r.notes || [])[0];
-    /* 顺手把可达性结论同步到输入框下方（通=绿字，不通=红字），不必等失焦再探一次 */
-    if (r.reachable === false) setUrlBad();
-    else if (r.reachable === true) { setUrlOk(); probedUrl = f.url.trim(); }
-    /* 网址抓不通（DNS/超时/拒绝连接）时优先提示，避免误以为补全成功 */
-    if (r.reachable === false) ElMessage.warning('网址可能无法访问，请确认地址是否正确');
+    /* 可达性一律以本机探测为准（和失焦这里走同一套），后端只负责抓页面信息：
+       抓不到页面往往只是「没拿到标题和图标」，不能据此判网址有问题 */
+    probedUrl = '';
+    await probeUrl();
+    if (!r.reachable) ElMessage.warning(note || '没抓到页面内容（可能需要登录或被站点挡住），标题建议手动补一下');
     else if (r.source === 'ai') ElMessage.success('已补全，确认无误后点保存');
     else ElMessage.warning(note || '只填入了网页自带信息');
   } catch (err: any) {
@@ -625,6 +628,7 @@ function chooseImg(it: PickImg) {
             <span v-if="urlState !== 'idle'" class="url-tip" :class="urlState">
               <IIcon v-if="urlState === 'checking'" name="ri:loader-4-line" :size="13" class="spin" />
               <IIcon v-else-if="urlState === 'ok'" name="ri:checkbox-circle-line" :size="13" />
+              <IIcon v-else-if="urlState === 'soft'" name="ri:question-line" :size="13" />
               <IIcon v-else name="ri:error-warning-line" :size="13" />
               <span>{{ urlMsg }}</span>
             </span>
@@ -790,6 +794,8 @@ function chooseImg(it: PickImg) {
 }
 .url-tip.ok { color: var(--sp-ok); }
 .url-tip.bad { color: var(--sp-danger-text); }
+/* 无法验证：暖黄色，跟「红色=网址确实有问题」区分开，避免把正常站点吓成死链 */
+.url-tip.soft { color: #c98a2e; }
 .url-tip.checking { color: var(--sp-dim); }
 .url-tip .spin { animation: url-spin 1s linear infinite; }
 @keyframes url-spin { to { transform: rotate(360deg); } }
