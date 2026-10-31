@@ -39,6 +39,10 @@ const loading = ref(true);
 const saving = ref(false);
 const testing = ref(false);
 const info = ref<any>(null);
+/* 顶部总开关：开着 = 卡片补全会真的调模型；关着 = 只填网页自带信息。
+   它就是 ai_cfg.enabled，单独放一个 ref 是为了能在「开启后测试失败」时直接弹回关闭 */
+const switchOn = ref(false);
+const toggling = ref(false);
 
 const form = reactive({ name: '', switch_on: true, base_url: '', model: '', daily_limit: 50, provider: 'openai' as 'openai' | 'cf' });
 const keyInput = ref('');
@@ -71,20 +75,32 @@ function matchPreset(provider: string, base: string, model: string): string {
   return hit ? hit.key : 'custom';
 }
 
-const state = computed(() => {
+/** 当前默认记录：开关打开时启用的就是它；没选过（老数据）时落列表第一条，
+    而内置的 Workers AI 永远排在第一位，所以「默认选中内置」是天然成立的 */
+const activeRec = computed(() => models.value.find((m: any) => m.id === activeId.value) || models.value[0] || null);
+/** 列表里那枚单选：默认记录（没有显式指定时就是第一条，也就是内置的 Workers AI） */
+const isDefault = (m: any) => !!activeRec.value && m.id === activeRec.value.id;
+
+/* 开关右边的说明：说清「现在到底生效没有」，别让一个绿色的开关骗人 */
+const powerText = computed(() => {
+  if (loading.value) return '读取中…';
+  /* 开启要等模型往返（可能几秒），这里给出进度，别让开关只是转圈 */
+  if (toggling.value) return switchOn.value ? '正在测试默认记录…' : '正在关闭…';
+  if (!switchOn.value) return '未启用';
   const r = info.value;
-  if (!r) return { cls: 'off', text: '读取中' };
-  if (r.provider === 'cf' && !r.ai_binding) return { cls: 'off', text: '缺少 AI 绑定' };
-  if (!r.configured) return { cls: 'off', text: '未配置密钥' };
-  if (!r.switch_on) return { cls: 'off', text: '已关闭' };
-  return { cls: 'on', text: '已启用' };
+  if (r && r.provider === 'cf' && !r.ai_binding) return '已开启 · 但缺少 AI 绑定';
+  if (r && !r.configured) return '已开启 · 但缺密钥';
+  return '已启用';
 });
+
+
 
 async function load() {
   loading.value = true;
   try {
     const r: any = await get('/api/admin/ai');
     info.value = r;
+    switchOn.value = !!r.switch_on;
     form.switch_on = !!r.switch_on;
     form.base_url = r.base_url || '';
     form.model = r.model || '';
@@ -140,14 +156,12 @@ async function save() {
     /* 不传 key 表示「保持原密钥」，避免每次保存设置都把密钥清空 */
     if (keyInput.value.trim()) body.key = keyInput.value.trim();
     const r: any = await put('/api/admin/ai', body);
-    info.value = r;
+    /* 保存会顺带把这条写成生效配置，顶部开关要跟着变，否则界面显示与实际状态脱节 */
+    applyAiState(r);
     /* 服务端会把「粘进来的完整 endpoint」收成 base，回显以服务端为准，免得输入框和实际请求不一致 */
     if (r?.base_url) form.base_url = r.base_url;
     if (r?.model) form.model = r.model;
     if (Number(r?.daily_limit) > 0) form.daily_limit = Number(r.daily_limit);
-    /* 保存即写入模型库，直接用接口回传的列表刷新，省一次请求 */
-    models.value = Array.isArray(r.models?.list) ? r.models.list : [];
-    activeId.value = String(r.models?.active_id || '');
     /* 保存即生效，所以之后的表单就附着在刚写入/更新的这条记录上 */
     editingId.value = activeId.value;
     keyInput.value = '';
@@ -233,18 +247,73 @@ async function testRecord(m: any) {
   else ElMessage.error(r.text);
 }
 
-async function switchRecord(m: any) {
-  if (m.id === activeId.value) return;
+/* 各接口回的形状不完全一样：aiInfo/aiSwitch 返回扁平 view + models{list,active_id}，
+   ai/models/active 返回 {active_id, list}。统一在这里吸收，别让每个调用点各写一遍 */
+function applyAiState(r: any) {
+  if (!r) return;
+  info.value = Object.assign({}, info.value, r);
+  const list = r.models?.list ?? r.list;
+  if (Array.isArray(list)) models.value = list;
+  const aid = r.models?.active_id ?? r.active_id;
+  if (typeof aid === 'string') activeId.value = aid;
+  if (typeof r.switch_on === 'boolean') {
+    switchOn.value = r.switch_on;
+    form.switch_on = r.switch_on;
+  }
+}
+
+/* ---------- 顶部总开关 ----------
+   打开是一整件事：选中默认记录 → 写成生效配置 → 打开开关 → 立刻测一次。
+   测试不通过就把开关退回关闭 —— 留一个亮着却调不动模型的开关，比关着更让人困惑。 */
+async function onSwitch(v: string | number | boolean) {
+  const want = !!v;
+  if (toggling.value) return;
+  /* 一条记录都没有时不开：内置那条总会存在，真走到这儿多半是列表没读到 */
+  if (want && !models.value.length) {
+    switchOn.value = false;
+    return ElMessage.warning('请添加记录再点击开启');
+  }
+  toggling.value = true;
   try {
-    await post('/api/admin/ai/models/active', { id: m.id });
-    /* 切换完顺手测一次连通性，把「切换结果 + 测试结果」合成一条提示，
-       省得用户还要再点一次才知道这个模型到底能不能用 */
+    const r: any = await post('/api/admin/ai/switch', { on: want });
+    applyAiState(r);
+    if (!want) { ElMessage.success('已关闭 AI 补全'); return; }
+    const rec = activeRec.value;
+    const t = await runTest(rec?.id || '');
+    if (t.ok) {
+      ElMessage.success(`已启用「${rec?.name || '默认记录'}」· ${t.text}`);
+      return;
+    }
+    /* 测不通：先退回关闭，再明确说清是哪里不对，别只弹一句「失败」 */
+    switchOn.value = false;
+    try {
+      applyAiState(await post('/api/admin/ai/switch', { on: false }));
+    } catch { /* 回退也失败就不再叠一条报错，下面的提示已经说明状态 */ }
+    ElMessage.error(`${t.text}。已自动关闭 AI 补全，请检查默认记录的密钥，或换一条记录再开启`);
+  } catch (e: any) {
+    switchOn.value = info.value?.switch_on ?? false;
+    ElMessage.error(e?.message || '开关切换失败');
+  } finally {
+    toggling.value = false;
+  }
+}
+
+/* 记录行首的单选：换默认记录。开关开着时换 = 立刻切过去并测一次；
+   关着时只记下「下次开启用它」，不去打扰模型 */
+async function setDefault(m: any) {
+  if (isDefault(m)) return;
+  try {
+    const r: any = await post('/api/admin/ai/models/active', { id: m.id });
+    applyAiState(r);
+    if (!switchOn.value) {
+      ElMessage.success(`默认记录已换成「${m.name}」，打开开关就用它`);
+      return;
+    }
     const t = await runTest(m.id);
-    if (t.ok) ElMessage.success(`已切换到「${m.name}」· ${t.text}`);
-    else ElMessage.warning(`已切换到「${m.name}」，但${t.text}`);
-    await load();
+    if (t.ok) ElMessage.success(`默认记录已换成「${m.name}」· ${t.text}`);
+    else ElMessage.warning(`默认记录已换成「${m.name}」，但${t.text}`);
   } catch (err: any) {
-    ElMessage.error('切换失败：' + (err?.message || '未知错误'));
+    ElMessage.error('切换默认记录失败：' + (err?.message || '未知错误'));
   }
 }
 
@@ -256,8 +325,7 @@ async function removeRecord(m: any) {
   } catch { return; }
   try {
     const r: any = await del('/api/admin/ai/models?id=' + encodeURIComponent(m.id));
-    models.value = Array.isArray(r.list) ? r.list : [];
-    activeId.value = String(r.active_id || '');
+    applyAiState(r);
     /* 删掉的正是正在编辑的那条时退出编辑态；这里只清表单，不要把弹窗重新打开 */
     if (editingId.value === m.id) resetForm();
     ElMessage.success('已删除');
@@ -296,7 +364,13 @@ onMounted(load);
         <div class="sub">接一个模型服务，用于卡片信息自动补全</div>
       </div>
       <div class="head-right">
-        <span class="ai-state" :class="state.cls"><i></i>{{ state.text }}</span>
+        <div class="ai-power" :class="{ on: switchOn }">
+          <el-switch
+            v-model="switchOn" :loading="toggling" :disabled="toggling || loading"
+            @change="onSwitch"
+          />
+          <span class="ai-power-text">{{ powerText }}</span>
+        </div>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </div>
     </div>
@@ -377,19 +451,33 @@ onMounted(load);
         还没有记录，点右上角「新增模型」添加第一条
       </div>
       <div v-else class="ai-rec-list">
-        <div v-for="m in models" :key="m.id" class="ai-rec" :class="{ on: m.id === activeId }">
+        <!-- 列表里的「默认」单选：打开顶部开关时启用的就是这一条。
+             内置 Workers AI 永远排第一，没手动选过时它天然就是默认 -->
+        <div v-for="m in models" :key="m.id" class="ai-rec" :class="{ on: isDefault(m) }">
+          <button
+            type="button" class="ai-def" :class="{ on: isDefault(m) }"
+            :title="isDefault(m) ? '默认记录：打开开关时启用它' : '设为默认记录'"
+            :aria-label="isDefault(m) ? '默认记录' : '设为默认记录'"
+            :aria-checked="isDefault(m)" role="radio"
+            @click="setDefault(m)"
+          ><i></i></button>
           <span class="ai-rec-ico"><IIcon name="ri:magic-line" :size="14" /></span>
           <div class="ai-rec-main">
             <div class="ai-rec-name">
               {{ m.name }}
-              <span v-if="m.id === activeId" class="ai-rec-badge">生效中</span>
+              <span v-if="m.builtin" class="ai-rec-badge builtin">内置</span>
+              <span v-if="isDefault(m) && switchOn" class="ai-rec-badge">生效中</span>
+              <span v-else-if="isDefault(m)" class="ai-rec-badge def">默认</span>
             </div>
             <div class="ai-rec-sub">
-              {{ m.provider === 'cf' ? '内置通道' : (m.base_url || '自定义') }} · {{ m.model }}
+              {{ m.provider === 'cf' ? '内置通道 · 免密钥' : (m.base_url || '自定义') }} · {{ m.model }}
             </div>
           </div>
           <div class="ai-rec-ops">
-            <button type="button" class="ai-rec-op" title="编辑" aria-label="编辑" @click="editRecord(m)">
+            <button
+              v-if="!m.builtin" type="button" class="ai-rec-op" title="编辑" aria-label="编辑"
+              @click="editRecord(m)"
+            >
               <IIcon name="ri:pencil-line" :size="14" />
             </button>
             <button
@@ -401,13 +489,9 @@ onMounted(load);
               <IIcon v-else name="ri:plug-line" :size="14" />
             </button>
             <button
-              type="button" class="ai-rec-op" :class="{ dis: m.id === activeId }"
-              :title="m.id === activeId ? '当前已生效' : '切换为当前模型'" aria-label="切换为当前模型"
-              :disabled="m.id === activeId || !!testingId" @click="switchRecord(m)"
+              v-if="!m.builtin" type="button" class="ai-rec-op danger" title="删除" aria-label="删除"
+              @click="removeRecord(m)"
             >
-              <IIcon name="ri:link" :size="14" />
-            </button>
-            <button type="button" class="ai-rec-op danger" title="删除" aria-label="删除" @click="removeRecord(m)">
               <IIcon name="ri:delete-bin-line" :size="14" />
             </button>
           </div>
@@ -447,6 +531,12 @@ onMounted(load);
         <li>网页抓不到信息（需要登录、反爬）时会只填能拿到的部分，并提示原因。</li>
       </ul>
       <div class="ai-note">
+        顶部开关决定「补全要不要真的调模型」。打开时会自动启用列表里标着
+        <b>默认</b> 的那条记录并立刻测一次连接，测不通会自动退回关闭。
+        内置的 Workers AI 不用添加、不填密钥，默认就是它 —— 想换别的模型时，
+        在记录行首点一下单选设成默认即可。
+      </div>
+      <div class="ai-note">
         说明：AI 只负责「起名、写一句说明、挑图标、选分组」。网址本身和你的卡片数据不会整站上传，
         每次只发送这一个网址和它公开的标题/描述。
       </div>
@@ -463,15 +553,25 @@ onMounted(load);
 .ai-builtin b { color: var(--text); }
 .head-right { display: flex; align-items: center; gap: 10px; }
 
-.ai-state {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; color: var(--sp-dim);
-  padding: 4px 10px; border-radius: 999px;
-  background: var(--sp-ctrl); border: 1px solid var(--sp-border);
+/* 顶部总开关：开关 + 一句状态。状态文字低调，颜色只在真启用时跟主题走，
+   免得「开着但缺密钥」也染成一片绿色 */
+.ai-power { display: inline-flex; align-items: center; gap: 8px; }
+.ai-power-text { font-size: 12.5px; color: var(--sp-dim); transition: color .15s; }
+.ai-power.on .ai-power-text { color: var(--sp-text); }
+
+/* 记录行首的「默认」单选：自己画的小圆点，跟行尾几个图标按钮同一尺寸体系 */
+.ai-def {
+  flex: none; width: 16px; height: 16px; padding: 0; margin-right: 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 1.5px solid var(--sp-border-strong, var(--sp-border));
+  border-radius: 50%; cursor: pointer;
+  transition: border-color .15s, background .15s;
 }
-.ai-state i { width: 6px; height: 6px; border-radius: 50%; background: var(--sp-faint); }
-.ai-state.on { color: var(--sp-ok); }
-.ai-state.on i { background: var(--sp-ok); box-shadow: 0 0 0 3px rgba(var(--sp-ok-rgb), .15); }
+.ai-def i { width: 7px; height: 7px; border-radius: 50%; background: transparent; transition: background .15s; }
+.ai-def:hover { border-color: var(--sp-accent); }
+.ai-def.on { border-color: var(--sp-accent); }
+.ai-def.on i { background: var(--sp-accent); }
+.ai-def:focus-visible { outline: 2px solid rgba(var(--sp-accent-rgb), .45); outline-offset: 2px; }
 
 .ai-form { max-width: 720px; }
 .ai-form :deep(.el-form-item) { margin-bottom: 16px; }
@@ -545,6 +645,10 @@ onMounted(load);
   color: var(--sp-ok);
   background: rgba(var(--sp-ok-rgb), .12);
 }
+/* 「默认」：开关关着时的状态，用主题色而不是绿色 —— 绿色代表正在生效 */
+.ai-rec-badge.def { color: var(--sp-accent); background: rgba(var(--sp-accent-rgb), .12); }
+/* 「内置」：这条不是用户加的，标记成中性灰，别跟状态徽标抢注意力 */
+.ai-rec-badge.builtin { color: var(--sp-dim); background: var(--sp-ctrl); }
 .ai-rec-sub {
   margin-top: 2px;
   font-size: 11.5px;

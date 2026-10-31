@@ -395,13 +395,33 @@ async function fetchFavicon() {
 
 /* ---------- AI 补全 ----------
    只做「填表」，不发保存请求：补完用户还能改，最后仍要点「保存」才落库。
-   模型没配好时后端会退化成只填网页自带信息（标题/描述/主题色），不是报错。 */
+   模型没配好时后端会退化成只填网页自带信息（标题/描述/主题色），不是报错。
+   点之前先在本机探一次网址：地址根本不通时后端抓不到页面、模型也补不出东西，
+   白花一次调用还只留一句含糊的「没抓到页面」，不如直接说清「网址不通，请手工填」。 */
 const aiFilling = ref(false);
 async function aiFill() {
   const u = f.url.trim();
   if (!u) return ElMessage.warning('请先填写默认地址');
+  /* 格式先过一道：`https://cpu.bmcx.` 这种去探测只会得到一个莫名其妙的结论 */
+  if (urlShape(u) === 'bad') {
+    urlState.value = 'bad';
+    urlMsg.value = '网址格式不对，检查域名后缀是否完整';
+    return ElMessage.error('网址格式不完整，先补全域名再补全信息');
+  }
   aiFilling.value = true;
   try {
+    /* 本机探测（和失焦检测同一套逻辑）：只有明确连不上才拦；
+       探不了的情况（https 页面里的 http 地址、内网地址）一律放行，别误伤 */
+    urlState.value = 'checking';
+    urlMsg.value = '检测中…';
+    const pr = await probeInBrowser(u);
+    probedUrl = u;                                  // 结论已同步到输入框，后面不用再探一遍
+    if (pr.level === 'ok') setUrlOk(`${pr.ms} ms`);
+    else setUrlSoft(pr.why);
+    if (pr.level === 'unreachable') {
+      ElMessage.warning('本机连不上这个网址，已跳过 AI 补全。确认地址没问题的话，请手动填写标题和图标', 5000);
+      return;
+    }
     const r: any = await post('/api/admin/ai/fill', { url: u });
     const it = r.item || {};
     if (it.title) f.title = String(it.title).slice(0, 20);
@@ -424,10 +444,8 @@ async function aiFill() {
       if (g) f.group_id = g.id;
     }
     const note = (r.notes || [])[0];
-    /* 可达性一律以本机探测为准（和失焦这里走同一套），后端只负责抓页面信息：
-       抓不到页面往往只是「没拿到标题和图标」，不能据此判网址有问题 */
-    probedUrl = '';
-    await probeUrl();
+    /* 可达性已经在上面探过（地址没被改动，结论继续有效），这里不再重探一次 ——
+       后端只负责抓页面信息，抓不到页面往往只是「没拿到标题和图标」，不能据此判网址有问题 */
     if (!r.reachable) ElMessage.warning(note || '没抓到页面内容（可能需要登录或被站点挡住），标题建议手动补一下');
     else if (r.source === 'ai') ElMessage.success('已补全，确认无误后点保存');
     else ElMessage.warning(note || '只填入了网页自带信息');

@@ -23,6 +23,16 @@ const WIDE_CHAR = /[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF\u3000\u2026]/;
 /* 打开方式标签文案，和编辑弹窗里的下拉选项一一对应 */
 const OPEN_LABEL: Record<number, string> = { 1: '当前页打开', 2: '新标签打开', 3: '弹窗打开' };
 
+/* 列表里的网址做成可点链接。地址可能没写协议（老数据 / 手填忘了），
+   直接丢给 href 会被当成站内相对路径，点开变成 404 —— 补一下协议。
+   已有协议的一律原样返回，别自作聪明改写用户的地址 */
+function urlHref(u: string): string {
+  const s = String(u || '').trim();
+  if (!s) return '';
+  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return s;
+  return 'http://' + s;
+}
+
 function listPlateText(it: IconItem): string {
   const t = String(it.icon_text || '').trim();
   if (t) {
@@ -152,8 +162,9 @@ const dragClass = (kind: 'group' | 'icon') => ({ 'drag-target': dragSrc.value?.k
    和真实点击走的是同一条路，不会像 Worker 那样被 WAF 当成境外 IP / 机器人拦掉。
    代价是跨域读不到状态码，所以只分三档：
      ok          能连上就是能打开（站点回 404/403 也算，浏览器确实连上了）
+                 http 地址在 https 页面里探不了，但域名解析正常时同样算 ok（点击能跳转）
      unreachable 本机连不上：可能站点停了，也可能被网络环境或拦截插件挡了
-     skipped     浏览器不允许探测（https 页面里的 http 地址）
+     skipped     http 地址探不了、域名也查不到 —— 不下结论，界面不显示标记、不算异常
    只查外网地址（it.url），内网地址需要你在浏览器里点开确认。 */
 interface LinkState {
   level: ProbeLevel;
@@ -184,12 +195,14 @@ function groupStat(g: Group) {
   return { total: list.length, n, ok, no, skip };
 }
 
-/* 只有「全部确认可达」才绿；有连不上或探不了的统一橙色，不染红 ——
-   拦截插件、公司网络、VPN 都会造成本机连不上，标红只会天天误报 */
-function groupLevel(g: Group): '' | 'ok' | 'warn' {
+/* 只有「全部确认可达」才绿；有连不上标橙，不染红 ——
+   拦截插件、公司网络、VPN 都会造成本机连不上，标红只会天天误报。
+   全是「探不了」的（整组都是 http 地址）用中性灰，别装成检查过也没问题 */
+function groupLevel(g: Group): '' | 'ok' | 'warn' | 'skip' {
   const s = groupStat(g);
   if (!s.n) return '';
-  return s.no || s.skip ? 'warn' : 'ok';
+  if (s.no) return 'warn';
+  return s.ok ? 'ok' : 'skip';
 }
 
 const isRunning = (g: Group) => !!runMap[g.id];
@@ -199,7 +212,9 @@ function groupCheckText(g: Group): string {
   if (run) return `检查中 ${run.done}/${run.total}`;
   const s = groupStat(g);
   if (!checkedSet[g.id] || !s.total) return '检查链接';
-  if (s.no || s.skip) return `待确认 ${s.no + s.skip}`;
+  /* 「待确认」只算真的连不上的；探不了的 http 地址不算异常，不能让它天天挂着提示 */
+  if (s.no) return `待确认 ${s.no}`;
+  if (!s.ok) return '已检查';
   return '全部正常';
 }
 
@@ -210,8 +225,12 @@ function groupCheckTitle(g: Group): string {
   if (!checkedSet[g.id] || !s.total) {
     return s.total ? `在本机检查本组 ${s.total} 个外网链接（不查内网）` : '本组没有外网地址可查';
   }
-  const head = `共 ${s.total} 条：可访问 ${s.ok}，连不上 ${s.no}，未验证 ${s.skip}`;
-  return `${head}\n「连不上」也可能是拦截插件或当前网络挡的，点开确认一下再决定\n点击重新检查（只查外网）`;
+  const head = `共 ${s.total} 条：可访问 ${s.ok}，连不上 ${s.no}`
+    + (s.skip ? `，无法探测 ${s.skip}` : '');
+  const skipNote = s.skip
+    ? '\n「无法探测」= http 地址在 https 页面里不让探（浏览器混合内容限制），点击跳转不受影响'
+    : '';
+  return `${head}\n「连不上」也可能是拦截插件或当前网络挡的，点开确认一下再决定${skipNote}\n点击重新检查（只查外网）`;
 }
 
 async function checkGroup(g: Group) {
@@ -240,12 +259,11 @@ async function checkGroup(g: Group) {
     await Promise.all(Array.from({ length: Math.min(6, list.length) }, worker));
     checkedSet[g.id] = true;
     const s = groupStat(g);
-    if (s.no || s.skip) {
-      const parts = [
-        s.no ? `${s.no} 条连不上` : '',
-        s.skip ? `${s.skip} 条未验证` : '',
-      ].filter(Boolean);
-      ElMessage.warning(`「${g.title}」${parts.join('、')}（共 ${s.total} 条）`);
+    /* 只有真的连不上才需要提醒；探不了的 http 地址不弹黄条，免得每组都报一次 */
+    if (s.no) {
+      ElMessage.warning(`「${g.title}」${s.no} 条连不上（共 ${s.total} 条），点开确认一下`);
+    } else if (!s.ok) {
+      ElMessage.info(`「${g.title}」${s.skip} 条是 http 地址，本页探不了，点击跳转不受影响`);
     } else {
       ElMessage.success(`「${g.title}」${s.total} 条外网链接全部可访问`);
     }
@@ -254,19 +272,18 @@ async function checkGroup(g: Group) {
   }
 }
 
-/* 单条结果文字：胶囊很窄，用最短的词；结论本身靠悬浮提示解释 */
+/* 单条结果文字：胶囊很窄，用最短的词。探不了的（skipped）在模板里整块不渲染，
+   所以这里只有两种；具体依据看悬浮提示 */
 function linkText(s?: LinkState): string {
   if (!s) return '';
-  if (s.level === 'ok') return '通';
-  if (s.level === 'skipped') return '未验证';
-  return '待确认';
+  return s.level === 'ok' ? '通' : '待确认';
 }
 
-/* 悬浮提示标题：结论 + 本机耗时（没有状态码可显示了，耗时是唯一可量化的信息） */
+/* 悬浮提示标题：结论 + 本机耗时 */
 const LEVEL_LABEL: Record<ProbeLevel, string> = {
-  ok: '本机可访问',
+  ok: '可访问',
   unreachable: '本机连不上',
-  skipped: '未验证（浏览器不允许探测）',
+  skipped: '无法探测',
 };
 function linkTipHead(s: LinkState): string {
   return `${LEVEL_LABEL[s.level]}${s.ms ? ` · ${s.ms} ms` : ''}`;
@@ -349,15 +366,21 @@ function linkTipHead(s: LinkState): string {
                   <span v-if="it.description" class="item-desc">{{ it.description }}</span>
                 </div>
                 <!-- 网址行：外网 / 内网 各配一枚小标签，和网址之间留白分开；
-                     没配的那条直接不显示，两条都在时用间距分段 -->
+                     没配的那条直接不显示，两条都在时用间距分段。
+                     地址本身是链接，可直接新标签打开（内网地址同样） -->
                 <div class="item-url">
+                  <!-- 网址本身做成链接：列表里看到就直接新标签打开，不用先进编辑弹窗。
+                       内网地址同理 —— 后台页面是 https，导航到 http 只会拦「探测」，
+                       点击跳转浏览器照样放行，所以两种地址一视同仁 -->
                   <span v-if="it.url" class="url-item">
                     <em class="url-tag">外网</em>
-                    <span class="url-text" :title="it.url">{{ it.url }}</span>
+                    <a class="url-text" :href="urlHref(it.url)" :title="it.url + '（点击新标签打开）'"
+                       target="_blank" rel="noopener noreferrer" draggable="false" @click.stop>{{ it.url }}</a>
                   </span>
                   <span v-if="it.lan_url" class="url-item">
                     <em class="url-tag lan">内网</em>
-                    <span class="url-text" :title="it.lan_url">{{ it.lan_url }}</span>
+                    <a class="url-text" :href="urlHref(it.lan_url)" :title="it.lan_url + '（点击新标签打开）'"
+                       target="_blank" rel="noopener noreferrer" draggable="false" @click.stop>{{ it.lan_url }}</a>
                   </span>
                   <span v-if="!it.url && !it.lan_url" class="url-none">未填写网址</span>
                 </div>
@@ -365,7 +388,7 @@ function linkTipHead(s: LinkState): string {
               <!-- 右侧补状态：打开方式 + 链接检查结果（只有查过才显示）。
                    检查结果悬浮出提示：本机探测的结论与原因，不再假装有状态码 -->
               <div class="item-tags">
-                <el-tooltip v-if="linkMap[it.id]" placement="top" :show-after="120">
+                <el-tooltip v-if="linkMap[it.id] && linkMap[it.id].level !== 'skipped'" placement="top" :show-after="120">
                   <template #content>
                     <div class="lc-tip">
                       <div class="lc-tip-head" :class="'is-' + linkMap[it.id].level">{{ linkTipHead(linkMap[it.id]) }}</div>
@@ -485,10 +508,9 @@ function linkTipHead(s: LinkState): string {
     border: 1px solid transparent;
   }
   .lc-ok { color: var(--sp-ok); background: rgba(var(--sp-ok-rgb), .10); border-color: rgba(var(--sp-ok-rgb), .28); }
-  /* 连不上：橙色「待确认」。本机探测失败可能是拦截插件/网络挡的，不能等同死链 */
+  /* 连不上：橙色「待确认」。本机探测失败可能是拦截插件/网络挡的，不能等同死链。
+     探不了的 http 地址根本不渲染胶囊，所以这里没有灰色态 */
   .lc-unreachable { color: #c98a2e; background: rgba(230, 162, 60, .12); border-color: rgba(230, 162, 60, .32); }
-  /* 未验证：灰色弱化。https 页面里的 http 地址浏览器不让探，跟站点好坏无关 */
-  .lc-skipped { color: var(--sp-dim); background: rgba(128, 128, 128, .08); border-color: rgba(128, 128, 128, .22); }
 
   /* 链接检查悬浮提示（el-tooltip 内容，编译在本组件所以 scoped 能命中） */
   .lc-tip { max-width: 340px; line-height: 1.55; }
@@ -528,8 +550,11 @@ function linkTipHead(s: LinkState): string {
   /* 已出结果：常显 + 上色 */
   .g-lc.lv-ok { color: var(--sp-ok); background: rgba(var(--sp-ok-rgb), .10); border-color: rgba(var(--sp-ok-rgb), .28); }
   .g-lc.lv-warn { color: #c98a2e; background: rgba(230, 162, 60, .12); border-color: rgba(230, 162, 60, .32); }
+  /* 整组都是探不了的 http 地址：中性灰，只说明「查过了」，不给「正常」的错觉 */
+  .g-lc.lv-skip { color: var(--sp-dim); background: transparent; border-color: var(--sp-card-border); }
   .g-lc.lv-ok:hover { background: rgba(var(--sp-ok-rgb), .16); }
   .g-lc.lv-warn:hover { background: rgba(230, 162, 60, .18); }
+  .g-lc.lv-skip:hover { background: var(--sp-chip-bg); }
   .item-tags .tag {
     font-size: 11px; line-height: 1; padding: 4px 7px; border-radius: 6px;
     color: var(--sp-dim); background: var(--sp-chip-bg);
@@ -556,11 +581,21 @@ function linkTipHead(s: LinkState): string {
     color: var(--sp-tag-lan-fg); background: var(--sp-tag-lan-bg);
     border-color: var(--sp-tag-lan-bd);
   }
+  /* 网址文本本身就是链接：默认低调（和正文同色），悬浮才亮起来 + 下划线。
+     不给常显下划线 —— 一屏几十条地址全是蓝线，列表会花得没法看 */
   .item-url .url-text {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 11.5px; color: var(--sp-dim);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+    text-decoration: none; cursor: pointer; border-radius: 3px;
+    transition: color .12s, text-decoration-color .12s;
   }
+  .item-url .url-text:hover {
+    color: var(--sp-accent);
+    text-decoration: underline; text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
+  }
+  .item-url .url-text:focus-visible { outline: 1.5px solid var(--sp-accent); outline-offset: 1px; }
   .item-url .url-none { font-size: 12px; color: var(--sp-faint); opacity: .75; }
   .item-ops { display: flex; gap: 2px; flex: none; }
   .add-item { width: 100%; border-style: dashed; }

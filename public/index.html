@@ -108,6 +108,10 @@
   .ai-add-btn:hover{background:rgba(64,158,255,.30)}
   .ai-add-btn[hidden]{display:none}
   .ai-add-btn.busy{opacity:.65;cursor:progress}
+  /* 预探测已发现本机连不上：按钮转成警示色提醒「点下去多半白跑」，
+     但不隐藏也不禁用 —— 域名只在特定网络可解析的情况真实存在，拦死会挡住正常需求 */
+  .ai-add-btn.warn{background:rgba(230,162,60,.18);color:#d98b1f}
+  .ai-add-btn.warn:hover{background:rgba(230,162,60,.30)}
   .ai-add-btn .ai-add-ico{font-size:13px;line-height:1}
 
   /* 注意：以下 .group / .card / .mini 规则必须限定在访客页 .wrap 内。
@@ -2635,7 +2639,7 @@ function paintAdminBtn() {
 /* ---------- 交互 ---------- */
 $('#engBtn').onclick = e => { e.stopPropagation(); $('#engList').classList.toggle('open'); };
 document.addEventListener('click', () => $('#engList').classList.remove('open'));
-$('#q').addEventListener('input', () => { updateAiAddBtn(); renderGroups(true); });
+$('#q').addEventListener('input', () => { updateAiAddBtn(); scheduleSilentProbe(); renderGroups(true); });
 $('#clearBtn').onclick = () => { $('#q').value = ''; updateAiAddBtn(); renderGroups(true); };
 $('#modalClose').onclick = closeModal;
 $('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
@@ -2676,20 +2680,129 @@ function isHttpUrl(v) {
   return h.indexOf('.') > 0 && !/^\.|\.$/.test(h);
 }
 
+/* ---------- AI 添加前的本机可达性探测 ----------
+   点「AI 添加」会拿着网址去后端抓页面再调 AI。网址本身就不通时这一趟纯属浪费：
+   抓不到任何信息，AI 也补不出标题，最后只留一句含糊的「没抓到页面信息」。
+   所以点下去先在浏览器本机探一次 —— 浏览器就在用户自己的网络里，通不通和真实点击
+   是同一个结论（Worker 出口在境外，拿它判断会把国内站点大片误判成死链，所以不探后端）。
+   跨域只能拿 opaque 响应，看不到状态码，因此只分三档：
+     ok          拿到响应就算能打开（404/403 也说明站点在，本来也只是探活）
+     unreachable 网络层失败：域名不存在 / 拒绝连接 / 超时 / 证书错误
+     skipped     探不了：https 页面里的 http 地址（混合内容被浏览器直接拦）、内网地址
+   只有 unreachable 才拦下 AI 添加；skipped 一律放行 —— 探不到不等于坏。 */
+const PROBE_HEAD_MS = 5000;   // HEAD 不下载正文，拿响应头就够
+const PROBE_GET_MS = 4000;    // 少数 WAF 直接掐 HEAD，失败用 GET 复核一次
+const PROBE_TTL = 5 * 60 * 1000;
+const probeCache = new Map(); // 绝对地址 → { level, ms, why, at }
+
+/* 统一成绝对地址：裸域名补 https://，顺便验证能不能解析 */
+function toAbsUrl(v) {
+  const s = (v || '').trim();
+  if (!s) return '';
+  try {
+    return new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : 'https://' + s).href;
+  } catch (e) {
+    return '';
+  }
+}
+
+/* 一次 no-cors 请求：拿到响应就算通，不读 body、不看状态码 */
+function probeReach(url, method, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, {
+    method,
+    mode: 'no-cors',
+    redirect: 'follow',
+    cache: 'no-store',            // 别让缓存冒充可达，死链命中缓存会一直显示正常
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer',
+    signal: ctrl.signal,
+  }).then(
+    () => true,
+    () => false,                  // 超时/拒绝/DNS 失败/证书错误/插件拦截都只会走到这里，无法细分
+  ).finally(() => clearTimeout(timer));
+}
+
+async function probeUrl(raw) {
+  const url = toAbsUrl(raw);
+  if (!url) return { level: 'unreachable', ms: 0, why: '网址格式不对' };
+  let u;
+  try { u = new URL(url); } catch (e) { return { level: 'unreachable', ms: 0, why: '网址格式不对' }; }
+  /* https 页面里的 http 地址属于混合内容，浏览器一律拦掉，探了必然「连不上」。
+     这跟站点好坏无关（点开跳转是允许的），所以直接放行，别误伤内网 http 站点 */
+  if (location.protocol === 'https:' && u.protocol === 'http:') {
+    return { level: 'skipped', ms: 0, why: 'http 地址在本页探不了（浏览器混合内容限制），不拦添加' };
+  }
+  const t0 = performance.now();
+  const ok = (await probeReach(url, 'HEAD', PROBE_HEAD_MS)) || (await probeReach(url, 'GET', PROBE_GET_MS));
+  const ms = Math.round(performance.now() - t0);
+  return ok
+    ? { level: 'ok', ms, why: '本机访问正常（' + ms + ' ms）' }
+    : { level: 'unreachable', ms, why: '本机连不上这个网址' };
+}
+
+/* 带缓存的探测：输入停顿时先静默探一次，点按钮时通常直接命中，不用干等 */
+function probeCached(raw, force) {
+  const url = toAbsUrl(raw);
+  const hit = url && probeCache.get(url);
+  if (!force && hit && Date.now() - hit.at < PROBE_TTL) return Promise.resolve(hit);
+  return probeUrl(raw).then((r) => {
+    if (url) probeCache.set(url, Object.assign({ at: Date.now() }, r));
+    return r;
+  });
+}
+
+/* 输入停顿 600ms 后静默预探：只更新按钮颜色，不弹提示（打字中间态不该打扰） */
+let probeTimer = 0;
+function scheduleSilentProbe() {
+  clearTimeout(probeTimer);
+  const v = $('#q').value.trim();
+  if (!state.admin || !isHttpUrl(v)) return;
+  probeTimer = setTimeout(() => {
+    if ($('#q').value.trim() !== v) return;    // 期间又改了输入，这一枪作废
+    probeCached(v).then((r) => {
+      const btn = $('#aiAddBtn');
+      if (!btn || $('#q').value.trim() !== v) return;
+      const warn = r.level === 'unreachable';
+      btn.classList.toggle('warn', warn);
+      btn.title = warn ? '本机连不上这个网址，点下去多半拿不到 AI 信息' : '';
+    }).catch(() => {});
+  }, 600);
+}
+
 function updateAiAddBtn() {
   const btn = $('#aiAddBtn');
   if (!btn) return;
   const show = state.admin && isHttpUrl($('#q').value);
   btn.hidden = !show;
+  /* 网址一变，上一枪的结论就作废了，警示色跟着撤掉，等新的探测结果 */
+  btn.classList.remove('warn');
+  btn.title = '';
 }
 
 async function aiAddFromSearch() {
   const url = $('#q').value.trim();
   if (!isHttpUrl(url)) return;
   const btn = $('#aiAddBtn');
+  if (btn.disabled) return;                    // 防连点：探测 + AI 两段都要时间
+  const rawHtml = btn.innerHTML;               // 文案要临时换，结束后原样还回去
   btn.classList.add('busy');
   btn.disabled = true;
   try {
+    /* 第一道：网址通不通。不通就别去打 AI 了，白跑一趟还落个含糊的结果 */
+    btn.innerHTML = '<span class="ai-add-ico">✨</span>检测网址…';
+    const pr = await probeCached(url);
+    if (pr.level === 'unreachable') {
+      btn.classList.add('warn');                 // 让按钮本身也带上警示色，别再让人点第二遍
+      ctxToast('网址无法访问（本机连不上）。确认网址没问题的话，请手工添加', 3600);
+      /* 顺手送进「添加卡片」弹窗并预填地址：域名只在特定网络能解析、站点临时维护
+         这类情况真实存在，让他能立刻手填，不用自己再找一次添加入口 */
+      const gid0 = (state.groups && state.groups[0] && state.groups[0].id) || 0;
+      openItemEditor(gid0, 0, { url });
+      return;
+    }
+    btn.innerHTML = '<span class="ai-add-ico">✨</span>识别中…';
     const r = await fetch('/api/admin/ai/fill', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-requested-with': 'unav' },
@@ -2723,6 +2836,8 @@ async function aiAddFromSearch() {
   } catch (e) {
     ctxToast('AI 添加失败：' + (e?.message || '未知错误'));
   } finally {
+    /* 文案换过（检测网址/识别中），这里连内容一起还原，别把按钮永久改成中间态 */
+    btn.innerHTML = rawHtml;
     btn.classList.remove('busy');
     btn.disabled = false;
   }
@@ -2822,14 +2937,15 @@ function fallbackCopy(text) {
   ta.remove();
 }
 
-/* 菜单动作的反馈复用顶部的模式提示条（图标 + 文字，1.6s 自动收起） */
-function ctxToast(text) {
+/* 菜单动作的反馈复用顶部的模式提示条（图标 + 文字，默认 1.6s 自动收起）。
+   需要人读懂再决定的提示（网址不通这类）传 ms 延长，别没说清就消失 */
+function ctxToast(text, ms) {
   const t = $('#toast');
   $('#toastIco').innerHTML = svgOf(CTX_ICONS.ok);
   $('#toastText').textContent = text;
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 1600);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms || 1600);
 }
 
 /* 就地换位：移动卡片后只在 DOM 里交换相邻两张卡的位置 + 更新内存顺序，

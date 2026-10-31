@@ -59,9 +59,18 @@ type AiModelRecord = {
   /** 这条记录自己的启停开关；老数据没有这个字段时按启用处理 */
   enabled: boolean;
   created_at: number;
+  /** true = 内置的 Workers AI 记录：不用用户添加就存在、不落库、不可删除 */
+  builtin?: boolean;
 };
 
 type AiModelsBlob = { active_id: string; list: AiModelRecord[] };
+
+/**
+ * 内置记录（Workers AI）在列表里的固定 id。
+ * 这条记录不由用户添加，也不会写进模型库 —— 每次读列表时由 loadModels 合成，
+ * 免密钥、不走公网，永远可以当兜底通道。前端照常按 id 引用它。
+ */
+const BUILTIN_CF_ID = 'builtin-cf';
 
 /**
  * Workers AI 的默认模型。
@@ -86,6 +95,22 @@ const DEPRECATED_CF_MODELS = [
 /** 当前配置在这台部署上到底能不能用：cf 通道要看有没有 AI 绑定，openai 通道要看有没有密钥 */
 function ready(env: Env, cfg: AiCfg): boolean {
   return cfg.provider === 'cf' ? !!env.AI : !!cfg.key;
+}
+
+/** 合成出来的内置记录：内容恒等于「Workers AI 默认模型」，用户不可改也不可删 */
+function builtinRecord(): AiModelRecord {
+  return {
+    id: BUILTIN_CF_ID,
+    name: 'Workers AI（内置）',
+    provider: 'cf',
+    base_url: '',
+    model: CF_DEFAULT_MODEL,
+    key: '',
+    daily_limit: DEFAULT_CFG.daily_limit,
+    enabled: true,
+    created_at: 0,
+    builtin: true,
+  };
 }
 
 /* ---------------- 配置读写 ---------------- */
@@ -124,7 +149,8 @@ async function persistCfg(env: Env, cfg: AiCfg): Promise<void> {
 
 async function loadModels(env: Env): Promise<AiModelsBlob> {
   const row = await env.DB.prepare('SELECT value FROM app_setting WHERE key = ?').bind(MODELS_KEY).first<{ value: string }>();
-  if (!row?.value) return { active_id: '', list: [] };
+  /* 全新部署还没有模型库：这里也要给内置那条，否则面板上一条记录都没有、开关开不起来 */
+  if (!row?.value) return { active_id: '', list: [builtinRecord()] };
   try {
     const b = JSON.parse(row.value) as Partial<AiModelsBlob>;
     const secret = await getSecret(env);
@@ -146,19 +172,26 @@ async function loadModels(env: Env): Promise<AiModelsBlob> {
             })),
         )
       : [];
+    /* 内置的 Workers AI 记录：不用用户添加就存在，固定排第一位当兜底。
+       用户自己建过 cf 通道的记录时不再合成第二条 —— 那条就是他自己的内置通道。 */
+    const userCf = list.find((r) => r.provider === 'cf');
+    if (!userCf) list.unshift(builtinRecord());
     /* active_id 指向的记录若已被删掉，就退回空，避免界面高亮一个不存在的条目 */
     const active_id = typeof b.active_id === 'string' && list.some((r) => r.id === b.active_id) ? b.active_id : '';
     return { active_id, list };
   } catch {
-    return { active_id: '', list: [] };
+    /* 模型库坏了也别让面板空着：至少还有内置那条可以测、可以开 */
+    return { active_id: '', list: [builtinRecord()] };
   }
 }
 
-/** 落库：密钥只存密文 */
+/** 落库：密钥只存密文；合成的内置记录不写库（它每次读列表都会重新生成） */
 async function persistModels(env: Env, blob: AiModelsBlob): Promise<void> {
   const secret = await getSecret(env);
   const list = await Promise.all(
-    blob.list.map(async (r) => ({ ...r, key: r.key ? await encryptSecret(r.key, secret) : '' })),
+    blob.list
+      .filter((r) => !r.builtin)
+      .map(async (r) => ({ ...r, key: r.key ? await encryptSecret(r.key, secret) : '' })),
   );
   await env.DB
     .prepare('INSERT INTO app_setting (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at')
@@ -180,6 +213,7 @@ function recordView(r: AiModelRecord) {
     model: r.model,
     daily_limit: r.daily_limit,
     enabled: r.enabled !== false,
+    builtin: !!r.builtin,
     key_hint: maskKey(r.key),
     created_at: r.created_at,
   };
@@ -328,6 +362,13 @@ export async function aiSave(env: Env, req: Request): Promise<Response> {
   let rec = wantId ? blob.list.find((r) => r.id === wantId) : undefined;
   if (!rec) rec = blob.list.find((r) => modelKey(r) === modelKey(next));
   if (rec) {
+    /* 命中的是合成出来的内置记录：说明用户是在「把内置通道另存为自己的记录」。
+       给它一个新 id 并去掉内置标记，否则这次修改写库时会被当成内置记录丢掉。 */
+    if (rec.builtin) {
+      rec.id = newModelId();
+      rec.builtin = false;
+      rec.created_at = Date.now();
+    }
     /* 名称只在表单真的传了时才改：像「清除密钥」这种只带 key 的请求不能把备注名抹掉 */
     if (typeof body.name === 'string') rec.name = body.name.trim().slice(0, 40);
     rec.provider = next.provider;
@@ -732,6 +773,7 @@ export async function aiModelsActive(env: Env, req: Request): Promise<Response> 
 export async function aiModelsDelete(env: Env, req: Request): Promise<Response> {
   await requireRole(req, env, 'owner');
   const id = String(new URL(req.url).searchParams.get('id') || '').trim();
+  if (id === BUILTIN_CF_ID) return bad('内置的 Workers AI 记录不能删除');
   const blob = await loadModels(env);
   const next = blob.list.filter((r) => r.id !== id);
   if (next.length === blob.list.length) return bad('记录不存在');
@@ -739,4 +781,43 @@ export async function aiModelsDelete(env: Env, req: Request): Promise<Response> 
   if (blob.active_id === id) blob.active_id = '';
   await persistModels(env, blob);
   return json({ ok: true, ...modelsView(blob) });
+}
+
+/**
+ * 顶部开关：一次做完「选中默认记录 → 写成生效配置 → 改开关」。
+ * 分成三次请求（切记录、改开关、测试）中间失败会留下不一致状态，所以合成一个接口。
+ * 开启时不校验这条记录自己的 enabled —— 用户点的是总开关，就是要用它。
+ * 测试由前端接着发一次（模型往返要几秒，别把开关卡在 loading 里）。
+ */
+export async function aiSwitch(env: Env, req: Request): Promise<Response> {
+  await requireRole(req, env, 'owner');
+  const body = await readJson(req);
+  const on = !!body?.on;
+  const blob = await loadModels(env);
+
+  if (!on) {
+    const cfg = await loadCfg(env);
+    cfg.enabled = false;
+    await persistCfg(env, cfg);
+    return json({ ok: true, ...view(cfg, await loadUsage(env), !!env.AI), models: modelsView(blob) });
+  }
+
+  /* 开启必须有记录：内置那条总会存在，所以真到这儿说明连内置都没合成（理论上不会），
+     或者用户把可用通道全删了 —— 都给一句人能看懂的话，别静默打开 */
+  if (!blob.list.length) return bad('请添加记录再点击开启');
+  /* 默认记录 = 之前选定的那条；没选过就落第一条（内置 Workers AI 排在最前面） */
+  const rec = blob.list.find((r) => r.id === blob.active_id) || blob.list[0];
+  if (rec.provider === 'cf' ? !env.AI : !rec.key) {
+    return bad(rec.provider === 'cf'
+      ? '这台部署没有 AI 绑定（wrangler.toml 缺 [ai] binding = "AI"），请先添加一条可用的模型记录'
+      : `默认记录「${rec.name || rec.model}」还没有填写 API 密钥`);
+  }
+
+  blob.active_id = rec.id;
+  await persistModels(env, blob);
+  await activateRecord(env, rec);
+  const cfg = await loadCfg(env);
+  cfg.enabled = true;
+  await persistCfg(env, cfg);
+  return json({ ok: true, active_id: rec.id, ...view(cfg, await loadUsage(env), !!env.AI), models: modelsView(blob) });
 }
